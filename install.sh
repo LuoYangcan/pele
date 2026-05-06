@@ -222,6 +222,22 @@ fi
 echo ""
 ok "Pele installed."
 [ -d "$BACKUP_DIR" ] && log "Backup of any conflicts: ${BACKUP_DIR}"
+
+# Check for unreplaced placeholders and warn
+PLACEHOLDER_COUNT=0
+if command -v grep >/dev/null 2>&1; then
+  PLACEHOLDER_COUNT=$(grep -rEn '<(YourApp|your-monorepo|your build recipe|DesignSystemPackage|ImageRegistry)' "${PELE_ROOT}/core/" --include='*.md' 2>/dev/null | wc -l | tr -d ' ')
+fi
+if [ "${PLACEHOLDER_COUNT}" -gt 0 ]; then
+  echo ""
+  echo "${C_YELLOW}!${C_RESET} ${C_BOLD}${PLACEHOLDER_COUNT} placeholders${C_RESET} found in rule files (e.g. ${C_BOLD}<YourApp>${C_RESET}, ${C_BOLD}<your build recipe>${C_RESET})."
+  echo "  These are project-specific defaults you should review and replace."
+  echo "  See README → ${C_BOLD}\"After install: customize for your project\"${C_RESET}."
+  echo ""
+  echo "  List them all:"
+  echo "    ${C_DIM}grep -rEn '<(YourApp|your-monorepo|your build recipe|DesignSystemPackage|ImageRegistry)' ${PELE_ROOT}/core/ --include='*.md'${C_RESET}"
+fi
+
 echo ""
 echo "Verify with:"
 echo "  claude mcp list                    # MCP servers"

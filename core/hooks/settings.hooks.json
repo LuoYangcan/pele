@@ -1,0 +1,45 @@
+{
+  "_comment": "Pele core hooks. Merged into ~/.claude/settings.json by install.sh. Edit this file (or your installed settings.json) to add project-specific hooks.",
+  "hooks": {
+    "PreToolUse": [
+      {
+        "_comment": "Block direct Edit/Write on protected branches (main / master / dev). Adjust the branch list to match your workflow.",
+        "matcher": "Edit|Write|NotebookEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "b=$(git branch --show-current 2>/dev/null); case \"$b\" in main|master|dev) printf '{\"hookSpecificOutput\":{\"hookEventName\":\"PreToolUse\",\"permissionDecision\":\"deny\",\"permissionDecisionReason\":\"On protected branch %s, direct Edit/Write is blocked. Create a task branch first (e.g. `git checkout -b <type/scope-desc>`), then retry.\"}}' \"$b\";; esac"
+          },
+          {
+            "_comment": "Enforce spec-before-code: requires .specs/<slug>.md (or .specs/<slug>.skip) to exist when cwd is in a worktree. See rules/spec-before-code.md.",
+            "type": "command",
+            "command": "bash $HOME/.claude/scripts/check-spec.sh"
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "_comment": "Optional: post-Codex-review prompt. Only activates when a Bash command runs codex-companion.mjs (review|adversarial-review). Harmless if you don't use the codex CLI plugin — the matcher won't fire.",
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "CMD=$(jq -r '.tool_input.command // empty'); if echo \"$CMD\" | grep -Eq 'codex-companion\\.mjs[\"'\"'\"'[:space:]]+(review|adversarial-review)\\b'; then printf '%s' '{\"hookSpecificOutput\":{\"hookEventName\":\"PostToolUse\",\"additionalContext\":\"A Codex review just finished. In your next reply, do two things: (1) Briefly evaluate this review in 3-5 sentences — which are real issues, which are nitpicks or false positives, whether changes are mandatory overall; (2) Then use the AskUserQuestion tool to ask the user whether to apply the review suggestions, with 3 options (e.g. apply all / apply only critical ones / skip for now, I will decide myself). Do not start editing code first; wait for the user choice.\"}}'; fi"
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "_comment": "Inject a 3-step reminder on every user prompt: (A) clarify requirements, (B) enter worktree if it's a new topic, (C) checkpoint after 3/7 rounds without progress.",
+            "type": "command",
+            "command": "printf '%s' '{\"hookSpecificOutput\":{\"hookEventName\":\"UserPromptSubmit\",\"additionalContext\":\"For code-writing requests (will land Edit/Write/NotebookEdit), handle in this order:\\n\\nA) Clarify (skip if the request is already clear) — use AskUserQuestion to nail down: ① the goal ② hard constraints (where to land / stack / what NOT to touch) ③ anything you do not understand or are unsure about\\n\\nB) If this is clearly a new topic (\\\"new task / another one / next, do X\\\"), isolate in a worktree before the first Edit, starting from latest origin/dev (do NOT use EnterWorktree(name=...) directly — it inherits current HEAD):\\n  git fetch origin dev\\n  git worktree add .worktrees/<slug> -b <type/scope-slug> origin/dev\\n  EnterWorktree(path=.worktrees/<slug>)\\n  # Project-specific: run your worktree init (e.g. generate Xcode project / npm install / build)\\n\\nC) Round checkpoints: same request stuck >3 rounds with user still unsatisfied → stop and AskUserQuestion to clarify. >7 rounds → realign direction from scratch (do not auto-discard existing code).\\n\\nDoes not trigger for: pure Q&A / reading code / status checks / config edits. Full rules in ~/.claude/CLAUDE.md index — load on demand.\"}}'"
+          }
+        ]
+      }
+    ]
+  }
+}

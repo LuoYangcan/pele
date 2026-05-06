@@ -1,0 +1,44 @@
+{
+  "skill_name": "reuse-first",
+  "evals": [
+    {
+      "id": 0,
+      "name": "acmechat-toast-component-reuse",
+      "prompt": "我想在 AcmeChat 的 ChatVC 里加一个『复制成功』的 toast 提示。点击复制按钮后，屏幕中部弹一个吐司式提示，自动消失。给我一份具体方案：用什么组件、怎么集成、要不要新加 dependency。",
+      "expected_output": "应当先识别 packages/common/AcmeToastKit 已经在用、可在 AcmeChat 直接添加 dependency；不应该建议从零写 UIView toast，也不应该建议引入新 SDK（如 Toast-Swift / SwiftMessages）。如果 ChatVC 已能 import 现成的便捷封装（如 AcmeUI 的 Toast helper、AcmeToastKit），直接用即可。",
+      "assertions": [
+        {"name": "mentions_existing_toast_kit", "type": "keyword_present", "keywords": ["AcmeToastKit"]},
+        {"name": "does_not_recommend_new_third_party_sdk", "type": "keyword_absent_or_explicitly_rejected", "keywords": ["Toast-Swift", "SwiftMessages", "SVProgressHUD", "MBProgressHUD"]},
+        {"name": "mentions_dependency_wiring", "type": "keyword_present_any", "keywords": ["Package.swift", "dependencies", ".product", ".package"]},
+        {"name": "does_not_propose_writing_uiview_from_scratch", "type": "negative_recommendation", "phrases_to_avoid_as_main_recommendation": ["从零写", "自定义 UIView", "自己实现一个 toast"]}
+      ],
+      "files": []
+    },
+    {
+      "id": 1,
+      "name": "review-uicolor-hex-extension",
+      "prompt": "Review 这段代码 —— 我在 AcmeProfile 的某个 VC 文件底部加了 `extension UIColor { convenience init?(hex: String) ... }`。这段加在这里合适吗？",
+      "expected_output": "应当指出：(1) 高频会重复造的轮子，repo 大概率已有；(2) 应先 grep 确认；(3) 即便没有也不应写在业务模块 AcmeProfile 里，应下沉到 AcmeTheme / AcmeUI；(4) review 输出应包含『重复实现』警告。",
+      "assertions": [
+        {"name": "flags_potential_duplicate_implementation", "type": "keyword_present_any", "keywords": ["重复", "duplicate", "已有", "现有"]},
+        {"name": "actually_searches_or_recommends_search", "type": "keyword_present_any", "keywords": ["grep", "搜", "search", "AcmeTheme", "AcmeUI"]},
+        {"name": "verdict_not_accept", "type": "verdict_check", "must_not_match": ["accept", "lgtm", "looks good", "通过", "可以合并", "approve"]},
+        {"name": "recommends_relocating_to_shared_package", "type": "keyword_present_any", "keywords": ["AcmeTheme", "AcmeUI", "下沉", "common", "shared"]}
+      ],
+      "files": []
+    },
+    {
+      "id": 2,
+      "name": "cross-package-permission-reuse",
+      "prompt": "AcmeDevices 里加某个系统权限的入口，能不能直接 import AcmeOnboarding 里类似流程？",
+      "expected_output": "应当指出：(1) Business 不能互依；(2) 下沉到 PermissionsKit / AcmeTools 或走 AcmeRouter 中间件；(3) 不要 cherry-pick / copy-paste。",
+      "assertions": [
+        {"name": "rejects_direct_import_of_other_business_package", "type": "negative_recommendation", "must_signal_no_for_keyword": "AcmeOnboarding"},
+        {"name": "cites_dependency_layering_rule", "type": "keyword_present_any", "keywords": ["业务", "Business", "依赖", "AGENTS", "分层"]},
+        {"name": "proposes_correct_alternative", "type": "keyword_present_any", "keywords": ["PermissionsKit", "下沉", "中间件", "Router.register", "AcmeTools"]},
+        {"name": "does_not_recommend_copy_paste", "type": "negative_recommendation", "phrases_to_avoid_as_recommendation": ["cherry-pick", "复制粘贴", "抄过来"]}
+      ],
+      "files": []
+    }
+  ]
+}

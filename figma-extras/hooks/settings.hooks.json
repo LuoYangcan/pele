@@ -1,0 +1,17 @@
+{
+  "_comment": "Pele figma-extras hooks. Only meaningful when you use the Figma MCP plugin (mcp.figma.com). Merged into ~/.claude/settings.json by `install.sh --figma`.",
+  "hooks": {
+    "PreToolUse": [
+      {
+        "_comment": "When Claude calls get_design_context on a Figma node, prompt it to clarify ambiguous parts of the static design before generating code. Static designs miss loading/empty/error states, interactions, and animation details — those must come from the user.",
+        "matcher": "mcp__plugin_figma_figma__get_design_context",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "printf '%s' '{\"hookSpecificOutput\":{\"hookEventName\":\"PreToolUse\",\"additionalContext\":\"Static Figma designs miss key information that must be clarified before implementation. Use AskUserQuestion to clarify (platform conventions, code style, directory structure are documented in AGENTS.md — no need to ask):\\n\\n1) Where to land: new screen or modify an existing one? Which app / module?\\n2) Non-static behavior: loading / empty / error states, interactions and animations (not visible in a static design)\\n3) Specific details that look ambiguous or unclear in the design\\n\\nIf the above is already clarified this round, continue. Otherwise, ask first before implementing.\"}}'"
+          }
+        ]
+      }
+    ]
+  }
+}

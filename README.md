@@ -61,6 +61,40 @@ cd ~/Developer/pele
 - `git`, `jq` (for hook merging — optional but recommended)
 - [Claude Code](https://docs.anthropic.com/claude/docs/claude-code) installed
 
+## After install: customize for your project
+
+> ⚠️ **Some rule files contain placeholders** like `<YourApp>` and `<your build recipe>`. They're project-specific defaults that you should review and replace, otherwise Claude will see the literal `<YourApp>` text in your rules.
+
+Pele's rule files use placeholders for project-specific paths and commands so the same rules can apply to any project. After install, **edit the placeholders in your `~/Developer/pele/` checkout** to match your project. Since `~/.claude/` is symlinked to it, your edits take effect immediately — no reinstall needed.
+
+Common placeholders:
+
+| Placeholder | Meaning | Replace with (example) |
+|---|---|---|
+| `<YourApp>` | Your iOS app name (workspace + scheme stem) | `Acme`, `MyApp` |
+| `<YourApp>iOS` | Your iOS scheme name | `AcmeiOS` |
+| `<your-monorepo>` | Your repo / monorepo name | `acme-platform-apple` |
+| `<your build recipe>` | Your build command | `just build-ios`, `make build`, `npm run build` |
+| `<DesignSystemPackage>` | Your shared theme / design package | `AcmeTheme`, `DesignKit` |
+| `<ImageRegistry>` | Your image registry class (image-assets rule) | `ThemeImageManager`, `IconRegistry` |
+
+**Find all placeholders in your installed rules:**
+
+```bash
+cd ~/Developer/pele
+grep -rEn '<(YourApp|your-monorepo|your build recipe|DesignSystemPackage|ImageRegistry)' core/ --include='*.md'
+```
+
+**Bulk-replace one** (example: `<YourApp>` → `Acme`):
+
+```bash
+cd ~/Developer/pele
+find core/ -name '*.md' -exec sed -i '' 's|<YourApp>|Acme|g' {} +
+git diff   # review then commit if you want to track
+```
+
+If your project doesn't use the iOS-flavored examples at all (e.g. you're on a Node / Python / Rust stack), the rules referencing `<YourApp>iOS` etc. simply won't be triggered — Claude only `Read`s a rule when its trigger description matches the current task. You can leave them or delete the irrelevant rule files.
+
 ## The three-stage pipeline
 
 The default behavior changes when you have a code-writing request:

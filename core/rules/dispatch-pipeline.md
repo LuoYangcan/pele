@@ -69,9 +69,35 @@ planner 返回后：
 
 1. Read 一下 `.specs/<slug>.md` 自己看一眼（确认 planner 没写空 / 没写错路径）
 2. 把 **spec 文件路径** + **planner 返回的关键摘要**展示给用户
-3. 用 AskUserQuestion 问「这份 spec 看完没问题就开始实现，要改方向就告诉我」
+3. 用 AskUserQuestion 停下问，至少给这几个选项：
+   - 开始实现（调 generator）
+   - 我先看 spec，等我说开始
+   - 改 spec / 改方向（重新调 planner）
+   - 不用 generator，我自己改 / 跳过
 
-**不要自动进入阶段 2** —— 这是用户闸口。
+> ⛔ **硬约束（用户反复强调过的高优先级闸口）**：
+>
+> planner 返回后，主 agent 的**下一个 tool call** 只能是以下之一：
+>
+> - `Read`（读 spec 自检）
+> - `AskUserQuestion`（向用户拍板）
+> - `Bash`（只读命令，如 `git status` 看 worktree 状态）
+>
+> **绝对不能**是 `Agent(subagent_type="generator")`。哪怕 spec 看起来无懈可击、用户原始需求看起来已经 ready-to-code，也**不准**自动进入阶段 2。
+>
+> 用户回复必须是**明确同意词**才能调 generator：「开始 / 开 / ok 开始 / 干 / go / 实现吧 / 没问题开始」之类。
+>
+> 用户回复**模糊**（「嗯」「让我看看」「先放着」「再想想」）→ **继续等**，不要把模糊回复脑补成同意。
+>
+> 这条比「主 agent 主动推进流程」优先级**高**。宁可多问一轮，不要替用户拍板。
+
+#### 自检 checklist（每次准备调 generator 前过一遍）
+
+- [ ] 我的上一个 tool call 是 planner 返回？→ 如果是，下一步**绝不能**直接调 generator
+- [ ] 我向用户展示了 spec 路径 + 摘要？
+- [ ] 我用 AskUserQuestion 问过用户「是否开始实现」？
+- [ ] 用户给了**明确同意词**？（不是「嗯」「ok」之外的模糊词）
+- [ ] 4 项全部 ✅ → 才能 invoke generator
 
 ### 阶段 2: 调 generator（用户说「开始」之后）
 

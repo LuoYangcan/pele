@@ -120,6 +120,10 @@ echo "BUNDLE_ID=$BUNDLE_ID"
 
 #### Step 4.5.2: 拿 simulator UDID
 
+**并行模式优先**：主 agent 在 prompt 里给你 `Simulator UDID: <UDID>` 字段时，**直接用它**，**不要** `get_booted_sim_id`（并行 executor 同时跑 `get_booted_sim_id` 会拿到同一台 sim、互相抢交互）。后续所有 `mcp__ios-simulator__*` 工具调用**必须**显式传 `udid: <主 agent 给的 UDID>` 参数。
+
+**串行模式 / 主 agent 没传 UDID** 时走 fallback：
+
 ```
 mcp__ios-simulator__get_booted_sim_id
 ```

@@ -13,8 +13,9 @@
   ↓ 用户拍板「开始」
 [generator subagent] —— 独立 context、按 spec 写代码 + 跑编译
   ↓
-主 agent: 报告 generator 改动 + AskUserQuestion 问「是否进入 executor 验收」
-  ↓ 用户拍板「验收」
+[阶段 2.5] 主 agent: 报告 + 默认跑 1 轮代码 review（/review 或 /codex:review）
+              → 用户挑要修的项 → generator 按 review 修 → 不限轮循环（用户拍板停）
+  ↓ 用户拍板「进 executor」
 [executor subagent] —— 独立 context、只读 review + 验收
   ↓
 PASS → 主 agent 报告用户 + AskUserQuestion 问「是否总结+更新文档」 → 按用户选择执行 → 等下一步指令
@@ -89,14 +90,81 @@ Agent({
 
 generator 返回有两种情况：
 
-- **正常完成** → 主 agent **不要直接进入阶段 3**，先报告 + 等用户拍板：
-  1. 把 generator 的改动文件清单 + 编译/build 结果 + spec 第 8 节 DONE 的子任务列表展示给用户
-  2. 用 AskUserQuestion 问「让 executor 开始验收，还是先看下代码 / 手动改方向 / 撤回重做？」给 3-4 个明确选项（典型：「让 executor 验收」/「我先看一下代码再决定」/「先调一下方向，generator 重写部分子任务」/「撤回这轮 generator 改动」）
-  3. 用户说「让 executor 验收」→ 进入阶段 3；用户选其他 → 等用户进一步指令，**不要**自己启动 executor
+- **正常完成** → **进入阶段 2.5（review-fix 循环）**，不要直接进入阶段 3。
 - **带「需要 planner 更新 spec」标注** → 主 agent：
   1. 重新调 planner（传入 generator 的反馈）让 planner 更新 spec
   2. planner 改完 spec → 主 agent 再问用户「spec 更新了，要看一眼再继续吗？」
   3. 用户同意 → 重新调 generator 继续
+
+### 阶段 2.5: review-fix 循环
+
+generator 「正常完成」后默认跑 1 轮代码 review，让用户挑改、generator 修。循环不限轮、由用户拍板停。
+
+#### Step 1: 报告 + 闸口（决定走 review 还是直接 executor）
+
+主 agent：
+
+1. 把 generator 的改动文件清单 + 编译/build 结果 + spec 第 8 节 DONE 的子任务列表展示给用户
+2. 用 AskUserQuestion 问「下一步」，给选项（**第一个标 Recommended**）：
+   - **跑 /review**（Recommended）—— pele 自带的 deep code review（见 `~/.claude/commands/review.md`），结果落 `.reviews/<branch>-<ts>.md`
+   - **跑 /codex:review**（仅当装了 OpenAI Codex CLI 插件时可选）—— Codex 外部视角 review，作为 cross-check
+   - **跳过 review，直接进 executor** —— 改动很小、或用户已经看过代码
+   - **暂停，等我下一步指令** —— 用户想自己看代码 / 改方向 / 撤回 / 让 generator 改某些子任务
+3. 用户选 review → 进入 Step 2；选「跳过 review」→ 跳到阶段 3 入口；选「暂停」→ 等用户进一步指令，**不要**自动推进
+
+#### Step 2: 触发 review
+
+按用户选择执行：
+
+- **/review**：复刻 `~/.claude/commands/review.md` 的 SOP（git diff 拿改动 → Agent 派发 review subagent → 写 `.reviews/<branch>-<ts>.md`）。**不要**走 Skill 工具尝试 invoke slash command —— 直接按 review.md 步骤手动跑，确定性高
+- **/codex:review**：按 codex 插件提供的 review.md SOP（通过 Bash 调 codex-companion；默认 background 模式，让用户决定 wait / background）。**用户没装 codex 插件时本选项在 Step 1 闸口不出现**
+
+review 完成后回到主 agent。
+
+#### Step 3: 摘要 review，让用户挑
+
+主 agent：
+
+1. **不要**贴整份 review；从 review 文件里提取关键信息：
+   - issues 总数 + 按严重度分布（blocking / warning / nit / suggestion）
+   - 3-5 条最值得关注的 highlight（一句话 + 文件:行）
+   - review 文件**绝对路径**给用户，让他自己打开看细节
+2. AskUserQuestion 问「review 怎么处理？」给 4-5 个选项：
+   - **全部采纳，调 generator 修**
+   - **只采纳 blocking 级，调 generator 修**（review 里的 nitpick 跳过）
+   - **打开 review 文件我自己挑** —— 等用户在主对话里告诉我具体修哪些条目
+   - **再跑另一个 review**（刚跑了 /review 就跑 /codex:review，反之亦然）—— cross-validate
+   - **跳过这次 review，进 executor** —— review 留着以后参考、本轮不修
+
+#### Step 4: 调 generator 按 review 修
+
+```
+Agent({
+  description: "<需求一句话> — 按 review 修",
+  subagent_type: "generator",
+  prompt: """
+    Worktree slug: <slug>
+    Worktree 绝对路径: <pwd>
+    本轮任务: 按代码 review 修复，不扩范围、不修 spec
+
+    Review 文件: <绝对路径>
+    采纳范围: <全部 | 只 blocking | 用户挑出的具体条目（列出来）>
+
+    按 ~/.claude/agents/generator.md 的 SOP 工作，但本轮重点：
+    - 只改 review 里被采纳的项
+    - 不修 spec 第 1-7 节、不扩任务范围
+    - 修完跑编译确认没引入新错
+  """
+})
+```
+
+generator 修完返回 → **回到 Step 1**（重新展示改动 + 4 个闸口选项）。这一轮的 review-fix 算一次迭代结束、由用户决定下一轮还是停。
+
+#### 循环规则
+
+- **循环不限轮**：每轮 fix 后必须重新走 Step 1 的闸口让用户拍板。主 agent **不**自己判断「review 应该够了」自动进 executor
+- **用户拍板停**：用户选「跳过 review，进 executor」或「暂停」即终止本阶段
+- **review 失败 / Codex 不可用 / Bash 错**：主 agent 把错误告诉用户、AskUserQuestion 问「换另一个 review / 跳过 review 进 executor / 暂停」，**不要**自己重试 5 次也不要硬塞默认行为
 
 ### 阶段 3: 调 executor
 

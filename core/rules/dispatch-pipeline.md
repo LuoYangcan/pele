@@ -13,9 +13,11 @@
   ↓ 用户拍板「开始」
 [generator subagent] —— 独立 context、按 spec 写代码 + 跑编译
   ↓
+主 agent: 报告 generator 改动 + AskUserQuestion 问「是否进入 executor 验收」
+  ↓ 用户拍板「验收」
 [executor subagent] —— 独立 context、只读 review + 验收
   ↓
-PASS → 主 agent 报告用户、等下一步指令（用户决定何时 /openpr）
+PASS → 主 agent 报告用户 + AskUserQuestion 问「是否总结+更新文档」 → 按用户选择执行 → 等下一步指令
 FAIL → 主 agent 把 issues 整理给 generator 重写（最多 3 次）
 3 次都失败 → 报给用户拍板
 ```
@@ -87,7 +89,10 @@ Agent({
 
 generator 返回有两种情况：
 
-- **正常完成** → 进入阶段 3
+- **正常完成** → 主 agent **不要直接进入阶段 3**，先报告 + 等用户拍板：
+  1. 把 generator 的改动文件清单 + 编译/build 结果 + spec 第 8 节 DONE 的子任务列表展示给用户
+  2. 用 AskUserQuestion 问「让 executor 开始验收，还是先看下代码 / 手动改方向 / 撤回重做？」给 3-4 个明确选项（典型：「让 executor 验收」/「我先看一下代码再决定」/「先调一下方向，generator 重写部分子任务」/「撤回这轮 generator 改动」）
+  3. 用户说「让 executor 验收」→ 进入阶段 3；用户选其他 → 等用户进一步指令，**不要**自己启动 executor
 - **带「需要 planner 更新 spec」标注** → 主 agent：
   1. 重新调 planner（传入 generator 的反馈）让 planner 更新 spec
   2. planner 改完 spec → 主 agent 再问用户「spec 更新了，要看一眼再继续吗？」
@@ -112,7 +117,15 @@ Agent({
 
 executor 返回结构化结论：
 
-- **verdict == PASS** → 主 agent 报告用户：「executor 通过了 + ui_smoke_required 提示（如有）+ warning 列表（如有）+ ui_screenshots_dir 路径（如有）。可以 /openpr 或继续做下一个需求」
+- **verdict == PASS** → 主 agent 报告用户：「executor 通过了 + ui_smoke_required 提示（如有）+ warning 列表（如有）+ ui_screenshots_dir 路径（如有）」。
+  
+  **接着用 AskUserQuestion 问「要不要现在总结这次工作 + 更新项目文档？」**，给 3 个选项：
+  
+  - **总结 + 更新文档（推荐）**：主 agent 自己复盘本轮改动里**对未来 agent 行为有持续影响**的部分（新工作流 / 改了项目结构 / 改了模块边界 / 引入新工具链 / 新约定）→ 列出建议更新的具体文档路径 + 每处改动大纲（CLAUDE.md / AGENTS.md / docs/*.md / rules / skills 都可能）→ 用户拍板大方向后 agent Edit 落地 → 让用户 review diff → 满意就 commit
+  - **跳过文档**：本次改动只是常规业务代码 / UI / bug fix，对 agent 没新约束，直接进入下一步
+  - **稍后再说**：留着这次改动，先做别的；后续 `/openpr` 时仍会再问一遍（见 `commands/openpr.md`「文档同步检查」）
+  
+  **不要默认跳过 —— 必须问**。问完按用户的选择执行；用户选完后再告诉用户「可以 `/openpr` 或继续做下一个需求」。
 - **verdict == FAIL** → 进入阶段 4
 
 **iOS UI 专项的 `ui_verified` 字段路由**（不是 verdict 本身，但影响主 agent 怎么报告）：

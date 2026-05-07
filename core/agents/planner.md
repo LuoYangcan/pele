@@ -69,7 +69,14 @@ git log --oneline origin/dev..HEAD -10
 按 spec-template 的 8 节**完整**写：
 
 1. **用户原始需求**（保留原话）
-2. **需求拆分**（可独立验证的子任务清单，每条标识哪些文件 / 模块）
+2. **需求拆分**（可独立验证的子任务清单，每条**必须**列出涉及的文件 / 模块）
+   - **子任务数 ≥3 时必须额外填「并行分组」表**：扫一遍各子任务的「涉及文件」清单
+     - 文件边界**完全不重叠** + 类型不互依赖 → 标 `parallel-1` / `parallel-2` / ...（每个 `parallel-N` 组对应一次独立的 generator 调用、一个独立 sub-worktree）
+     - 共享文件 / API 依赖 / 改同 enum / 改同 lock 文件（`Package.swift` / `package.json` / `Cargo.toml` 等）→ 进 `serial` 组（一个 generator 顺序跑组内所有 task）
+     - 至少要有一个 `serial` 组兜底
+     - 评估后确实没有可并行子任务（全部互相依赖）→ 写「全部串行」 + 一行说明原因
+   - **子任务数 <3** 时直接写「全部串行」，并行分组表删掉
+   - **判错代价**：把有依赖的标 parallel → generator 并行撞文件 / API 没就绪 → 整组失败。**宁严不松**，拿不准就归 serial。
 3. **分工角色**（默认：主 agent 调度 / generator 执行 / executor 验收 / 用户在 planner 后和 executor 后做闸口）
 4. **测试用例**（**Golden Path / 边界 / 回归三类，每类至少 1 条具体场景**；不准 TBD / 占位符；某类真不需要则删整节并一行说明）
    - **iOS UI 改动专项**：触发即必填 ios-simulator-mcp 冒烟用例（具体到 scheme / 进哪个页面 / 做什么操作 / 看什么视觉结果）

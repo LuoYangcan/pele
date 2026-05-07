@@ -1,6 +1,11 @@
 # 并行 subagent：拆开独立任务同时跑
 
-用户**显式发令**时（"拆开并行跑 / 你改 A，派 subagent 改 B / 同时跑"这类信号），主 agent 可以用 `Agent` 工具派 subagent 并发执行独立子任务。**不要 agent 自主判断是否并行**——误判依赖会烧掉 token 和时间比串行更慢。
+主 agent 可以用 `Agent` 工具派 subagent 并发执行独立子任务，但**入口受限**——只有以下两种情况可触发：
+
+1. **用户显式发令**：「拆开并行跑 / 你改 A，派 subagent 改 B / 同时跑」这类切话题
+2. **dispatch-pipeline 并行模式**：planner 在 `.specs/<slug>.md` 第 2 节「并行分组」表里标注了**多个 `parallel-N` 组**，且用户在阶段 1 末尾审 spec 时**未删除**该分组 —— 视同用户已经过审了拆分方案，主 agent 按 `dispatch-pipeline.md` 阶段 2B / 3B / 3C / 5 跑
+
+**不允许的入口**：主 agent 自主判断「这俩任务好像独立、并行一下」——误判依赖会烧掉 token 和时间比串行更慢。判断权要么在用户、要么在 planner（planner 出 spec 时是独立 context、专注规划，比临时判断准确得多；且仍要过用户在阶段 1 末尾的闸口）。
 
 ## 触发前：先拆分方案过审
 

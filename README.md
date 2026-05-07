@@ -16,7 +16,7 @@ Drop-in install adds the following under `~/.claude/`:
 | **rules/** | `dispatch-pipeline` · `use-worktree` · `spec-before-code` · `iteration-checkpoint` · `parallel-subagents` · `post-change-verify` · `commit-message` · `swift-formatting` |
 | **agents/** | `planner` · `generator` · `executor` (the three-stage pipeline) |
 | **commands/** | `/openpr` · `/review` · `/pr-review` |
-| **skills/** | `reuse-first` (search-existing-code-before-abstracting checklist) |
+| **skills/** | `reuse-first` (search-existing-code-before-abstracting checklist) · `dead-code` (Periphery-backed zombie-symbol scanner for recent diff, with auto-cleanup hook in `generator` Step 4.5) |
 | **templates/** | `spec-template.md` (the structure planner writes) |
 | **hooks/** | Protected-branch guard · `spec-before-code` enforcement · per-prompt clarification reminder |
 

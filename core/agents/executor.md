@@ -177,33 +177,71 @@ mkdir -p "$SHOT_DIR"
 
 `WORKTREE_SLUG` 从主 agent 入参拿。`.reviews/` 目录已经在主仓库的 `.gitignore` 里、且 `/openpr` 流程会清理它，所以截图不会污染 git 历史。
 
-#### Step 4.5.5: 跑每条冒烟用例
+#### Step 4.5.5: 跑每条冒烟用例（**仅静态 UI 间距核对，动画类全部降级**）
 
-对 spec 第 4 节「iOS UI 改动专项」下的**每一条**冒烟用例：
+> ⚠️ **本 Step 的范围被严格收窄**：你**只验静态 UI 间距 / 几何 / 布局**——比如「在某静态页面，X 元素的 padding / 与 Y 元素的间距 / frame 大小」。任何**涉及动画 / 过渡 / 状态变化时序 / 异步加载 / 输入流 / 手势引起的 UI 变化**的用例**一律不跑 mcp**，标降级让用户自己看。理由：mcp 在动态 UI 上 sample 不可靠（容易抓到中间帧）、调用次数线性膨胀，把判断动态视觉的事交回给人最合算。
 
-1. **解析用例**：用例格式约定 `<scheme + 进入哪个页面 + 做什么操作 + 看什么视觉/行为结果>`。把它拆成 N 个子步骤（导航 / 操作 / 验证）。
-2. **执行操作**：
-   - 找元素：`mcp__ios-simulator__ui_find_element { search: ["元素文本/标签"], type: "Button"|"StaticText"|... }`
-   - 点击：`mcp__ios-simulator__ui_tap { x, y }`（坐标从 `ui_find_element` 返回的 `frame` 取中心点）
-   - 输入：`mcp__ios-simulator__ui_type { text }`
-   - 滑动：`mcp__ios-simulator__ui_swipe { x_start, y_start, x_end, y_end }`
-3. **关键节点截图**：每个子步骤完成后用 `mcp__ios-simulator__screenshot { output_path: "<SHOT_DIR>/case-<N>-step-<M>-<short-desc>.png" }`
-   - 命名约定：`case-1-step-1-home-tab.png` / `case-1-step-2-after-tap.png`
-   - `output_path` 用**绝对路径**，避免被 MCP 默认的 `~/Downloads` 覆盖
-4. **验证状态**：用 `mcp__ios-simulator__ui_describe_all` 拿 a11y tree，对照 spec 用例描述的「期望结果」核对：
-   - 文字/按钮存在 → grep a11y tree 的 `AXLabel` / `AXValue`
-   - 视觉符合 → 用 `mcp__ios-simulator__ui_view` 直接看屏（你能看到压缩图），按 spec 描述判断
-5. **判定本条用例**：
-   - 全部子步骤跑通 + 视觉符合 → 用例 PASS
-   - 操作失败但 app 没 crash → blocking issue，附失败截图路径
-   - app crash（launch_app 后再 `get_booted_sim_id` 仍 Booted 但 `ui_describe_all` 报错或 a11y tree 空）→ blocking issue
-   - 视觉与 spec 描述不符 → blocking issue，附截图路径
+##### 5.a 用例分类（每条用例先判类型）
+
+逐条扫 spec 第 4 节「iOS UI 改动专项」用例，按描述里的关键词分到下列其中一档：
+
+| 分类 | 关键词信号（举例） | 处理 |
+|---|---|---|
+| **静态类**（跑 mcp） | 「间距」「padding」「margin」「对齐」「frame」「布局」「位置」「在某页面 X 元素的相对/绝对坐标」「字号」「颜色」「在 <静态页> 看 X」 | 进 5.b 跑静态核对 |
+| **动态类**（降级，不跑 mcp） | 「动画」「过渡」「弹出/收起」「展开/折叠」「输入后变化」「按下 X 后 Y 变 Z」「滑动到底部加载」「loading」「转场」「键盘弹起」「toast 出现/消失」「sheet present/dismiss」 | 进 5.c 标降级 |
+| **不确定** | 描述含糊、关键词模糊 | **默认按动态类处理**——不替用户判，宁可降级让他确认 |
+
+##### 5.b 静态用例核对（每条用例硬预算）
+
+对每条静态用例，按以下预算执行，**严禁超出**：
+
+| 步骤 | 上限 | 说明 |
+|---|---|---|
+| 必要的导航 `ui_tap` | 按 spec 描述的最短路径所需次数（通常 0-3 次） | 仅用来到达 spec 圈定的目标页面，不要 explore 其他页面 |
+| `ui_find_element` | 仅当导航 tap 需要拿坐标时调（与 tap 配对，最多 N 次） | 只用于导航；目标页面到达后**不再用** ui_find_element |
+| 等待 UI 稳定 | 1 次 `sleep 1` 或等价等待 | 给 layout 完全 settle（避免在动画末尾抓帧） |
+| **`ui_describe_all`** | **1 次** | 拿到目标页面的 a11y tree（含每个元素 frame）—— 这是间距判定的核心数据源 |
+| **`screenshot`** | **1 次** | 落 `<SHOT_DIR>/case-<N>-static.png`（绝对路径），作为 fail 时的视觉证据 |
+| `ui_view` / `ui_describe_point` | **0 次** | 不需要——`ui_describe_all` 已经覆盖 |
+| `ui_type` / `ui_swipe` | **0 次** | 这些会触发动态 UI，本档位禁止 |
+
+判定：
+
+- 用 `ui_describe_all` 返回里相关元素的 `frame` 字段（`{x, y, width, height}`）算间距：两个元素间距 = `frame_b.x - (frame_a.x + frame_a.width)` 之类。**容差 ±2pt**（避免 SnapKit 浮点 / hairline 引起的抖动）
+- 间距 / 对齐 / frame 与 spec 描述一致 → 用例 PASS
+- 不一致 → blocking issue，附 `<SHOT_DIR>/case-<N>-static.png` + 测得 vs spec 期望的差值
+- `ui_describe_all` 返回空 / a11y tree 报错（说明 app crash）→ blocking issue
+
+##### 5.c 动态用例降级（**完全不调 mcp**）
+
+对每条动态用例：
+
+- **不跑** install / launch（如本次 Session 还没装/启过 app）—— 装/启只在第一条静态用例跑前做一次
+- **不跑** mcp 任何工具
+- 把用例编号 + spec 描述原文记到 `ui_dynamic_cases_skipped` 列表
+- 不算 fail、不算 pass，留给用户自己看
+
+##### 5.d 单 Session 复用 install / launch
+
+整个 Step 4.5.5 内**只 install + launch 一次**——多条静态用例共享同一个 app session。每条用例跑完后**不要** terminate app，**也不要**重启；用 `ui_tap` 导航到下一条用例所需页面即可。如果两条用例的页面互相不可达（一个在引导流程中、一个在主页内），第二条用例**不**重启 app，标 `ui_verified: degraded` + `ui_degradation_reason: cross_flow_navigation_required`，让用户自己跑。
 
 #### Step 4.5.6: 汇总本节结论
 
-- 全部用例 PASS → `ui_verified: pass`、`ui_screenshots_dir: <SHOT_DIR 绝对路径>`、`ui_smoke_required: false`
-- 任一用例 FAIL → 把对应 issue 加进总 issues 列表（severity: blocking、spec_section: 4），仍写出 `ui_screenshots_dir`、`ui_smoke_required: false`（已经验过了）
-- 中途降级 → `ui_verified: degraded`、`ui_smoke_required: true`、`ui_degradation_reason: <reason>`、可能没有 screenshots_dir
+按以下决策树定 `ui_verified` 和 `ui_smoke_required`：
+
+| 情况 | `ui_verified` | `ui_smoke_required` |
+|---|---|---|
+| 至少 1 条静态用例跑了 + 全部静态 PASS + 没有动态降级用例 | `pass` | `false` |
+| 至少 1 条静态用例跑了 + 全部静态 PASS + 有动态降级用例 | `pass` | **`true`**（动态部分让用户验） |
+| 至少 1 条静态用例 FAIL | `fail` | `true`（动态如有也让用户验） |
+| 全部用例都是动态降级（无静态可验） | `degraded` | `true` |
+| environment 问题（build artifact 找不到 / simulator 不可用） | `degraded` | `true` |
+
+新增返回字段：
+
+- `ui_static_cases_passed`: list of case numbers，仅 `ui_verified ∈ {pass, fail}` 时给
+- `ui_dynamic_cases_skipped`: list of `{case_number, spec_description}`，仅有动态降级用例时给——主 agent 拿到这个会原样转给用户、提示「下面这几条用例 mcp 没验，你自己跑一下看动画对不对」
+- `ui_screenshots_dir`: 仅 `ui_verified ∈ {pass, fail}` 时给（动态降级 / environment 降级时**没有**截图产出）
 
 ### Step 5: 代码风格 + 复用度
 
@@ -232,14 +270,22 @@ lint:
   status: pass | fail | skipped
   details: <警告/错误清单或为何 skip>
 ui_verified: pass | fail | degraded | not_applicable
-  # pass: 跑通了所有 spec 第 4 节 iOS UI 冒烟用例
-  # fail: 跑了但有用例失败（issues 里会有 spec_section: 4 的 blocking 项）
-  # degraded: 环境问题导致没跑成（build artifact 找不到 / simulator 不可用 / install/launch 失败）
+  # pass: 静态间距用例全部通过（即使有动态降级用例，只要静态全过 = pass）
+  # fail: 静态用例至少 1 条 frame/间距与 spec 不符
+  # degraded: 全部用例都是动态降级 / 或 environment 问题没跑成
   # not_applicable: spec 没有 iOS UI 改动专项
 ui_smoke_required: true | false
-  # true: 仍需用户跑 UI 冒烟（degraded 时一定 true；not_applicable 时一定 false；pass/fail 时 false）
-ui_screenshots_dir: <绝对路径>     # 仅 ui_verified == pass | fail 时给
-ui_degradation_reason: <reason>    # 仅 ui_verified == degraded 时给（build_artifact_not_found / no_simulator_available / install_or_launch_failed: <details>）
+  # true: 仍需用户跑 UI 冒烟。触发条件：
+  #   - 有任意动态降级用例（动画/过渡/输入流/loading 等需要人眼看）
+  #   - degraded 时一定 true
+  #   - 静态 fail 时也是 true（动态部分如有也让用户一并验）
+  # false: not_applicable / 静态全过且没有动态降级用例
+ui_screenshots_dir: <绝对路径>     # 仅 ui_verified ∈ {pass, fail} 时给（degraded 没截图）
+ui_static_cases_passed: [<case-N>, ...]   # 仅 ui_verified ∈ {pass, fail} 时给——明确哪些静态用例通过了
+ui_dynamic_cases_skipped:                 # 仅有动态降级用例时给——主 agent 转给用户
+  - case_number: <N>
+    spec_description: <用例原文>
+ui_degradation_reason: <reason>    # 仅 ui_verified == degraded 时给（build_artifact_not_found / no_simulator_available / install_or_launch_failed: <details> / all_cases_dynamic / cross_flow_navigation_required）
 issues:                            # FAIL 时列具体问题；PASS 时为空
   - severity: blocking | warning   # blocking 触发打回，warning 不打回但提示 generator 下次注意
     spec_section: 4 | 5 | 6 | ...  # 关联到 spec 哪一节
@@ -276,6 +322,11 @@ retry_count: <主 agent 给你的本轮重试次数>
 - ❌ 用 ios-simulator MCP 跑 spec **没要求**的页面 —— 验收范围只看 spec 第 4 节列出的 iOS UI 冒烟用例
 - ❌ 用 ios-simulator MCP 改 simulator 上**别的 app** 的状态（删数据 / 改设置 / 关 app）—— 只操作本次验收的 app
 - ❌ environment 问题硬扛 —— build artifact / simulator / install/launch 失败一律降级，不要硬试 5 次也不要把 environment 问题混进 generator 的 issues 列表
+- ❌ **超出 Step 4.5.5 单条静态用例的 mcp 调用预算**——硬上限：每条静态用例 1 次 `ui_describe_all` + 1 次 `screenshot` + 必要的导航 `ui_tap`/`ui_find_element`，**绝不**反复采样
+- ❌ **用 mcp 验证动画 / 过渡 / 输入流 / 异步加载 / 任何动态 UI**——这类一律 5.c 降级；不要因为「我截两张图对比一下应该 OK」就硬上 mcp，那种判断不可靠还吃调用次数
+- ❌ **`ui_type` / `ui_swipe`**：这两个工具会触发动态 UI，本 agent 不用；spec 真要验输入或滑动，是动态用例，标降级让用户跑
+- ❌ 同一条静态用例多次 `ui_describe_all` 或多次 `screenshot`：1+1 已经够判间距；觉得不够说明 spec 用例本身需要拆分或本来就不该归静态类
+- ❌ 「探索式」验收：不要主动到处点看其他页面 / 滚动列表看「顺便」/ 测试 spec 没列的 corner case—— 验收只回答 spec 问的问题
 
 ## Why
 

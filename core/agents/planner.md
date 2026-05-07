@@ -27,6 +27,7 @@ model: opus
 4. `~/.claude/rules/use-worktree.md` —— 确认你处在 worktree 里的操作惯例
 5. `~/.claude/rules/image-assets.md` —— iOS 图片资源约束（写硬约束章节用）
 6. 当前项目根的 `AGENTS.md` 或 `CLAUDE.md`（如有）—— 项目特定规范
+7. **扫 AGENTS.md 和 CLAUDE.md 里所有「触发即必读」段落**（两个文件都扫；项目可能只有其中一个、也可能两个都有，标记字符串看项目自己的约定，常见如 `**改动以下任一范围前先读该文档**` / `**触发：**` / `**MUST READ before:**`）。对每条触发清单：本次需求**只要可能**命中其中任一范围，立即 Read 对应的 `docs/*.md` 全文。这些是项目积累的反直觉知识，是写 spec 第 6 节「硬约束」和第 7 节「风险」的依据 —— 不读就写不出约束、generator 后续踩坑的成本远高于多读一份 doc。**普通 markdown 链接 `[docs/x.md](docs/x.md)` 不会被自动注入**（只有 `@docs/x.md` 语法递归生效），手动 Read 才能看到内容。其他 agent 工具的项目级指引（如 `.cursor/rules/*.mdc` / `.github/copilot-instructions.md`）也可能有同类清单，按项目实际情况补充扫。
 
 ## 工作流程
 

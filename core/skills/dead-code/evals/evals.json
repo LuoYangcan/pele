@@ -1,0 +1,112 @@
+{
+  "skill_name": "dead-code",
+  "evals": [
+    {
+      "id": 0,
+      "name": "clean-diff-no-zombies",
+      "prompt": "我刚改完 MessageListViewController.send 的实现——只改了 func body，没新增/删除任何符号。请按 dead-code 扫描流程分析这段 diff，告诉我有没有僵尸代码。\n\n假设 `git diff origin/main...HEAD` 输出如下，**仅此一份改动，没有其他文件**：\n\n```\ndiff --git a/packages/ios/Business/MessageFeature/Sources/MessageFeature/MessageListViewController.swift b/packages/ios/Business/MessageFeature/Sources/MessageFeature/MessageListViewController.swift\n--- a/packages/ios/Business/MessageFeature/Sources/MessageFeature/MessageListViewController.swift\n+++ b/packages/ios/Business/MessageFeature/Sources/MessageFeature/MessageListViewController.swift\n@@ -118,11 +118,12 @@ extension MessageListViewController {\n     func send(_ payload: MessagePayload) {\n-        let outbound = state.compose(payload)\n-        backend.send(outbound)\n+        let item = MessageItem(payload: payload, timestamp: Date())\n+        state.enqueue(item)\n+        backend.dispatch(item)\n     }\n }\n```\n\n按 skill 模板给报告。不需要真的去跑 Periphery 或 git diff —— 直接基于上面这段 diff 推断。",
+      "expected_output": "应当指出：本轮 diff 仅修改了一个 func 的 body，没有新增/删除任何符号声明，所以没有僵尸候选。报告应遵循 skill 模板（含 High-confidence / Low-confidence / 豁免清单 三段，counts 为 0 或近似 0）。应该提及 Periphery 检测（虽然没必要跑）。不应该报告任何 false positive。",
+      "assertions": [
+        {
+          "name": "reports_zero_zombies",
+          "type": "keyword_present_any",
+          "keywords": ["无僵尸", "0 项", "0 candidates", "no zombies", "没有僵尸", "无候选", "no candidates", "0 high-confidence", "共 0", "(共 0"]
+        },
+        {
+          "name": "uses_skill_report_format",
+          "type": "keyword_present_all",
+          "keywords": ["High confidence", "Low confidence", "豁免"]
+        },
+        {
+          "name": "does_not_invent_zombies",
+          "type": "keyword_absent",
+          "keywords": ["send 是僵尸", "MessageItem 是僵尸", "outbound 是僵尸", "compose 是僵尸"]
+        },
+        {
+          "name": "explains_no_new_symbols",
+          "type": "keyword_present_any",
+          "keywords": ["没有新增", "未新增", "no new", "仅修改", "只改", "body only", "实现", "func body"]
+        }
+      ],
+      "files": []
+    },
+    {
+      "id": 1,
+      "name": "orphan-helper-detection",
+      "prompt": "我刚改完 SettingsViewController，请跑 dead-code 扫描。\n\n假设 `git diff origin/main...HEAD --name-status` 输出：\n```\nA  packages/ios/Business/SettingsFeature/Sources/SettingsFeature/SettingsViewController+Helpers.swift\nM  packages/ios/Business/SettingsFeature/Sources/SettingsFeature/SettingsViewController.swift\n```\n\n新文件 SettingsViewController+Helpers.swift 全部内容：\n```swift\nimport UIKit\nimport SharedTheme\n\nextension SettingsViewController {\n    private func formatVersionString(major: Int, minor: Int) -> String {\n        return \"v\\(major).\\(minor)\"\n    }\n\n    fileprivate func legacyTintColor(for state: SettingState) -> UIColor {\n        switch state {\n        case .pending: return .systemYellow\n        case .ready: return .systemGreen\n        case .failed: return .systemRed\n        }\n    }\n\n    private enum LegacyKeys {\n        static let stepKey = \"settings.legacy.step\"\n    }\n}\n```\n\n而 SettingsViewController.swift 本轮的改动只是把 `loadStatus()` 重命名成 `fetchStatus()` 并改了 endpoint URL，**完全没引用** formatVersionString / legacyTintColor / LegacyKeys。整个仓库 grep 这三个名字都只命中声明本身。\n\n按 dead-code skill 模板给报告，并告诉我应该怎么处理。基于上述信息推断，不需要真去跑 Periphery / git。",
+      "expected_output": "应当：(1) 把 formatVersionString、legacyTintColor、LegacyKeys（或其字段）至少标为 high-confidence 僵尸；(2) 给出判定理由（私有 / fileprivate + 本轮新增 + 0 ref）；(3) 给出 (A)/(B)/(C)/(D) 下一步选项；(4) 不应该自动 Edit 删除文件；(5) 应该在前置环节提及 Periphery 检测。",
+      "assertions": [
+        {
+          "name": "flags_format_version_string",
+          "type": "keyword_present",
+          "keywords": ["formatVersionString"]
+        },
+        {
+          "name": "flags_legacy_tint_color",
+          "type": "keyword_present",
+          "keywords": ["legacyTintColor"]
+        },
+        {
+          "name": "marks_high_confidence",
+          "type": "keyword_present_any",
+          "keywords": ["High confidence", "high-confidence", "高置信", "高置信度"]
+        },
+        {
+          "name": "explains_judgment",
+          "type": "keyword_present_any",
+          "keywords": ["private", "fileprivate", "私有", "0 ref", "无人调用", "本轮新增", "0 references", "no caller"]
+        },
+        {
+          "name": "offers_user_choice_options",
+          "type": "keyword_present_any",
+          "keywords": ["(A)", "(B)", "(C)", "下一步", "请挑", "我可以", "请告诉我", "选择"]
+        },
+        {
+          "name": "does_not_auto_edit",
+          "type": "keyword_absent",
+          "keywords": ["已经为你删除", "已经删除", "我已经 Edit 删除", "已删除文件", "I have deleted"]
+        }
+      ],
+      "files": []
+    },
+    {
+      "id": 2,
+      "name": "public-api-and-reflection-exemptions",
+      "prompt": "我在 packages/common/SharedUI/Sources/SharedUI/ 下加了一个新文件 ToastPresenter.swift，请跑 dead-code 扫描。\n\n假设 `git diff origin/main...HEAD` 全部改动只有这一个新文件：\n\n```swift\nimport UIKit\n\npublic final class ToastPresenter: NSObject {\n    public static let shared = ToastPresenter()\n\n    public func show(message: String, on view: UIView) {\n        // 真实实现略\n    }\n\n    public func dismiss() {\n        // 真实实现略\n    }\n\n    @objc public func handleNotification(_ note: Notification) {\n        // 用 NotificationCenter selector 调用\n    }\n\n    public override func encode(with coder: NSCoder) {\n        super.encode(with: coder)\n    }\n}\n```\n\n并且在同 PR 里有一个 ToastPresenterTests.swift（在 packages/common/SharedUI/Tests/SharedUITests/）：\n```swift\nimport Testing\n@testable import SharedUI\n\n@Test func showDoesNotCrash() {\n    ToastPresenter.shared.show(message: \"hi\", on: UIView())\n}\n```\n\n本仓库其他业务 package（MessageFeature / SettingsFeature 等）暂时还没引用 ToastPresenter（计划下个 PR 接），所以单仓库 grep 几乎查不到 call site。\n\n按 dead-code skill 模板给报告。",
+      "expected_output": "应当：(1) 不把 public API（show / dismiss / shared / ToastPresenter 类本身）标为僵尸候选——豁免理由是「`packages/common/*` 跨包暴露」；(2) handleNotification 因 @objc 豁免；(3) showDoesNotCrash 因 @Test 豁免；(4) encode(with:) 因协议 witness 豁免；(5) 报告里豁免清单段必须明确列出这些理由；(6) High-confidence 列表为 0 或近似 0；(7) 不应该建议删除任何东西。",
+      "assertions": [
+        {
+          "name": "exempts_public_cross_package",
+          "type": "keyword_present_any",
+          "keywords": ["跨包", "packages/common", "跨 package", "外部包", "cross-package", "cross package"]
+        },
+        {
+          "name": "exempts_objc",
+          "type": "keyword_present",
+          "keywords": ["@objc"]
+        },
+        {
+          "name": "exempts_test",
+          "type": "keyword_present_any",
+          "keywords": ["@Test", "测试", "Swift Testing", "XCTest", "Tests/"]
+        },
+        {
+          "name": "lists_exemption_section",
+          "type": "keyword_present_any",
+          "keywords": ["豁免", "exempt", "Exempt", "已跳过", "Excluded"]
+        },
+        {
+          "name": "does_not_recommend_deletion",
+          "type": "keyword_absent",
+          "keywords": ["建议删除 ToastPresenter", "建议删除 show", "建议删除 dismiss", "建议直接删除 public", "建议删除 handleNotification"]
+        },
+        {
+          "name": "high_confidence_zero_or_near_zero",
+          "type": "keyword_present_any",
+          "keywords": ["High confidence (共 0", "high-confidence (共 0", "无候选", "0 项", "0 candidates", "无僵尸", "(共 0"]
+        }
+      ],
+      "files": []
+    }
+  ]
+}

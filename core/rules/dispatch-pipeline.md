@@ -210,7 +210,11 @@ generator 「正常完成」后默认跑 1 轮代码 review，让用户挑改、
 
 主 agent：
 
-1. 把 generator 的改动文件清单 + 编译/build 结果 + spec 第 8 节 DONE 的子任务列表展示给用户
+1. 把 generator 的改动文件清单 + 编译/build 结果 + spec 第 8 节 DONE 的子任务列表展示给用户。**还要展示 generator 返回结构化结论里的 `dead_code_status` 字段**（见 `agents/generator.md` Step 4.5）：
+   - `clean` → 一句话过：「dead-code 自检 0 candidates」
+   - `auto_cleaned` → 把 `dead_code_auto_cleaned` 列表贴出来，让用户知道 generator 顺手删了哪些本轮自产的孤儿（透明度，不打扰）
+   - `needs_user_review` → **必须高亮**：把 `dead_code_pending_review` 列表完整贴出来，提示用户 generator 自动清不掉、需要你判断；这些项可能在阶段 2.5 review-fix 循环里被采纳删除
+   - `skipped:<reason>` → 一句话说明跳过原因（`no-swift-changes` / `no-periphery` / `spec-opt-out`），让用户知道这一步没跑过
 2. 用 AskUserQuestion 问「下一步」，给选项（**第一个标 Recommended**）：
    - **跑 /review**（Recommended）—— pele 自带的 deep code review（见 `~/.claude/commands/review.md`），结果落 `.reviews/<branch>-<ts>.md`
    - **跑 /codex:review**（仅当装了 OpenAI Codex CLI 插件时可选）—— Codex 外部视角 review，作为 cross-check
@@ -293,7 +297,7 @@ Agent({
 
 executor 返回结构化结论：
 
-- **verdict == PASS** → 主 agent 报告用户：「executor 通过了 + ui_smoke_required 提示（如有）+ warning 列表（如有）+ ui_screenshots_dir 路径（如有）」。
+- **verdict == PASS** → 主 agent 报告用户：「executor 通过了 + ui_smoke_required 提示（如有）+ warning 列表（如有）+ ui_screenshots_dir 路径（如有）+ **ui_dynamic_cases_skipped 列表**（如有，**必须把每条 case_number + spec_description 完整列出来，提示用户「下面这几条是动态/动画类用例，executor 没用 mcp 验，请自己跑一下看效果」**）」。
   
   **接着用 AskUserQuestion 问「要不要现在总结这次工作 + 更新项目文档？」**，给 3 个选项：
   
@@ -306,9 +310,9 @@ executor 返回结构化结论：
 
 **iOS UI 专项的 `ui_verified` 字段路由**（不是 verdict 本身，但影响主 agent 怎么报告）：
 
-- `ui_verified: pass` —— UI 验收通过，把 `ui_screenshots_dir` 路径告诉用户
-- `ui_verified: fail` —— issues 列表里会有 `spec_section: 4` 的 blocking 项，verdict 一定是 FAIL；走阶段 4 重试
-- `ui_verified: degraded` —— **environment 问题，不是 generator 的错**。verdict 仍可能 PASS（如果其他都通过）；主 agent 把 `ui_smoke_required: true` 和 `ui_degradation_reason` 提示给用户，让用户跑 UI 冒烟 / 修环境（如装 iOS Simulator runtime）。**不要**因为 `ui_verified: degraded` 重调 generator
+- `ui_verified: pass` —— **静态间距用例**全部通过，把 `ui_screenshots_dir` 路径告诉用户。如果同时有 `ui_dynamic_cases_skipped` 非空（动画 / 过渡 / 输入流类用例由 executor 主动降级），主 agent 必须把那个列表也展示给用户、提示他「这几条要自己看动画」
+- `ui_verified: fail` —— **静态间距用例**至少 1 条 frame/对齐与 spec 不符，issues 列表里会有 `spec_section: 4` 的 blocking 项，verdict 一定是 FAIL；走阶段 4 重试
+- `ui_verified: degraded` —— **不是 generator 的错**。两类原因：(a) environment 问题（build artifact / simulator / install/launch 失败）；(b) **全部用例都是动态降级**，无静态可验。verdict 仍可能 PASS（如果其他都通过）；主 agent 把 `ui_smoke_required: true` + `ui_degradation_reason` + `ui_dynamic_cases_skipped`（如有）一起报给用户，让他自己跑 UI 验证。**不要**因为 `ui_verified: degraded` 重调 generator
 - `ui_verified: not_applicable` —— spec 没 iOS UI 改动专项，正常不影响
 
 #### 3B: 并行模式（每组各自跑 executor）

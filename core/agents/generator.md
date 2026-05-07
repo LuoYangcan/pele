@@ -87,20 +87,58 @@ Skill(reuse-first)
 
 **不要试图绕过这一步「先写了再说」** —— spec 不更新意味着 executor 验收时拿不到对齐后的标准、可能误判你的实现。
 
+### Step 4.5: Dead-code 自检（review 前清理本轮自产的僵尸）
+
+所有子任务编译通过后、Step 5 收尾前，跑一轮 dead-code 自检——把**本轮自己刚写的**孤儿符号顺手删掉，避免把 noisy diff 推到主 agent / review / executor 那里。
+
+> 仅 Swift 项目目前能跑（`dead-code` skill 依赖 Periphery 的 SourceKit 索引）。其他语言生态：跳过本 Step、或换等价工具（TS: `ts-prune`、Python: `vulture`、Go: `unused`、Kotlin: `detekt unused` rule）后参照本 Step 的「闸口 + 自动 cleanup」骨架。
+
+**跳过条件**（满足任一即跳过、并在返回里记 `dead_code_status: skipped:<reason>`）：
+
+- 本轮 diff 没有 `.swift` 改动（验证：`git diff --name-only "$BASE" -- '*.swift' | head -1` 为空）
+- `which periphery` 返回非零（未装 Periphery；本 agent 不能 brew install——全局副作用要用户授权）
+- spec 第 6 节硬约束 / 第 7 节存疑点里出现「不需要 dead-code」「跳过 dead-code」「skip dead-code」字样
+- worktree 根存在 `.specs/<slug>.skip-dead-code` 文件
+
+**流程**（不跳过时）：
+
+1. invoke `Skill(dead-code)` 拿扫描报告（Periphery 首次扫 5-10 分钟、增量 1-2 分钟，详见 SKILL.md A.2 段——预期内的时间成本，不是卡住）
+2. 按 dead-code SKILL.md 的「豁免清单」过滤后，看 **high-confidence** 列表：
+   - **空** → 进 Step 5；返回结构化结论里记 `dead_code_status: clean`
+   - **非空** → 进 cleanup 子循环（仅本次本 agent override 默认契约，因为这些是**本轮自己刚写出来**的私域孤儿，不是历史代码）：
+     a. 对每条 high-confidence 候选，确认满足以下**全部**条件再删——否则降级到 `needs_user_review`：
+        - `accessibility ∈ {private, fileprivate, internal}`（不删 public/open——public 跨包暴露的判定本仓库做不了）
+        - 声明所在文件**确认在本轮 diff 的 changed-files-abs.txt 里**（不删旧代码）
+        - 不在 `Tests/` 目录、不带 `@objc` / `@IBAction` / `@Test` / `#Preview` 等反射/runtime 标记
+     b. 用 Edit 删除符合条件的 high-confidence 声明。**每删 3-5 条就跑一次 build** 验证编译过；如果 build 错把刚删的那批 revert 掉、降级到 `needs_user_review`、跳出循环
+     c. 全部删完后跑一次 dead-code skill 验证 high-confidence 归零
+     d. 归零 → 进 Step 5；返回里记 `dead_code_status: auto_cleaned` + `dead_code_auto_cleaned: [<file:line:symbol>...]`
+     e. 仍未归零 / 循环已经第 2 轮还没收敛 → 进 Step 5；返回里记 `dead_code_status: needs_user_review` + 把残留 high-confidence 列表完整粘上来
+3. **low-confidence 列表不要动** —— 那是 SKILL.md 设计上留给用户拍板的，generator 不替用户决定
+
+**与 SKILL.md 默认契约的关系**：
+
+dead-code SKILL.md 的默认契约是「报告 + 等用户挑」、绝不自动删除。本 Step 是**唯一的 override 场景**——因为 generator 此刻处理的不是「仓库里历史积累的 dead code」、而是「本 agent 自己刚刚写出来的、当事 agent 自己有判断权的私域孤儿」。这个 override 严格限定在 (a)(b)(c) 三条全部满足、且仅 high-confidence 档位。任何不满足的都退回 SKILL.md 默认契约——报给用户。
+
 ### Step 5: 收尾
 
 所有分配给你的子任务做完时确认：
 
 1. 全部子任务在 spec 第 8 节都已 DONE
 2. 编译通过（按 post-change-verify 只跑 build）
-3. **不要 git commit** —— commit 由主 agent 决定时机（通常在 executor 通过后）
-4. **不要 push、不要开 PR** —— 那是 `/openpr` 的事
+3. Step 4.5 dead-code 自检已跑完（或被跳过条件命中）
+4. **不要 git commit** —— commit 由主 agent 决定时机（通常在 executor 通过后）
+5. **不要 push、不要开 PR** —— 那是 `/openpr` 的事
 
 返回主 agent 的结构化结论：
 
-- 改动的文件清单（绝对路径或 repo 相对路径）
+- 改动的文件清单（绝对路径或 repo 相对路径）—— 含 Step 4.5 自动删除的文件
 - 涉及的子任务 ID 列表
 - 编译验证结果（pass + 简短说明 / fail + 错误摘要）
+- **dead-code 自检状态**（必填字段）：
+  - `dead_code_status`: 五选一 —— `clean` / `auto_cleaned` / `needs_user_review` / `skipped:no-swift-changes` / `skipped:no-periphery` / `skipped:spec-opt-out`
+  - `dead_code_auto_cleaned`: 列表（仅 status == `auto_cleaned` 时）—— 每条形如 `path/File.swift:LINE  symbol  kind`
+  - `dead_code_pending_review`: 列表（仅 status == `needs_user_review` 时）—— 同上格式
 - 如果 Step 4 触发了：「需要 planner 更新 spec」标注 + 新决策内容
 - 自己识别的、可能影响 executor 验收的边角情况（一句话）
 

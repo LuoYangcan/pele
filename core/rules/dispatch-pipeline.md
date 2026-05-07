@@ -287,6 +287,36 @@ executor 返回结构化结论：
 
 #### 3B: 并行模式（每组各自跑 executor）
 
+##### Step 0: 预分配 simulator / 模拟环境 pool（仅当 spec 第 4 节有 UI 冒烟用例 + 该 UI 验收依赖共享单实例时）
+
+并行 executor 都跑 UI 冒烟时如果共享单一 simulator / emulator / 测试环境实例（默认 `get_booted_sim_id` 拿到同一台）会互相抢交互。主 agent 在调 executor 前**预分配**每组专属的实例 ID：
+
+`<project-specific>` iOS 项目示例（用最新可用 iOS runtime 起一组 simulator）：
+
+```bash
+RUNTIME=$(xcrun simctl list runtimes -j | python3 -c "
+import json,sys
+data=json.load(sys.stdin)
+ios=[r for r in data['runtimes'] if r['platform']=='iOS' and r.get('isAvailable')]
+ios.sort(key=lambda r: tuple(int(x) for x in r['version'].split('.')), reverse=True)
+print(ios[0]['identifier']) if ios else print('')
+")
+[[ -n "$RUNTIME" ]] || { echo "NO_IOS_RUNTIME_AVAILABLE"; exit 1; }
+
+declare -A SIM_POOL
+for group in $GROUPS; do
+  UDID=$(xcrun simctl create "exec-${SLUG}-${group}" "iPhone 16 Pro" "$RUNTIME")
+  xcrun simctl boot "$UDID" 2>/dev/null || true
+  SIM_POOL[$group]="$UDID"
+done
+```
+
+其他生态（Android emulator pool / 浏览器 Playwright pool / Docker container pool / 数据库测试 schema pool 等）按本机命令对应处理。
+
+**资源 cap**（每实例占的内存按生态评估，iOS sim ~2-3GB、Android emu ~1-2GB、Playwright headless 浏览器 ~300-500MB）：主 agent 调度前估算 N 个并行组 × 单实例占用是否超过本机可用内存的 70%。超出 → 主 agent **不**自动决策，先警告用户：「spec 标了 N 个并行组超过本机可承载实例数，建议：(1) 在 spec 里把部分 parallel 组合并 (2) 接受降级到 flock 互斥 (3) 强行跑（机器可能 swap）」让用户拍板。
+
+##### Step 1: 调 executor
+
 阶段 2B 的所有 generator 都返回后，**对每组各自调 executor**。仍可以并行（每组在自己 sub-worktree 内独立跑），同一个 message 多个 Agent call + `run_in_background: true`：
 
 ```
@@ -302,14 +332,16 @@ Agent({
     本轮重试次数: <1 | 2 | 3>
     并行模式: 是
     本组负责的子任务: <task ID 列表>
+    Simulator UDID / 模拟环境 ID: <SIM_POOL[parallel-1]>   ← 仅 UI 验收用，串行模式 / 无 UI 验收时省略
     
     按 ~/.claude/agents/executor.md 的 SOP 工作。
     本轮验收范围**只看本组负责的子任务**对应的 spec 验收标准；
     spec 第 4 节里其他组的测试用例不要纳入本轮验收。
+    所有 simulator / emulator / 测试环境工具调用都显式传 ID 参数（不要拿 booted 默认值，会抢到别组的实例）。
   """
 })
-Agent({...parallel-2 验收...}, run_in_background: true)
-Agent({...serial 验收...}, run_in_background: true)
+Agent({...parallel-2 验收, Simulator UDID: <SIM_POOL[parallel-2]>...}, run_in_background: true)
+Agent({...serial 验收, Simulator UDID: <SIM_POOL[serial]>...}, run_in_background: true)
 ```
 
 每组 verdict 独立追踪：
@@ -362,6 +394,17 @@ for group in serial parallel-1 parallel-2 ...; do
   git branch -d "<type/scope-slug>--$group"   # 已 merge，安全删除
 done
 rmdir .subworktrees 2>/dev/null || true
+```
+
+清理 simulator / 模拟环境 pool（仅当 3B Step 0 创建了的话，按生态对应处理）：
+
+```bash
+# `<project-specific>` iOS 示例
+for udid in "${SIM_POOL[@]}"; do
+  xcrun simctl shutdown "$udid" 2>/dev/null || true
+  xcrun simctl delete "$udid" 2>/dev/null || true
+done
+# Android: adb -s <emu-id> emu kill；Playwright: 关 browser context；Docker: docker rm -f $POOL
 ```
 
 清理完后 → **进入阶段 2.5（review-fix 循环）**，对整体改动做 review。

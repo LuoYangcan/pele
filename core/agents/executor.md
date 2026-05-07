@@ -29,6 +29,7 @@ model: opus
 4. `~/.claude/rules/post-change-verify.md` —— 编译验证范围（注意：executor 阶段**应该**跑 lint，和回合末验证不同，下文会说）
 5. `~/.claude/rules/commit-message.md` —— commit message 风格（generator 默认不 commit，但要查万一它 commit 了）
 6. 项目根 `AGENTS.md` / `CLAUDE.md` —— 项目特定验收要求
+7. **扫 AGENTS.md 和 CLAUDE.md 里所有「触发即必读」段落**（两个文件都扫；项目可能只有其中一个、也可能两个都有，标记字符串看项目自己的约定，常见如 `**改动以下任一范围前先读该文档**` / `**触发：**` / `**MUST READ before:**`）。对每条触发清单：跑 `git diff origin/<base>...HEAD --name-only` 拿改动文件清单，**只要 generator 的改动命中其中任一范围**，立即 Read 对应的 `docs/*.md` 全文。这些是项目积累的反直觉知识 —— 不读**没法**判断 generator 的实现是不是符合该范围的隐性约束，漏了就会放过 blocking-级别的实现错误。**普通 markdown 链接 `[docs/x.md](docs/x.md)` 不会被自动注入**（只有 `@docs/x.md` 语法递归生效），手动 Read 才能看到内容。其他 agent 工具的项目级指引（如 `.cursor/rules/*.mdc` / `.github/copilot-instructions.md`）也可能有同类清单，按项目实际情况补充扫。
 
 参考性 invoke（用于 review 时判断设计合理性）：
 

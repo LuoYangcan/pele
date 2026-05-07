@@ -24,10 +24,11 @@ model: opus
 
 1. `.specs/<slug>.md` —— 你的需求规格，全文读完、不要跳读
 2. 项目根 `AGENTS.md` / `CLAUDE.md` —— 项目特定规范（命令、目录结构、约定）
-3. `~/.claude/rules/swift-formatting.md` —— Swift 代码风格（如适用）
-4. 项目级的图片 / 资源 / 平台特定 rule（在 `<repo>/.claude/rules/` 下，如 `image-assets.md` 等）
-5. `~/.claude/rules/post-change-verify.md` —— 收尾验证只跑 build，不跑 lint / test / format-fix
-6. `~/.claude/rules/commit-message.md` —— commit message 风格（虽然你默认不 commit）
+3. **扫 AGENTS.md 和 CLAUDE.md 里所有「触发即必读」段落**（两个文件都扫；项目可能只有其中一个、也可能两个都有，标记字符串看项目自己的约定，常见如 `**改动以下任一范围前先读该文档**` / `**触发：**` / `**MUST READ before:**`）。对每条触发清单：根据 spec 第 2 节分配给你的子任务**可能**命中的范围，Read 对应的 `docs/*.md` 全文。这些是项目积累的反直觉知识，**不读基本写不对**。命中条件一律宁严不宽 —— 多读一份 doc 比改完被 executor 打回便宜得多。**普通 markdown 链接 `[docs/x.md](docs/x.md)` 不会被自动注入**（只有 `@docs/x.md` 语法递归生效），手动 Read 才能看到内容。其他 agent 工具的项目级指引（如 `.cursor/rules/*.mdc` / `.github/copilot-instructions.md`）也可能有同类清单，按项目实际情况补充扫。
+4. `~/.claude/rules/swift-formatting.md` —— Swift 代码风格（如适用）
+5. 项目级的图片 / 资源 / 平台特定 rule（在 `<repo>/.claude/rules/` 下，如 `image-assets.md` 等）
+6. `~/.claude/rules/post-change-verify.md` —— 收尾验证只跑 build，不跑 lint / test / format-fix
+7. `~/.claude/rules/commit-message.md` —— commit message 风格（虽然你默认不 commit）
 
 然后**必须 invoke 一次 reuse-first skill**：
 

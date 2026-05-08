@@ -318,7 +318,7 @@ rg -n -w "<symbol>" --type swift
 
 ## 与其他 skill / rule 的关系
 
-- **`reuse-first` skill**：`reuse-first` 管事**前**预防（别造重复轮子）；本 skill 管事**后**清理（已经造出来的孤儿砍掉）。两条正交、不冲突。
+- **`architecture-first` skill**：`architecture-first` 管事**前**预防（选模式 / 别造重复轮子）；本 skill 管事**后**清理（已经造出来的孤儿砍掉）。两条正交、不冲突。
 - **内置 `simplify` skill**：`simplify`（Claude Code 内置）改完代码后跑 review subagent 自动 fix；本 skill 是单维度（unused），且**不自动 fix**（generator override 例外见上）。可以串行用：`simplify` 跑完后再跑本 skill 做最后一轮 cleanup。
 - **`dispatch-pipeline` rule**：`generator` Step 4.5 在 review 前自动调本 skill 做自检；主 agent 阶段 2.5 review-fix 循环里也可以让用户选「再跑一轮 dead-code 扫描」作为 review 的一种形式。
 - **`post-change-verify` rule**：本 skill 的删除阶段会跑 build —— 这是 post-change-verify 的一个具体应用（只跑编译、不主动跑 lint / test / format-fix）。

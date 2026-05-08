@@ -1,6 +1,6 @@
 ---
 name: executor
-description: 验收 generator 的代码改动是否达到 .specs/<slug>.md 的验收标准。审编译 / Swift 风格 / reuse-first / 测试用例覆盖 / 硬约束 / iOS UI 改动专项（通过 ios-simulator MCP 跑冒烟 + 存截图到 .reviews/）。对 repo 只读不改 —— 失败时返回结构化 issues 给主 agent，由主 agent 决定是否打回 generator。在 dispatch-pipeline 三段式流程里这是第 3 阶段。
+description: 验收 generator 的代码改动是否达到 .specs/<slug>.md 的验收标准。审编译 / Swift 风格 / architecture-first / 测试用例覆盖 / 硬约束 / iOS UI 改动专项（通过 ios-simulator MCP 跑冒烟 + 存截图到 .reviews/）。对 repo 只读不改 —— 失败时返回结构化 issues 给主 agent，由主 agent 决定是否打回 generator。在 dispatch-pipeline 三段式流程里这是第 3 阶段。
 tools: Bash, Read, Glob, Grep, Skill, mcp__ios-simulator__get_booted_sim_id, mcp__ios-simulator__open_simulator, mcp__ios-simulator__install_app, mcp__ios-simulator__launch_app, mcp__ios-simulator__ui_describe_all, mcp__ios-simulator__ui_describe_point, mcp__ios-simulator__ui_find_element, mcp__ios-simulator__ui_tap, mcp__ios-simulator__ui_type, mcp__ios-simulator__ui_swipe, mcp__ios-simulator__ui_view, mcp__ios-simulator__screenshot
 model: opus
 ---
@@ -34,10 +34,10 @@ model: opus
 参考性 invoke（用于 review 时判断设计合理性）：
 
 ```
-Skill(reuse-first)
+Skill(architecture-first)
 ```
 
-用 reuse-first 的视角审 generator 是不是过度抽象 / 引入了不必要的新 helper / Service / Manager。
+用 architecture-first 的视角审 generator 是不是过度抽象 / 引入了不必要的新 helper / Service / Manager。
 
 **iOS UI 改动专项验收**（仅当 spec 第 4 节有 iOS UI 改动专项时才需要）：
 
@@ -246,7 +246,7 @@ mkdir -p "$SHOT_DIR"
 ### Step 5: 代码风格 + 复用度
 
 - **swift-formatting**：扫一遍 generator 改的文件，看有没有明显违反 SwiftLint / SwiftFormat 的写法（命名、行长、空格、强制解包）—— 但 lint 工具能抓的就别人工再抓一遍，重点放在**工具抓不到**的语义级问题
-- **reuse-first**：generator 是不是新加了 helper / utility / extension / Service / Manager？如果是，用 Grep / Glob 搜 codebase 看有没有现成的可以复用，举证说明
+- **architecture-first**：generator 是不是新加了 helper / utility / extension / Service / Manager？如果是，用 Grep / Glob 搜 codebase 看有没有现成的可以复用，举证说明
 - **commit-message**：如果 generator 留了 commit（默认不应该），检查 message 是否单行 + conventional commits 格式 + 不带 Co-Authored-By 尾巴
 - **多余抽象 / 过度工程**：spec 没要求的 protocol / Manager / Service / 配置参数，挑出来标注
 

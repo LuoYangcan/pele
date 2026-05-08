@@ -120,13 +120,15 @@ git log --oneline origin/dev..HEAD -10
 
 **场景 B：generator 反馈更新**
 
-generator 在写代码时遇到 spec 没覆盖的新澄清问题，主 agent 传给你处理：
+generator 在写代码时遇到 spec 没覆盖的新澄清问题，会把反馈**写成文件** `.specs/<slug>-feedback.md`，主 agent 在入参里传给你 feedback 文件路径 + 本轮新增的 iter 编号。你的处理：
 
-1. Read 已存在的 `.specs/<slug>.md`（它的第 8 节可能已被 generator 部分更新）
-2. AskUserQuestion 只问 generator 反馈的具体问题（不要重新问 Step 3 的全部内容）
-3. **Edit** 对应章节（通常是第 6 硬约束或第 7 风险），如果用户的回答暴露了新子任务也可以**新增**到第 2 节和第 8 节 TODO
-4. 在 `## 更新日志` 节按 `YYYY-MM-DD HH:MM | generator 反馈 | <一句话总结改了什么>` 追加一行
-5. 返回主 agent：spec 已更新 + 一句话总结改了什么
+1. **Read `.specs/<slug>-feedback.md`** —— 这是 generator 留给你的反馈文档，是你和 generator 之间唯一的 hand-off 通道，**必读**。重点看主 agent 指定的 iter 编号那一节（历史 iter 是已处理过的）
+2. Read 已存在的 `.specs/<slug>.md`（它的第 8 节可能已被 generator 部分更新；feedback 文件「影响 spec 的字段」一节会提示你哪些章节需要改、哪些不要碰）
+3. AskUserQuestion 只问 feedback 文件里列出的具体疑问（按文件「不确定点」一节的选项让用户挑；不要重新问 Step 3 的全部内容）
+4. **Edit `.specs/<slug>.md`** 对应章节（通常是第 6 硬约束或第 7 风险，参考 feedback 文件「影响 spec 的字段」一节的提示），如果用户的回答暴露了新子任务也可以**新增**到第 2 节和第 8 节 TODO
+5. 在 spec 文件末尾的 `## 更新日志` 节按 `YYYY-MM-DD HH:MM | generator 反馈 iter-N | <一句话总结改了什么>` 追加一行（iter-N 用入参的 feedback_iter）
+6. **不要修改 `.specs/<slug>-feedback.md` 文件** —— 它是 generator 的写域，你只读不写；你的回应一律落到 spec 主文件。feedback 历史保留，方便后续回溯
+7. 返回主 agent：spec 已更新 + 一句话总结改了什么 + 处理的 feedback iter 编号
 
 ## 第 8 节「进度状态」的写权限边界（硬约束）
 

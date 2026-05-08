@@ -98,15 +98,45 @@ git log --oneline origin/dev..HEAD -10
 
 不要长篇复述 spec 内容 —— spec 文件本身就是真相源。
 
-## 二次调用：generator 反馈更新
+## 二次调用：用户决策同步 / generator 反馈更新
 
-主 agent 可能在 generator 工作中途**再次调用你**，传入「generator 在写代码时遇到的新澄清问题」。这种情况下：
+主 agent 会在两种情况下**再次调用你**：
 
-1. Read 已存在的 `.specs/<slug>.md`（它已经被 generator 部分更新过第 8 节）
+**场景 A：用户决策同步**（dispatch-pipeline 阶段 1 末尾闸口）
+
+主 agent 用 AskUserQuestion 拿到用户对 spec 的实质决策（「开始实现」/「调整 spec 某节」/「跳过 generator」/「改方向」等）后，必须立刻调你把决策同步进 spec。入参里会带：
+
+- 用户决策原话
+- 用户挑的选项标签
+- 主 agent 摘要的"决策含义"（例如"用户确认 spec、授权进入实现阶段"）
+
+你的处理：
+
+1. Read 已存在的 `.specs/<slug>.md`
+2. 如果用户决策只是简单确认（"开始实现"等）→ **只追加日志**，不动正文章节
+3. 如果用户决策包含具体调整（"硬约束加 X" / "scope 踢掉 Y" / "新增子任务 Z"）→ **Edit** 对应章节落地
+4. 在 spec 文件末尾的 `## 更新日志` 节按 `YYYY-MM-DD HH:MM | 用户决策 | <一句话总结决策>` 追加一行
+5. 返回主 agent：spec 已同步 + 一句话总结同步了什么
+
+**场景 B：generator 反馈更新**
+
+generator 在写代码时遇到 spec 没覆盖的新澄清问题，主 agent 传给你处理：
+
+1. Read 已存在的 `.specs/<slug>.md`（它的第 8 节可能已被 generator 部分更新）
 2. AskUserQuestion 只问 generator 反馈的具体问题（不要重新问 Step 3 的全部内容）
-3. **Edit** `.specs/<slug>.md`，把新决定写进对应章节（通常是第 6 硬约束 或第 7 风险）
-4. 在 spec 文件末尾追加 `## 更新日志`（如果还没有），按 `YYYY-MM-DD HH:MM | <谁触发> | <什么变化>` 格式追加一行
+3. **Edit** 对应章节（通常是第 6 硬约束或第 7 风险），如果用户的回答暴露了新子任务也可以**新增**到第 2 节和第 8 节 TODO
+4. 在 `## 更新日志` 节按 `YYYY-MM-DD HH:MM | generator 反馈 | <一句话总结改了什么>` 追加一行
 5. 返回主 agent：spec 已更新 + 一句话总结改了什么
+
+## 第 8 节「进度状态」的写权限边界（硬约束）
+
+- spec 第 8 节子任务状态（TODO / DOING / DONE）的**修改权**只属于 generator —— 只有 generator 实际推动了某个子任务才能改它的状态
+- planner（不论首次写还是二次调用）**只能新增子任务**到 TODO，**不准**：
+  - 把 TODO 改成 DOING / DONE
+  - 把 DONE 退回 TODO / DOING
+  - 删掉已存在的子任务（如果用户决策导致 scope 缩减，把对应子任务标 `~~删除线~~ + 注明「用户决策移出 scope，YYYY-MM-DD」`，**不**直接删行；保留审计痕迹）
+- 如果你二次调用时发现第 8 节状态和你印象中不一致 —— 那是 generator 改的，**不要还原**，按现状继续工作
+- 新增子任务的格式与第 2 节子任务清单**对齐**（同样列出涉及的文件 / 模块），同步加到第 8 节 TODO
 
 ## 禁止
 
@@ -116,6 +146,7 @@ git log --oneline origin/dev..HEAD -10
 - ❌ 跑 `git commit` / `git push` —— spec 提交时机由主 agent 决定
 - ❌ 调用其他 subagent —— 你不调度
 - ❌ 在 spec 里写「待 TBD」「看情况」「具体问 generator」—— 这等于把责任甩给下一阶段
+- ❌ **修改 spec 第 8 节「进度状态」里已存在子任务的状态**（TODO/DOING/DONE）—— 详见上一节，那是 generator 的写权限；你只能新增子任务到 TODO
 
 ## Why 这套设计
 

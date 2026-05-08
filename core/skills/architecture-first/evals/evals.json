@@ -1,42 +1,505 @@
 {
-  "skill_name": "reuse-first",
+  "skill_name": "architecture-first",
   "evals": [
     {
       "id": 0,
-      "name": "acmechat-toast-component-reuse",
-      "prompt": "我想在 AcmeChat 的 ChatVC 里加一个『复制成功』的 toast 提示。点击复制按钮后，屏幕中部弹一个吐司式提示，自动消失。给我一份具体方案：用什么组件、怎么集成、要不要新加 dependency。",
-      "expected_output": "应当先识别 packages/common/AcmeToastKit 已经在用、可在 AcmeChat 直接添加 dependency；不应该建议从零写 UIView toast，也不应该建议引入新 SDK（如 Toast-Swift / SwiftMessages）。如果 ChatVC 已能 import 现成的便捷封装（如 AcmeUI 的 Toast helper、AcmeToastKit），直接用即可。",
+      "name": "tdchat-toast-component-reuse",
+      "prompt": "我想在 TDChat 的 ChatVC 里加一个『复制成功』的 toast 提示。点击复制按钮后，屏幕中部弹一个吐司式提示，自动消失。给我一份具体方案：用什么组件、怎么集成、要不要新加 dependency。",
+      "expected_output": "应当先识别 packages/common/JDStatusBarNotification 已经在用、可在 TDChat 直接添加 dependency；不应该建议从零写 UIView toast，也不应该建议引入新 SDK（如 Toast-Swift / SwiftMessages）。如果 ChatVC 已能 import 现成的便捷封装（如 TodayUI 的 Toast helper、JDStatusBarNotification），直接用即可。",
       "assertions": [
-        {"name": "mentions_existing_toast_kit", "type": "keyword_present", "keywords": ["AcmeToastKit"]},
-        {"name": "does_not_recommend_new_third_party_sdk", "type": "keyword_absent_or_explicitly_rejected", "keywords": ["Toast-Swift", "SwiftMessages", "SVProgressHUD", "MBProgressHUD"]},
-        {"name": "mentions_dependency_wiring", "type": "keyword_present_any", "keywords": ["Package.swift", "dependencies", ".product", ".package"]},
-        {"name": "does_not_propose_writing_uiview_from_scratch", "type": "negative_recommendation", "phrases_to_avoid_as_main_recommendation": ["从零写", "自定义 UIView", "自己实现一个 toast"]}
+        {
+          "name": "mentions_existing_jd_status_bar_notification",
+          "type": "keyword_present",
+          "keywords": [
+            "JDStatusBarNotification"
+          ]
+        },
+        {
+          "name": "does_not_recommend_new_third_party_sdk",
+          "type": "keyword_absent_or_explicitly_rejected",
+          "keywords": [
+            "Toast-Swift",
+            "SwiftMessages",
+            "SVProgressHUD",
+            "MBProgressHUD"
+          ]
+        },
+        {
+          "name": "mentions_dependency_wiring",
+          "type": "keyword_present_any",
+          "keywords": [
+            "Package.swift",
+            "dependencies",
+            ".product",
+            ".package"
+          ]
+        },
+        {
+          "name": "does_not_propose_writing_uiview_from_scratch",
+          "type": "negative_recommendation",
+          "phrases_to_avoid_as_main_recommendation": [
+            "从零写",
+            "自定义 UIView",
+            "自己实现一个 toast"
+          ]
+        }
       ],
       "files": []
     },
     {
       "id": 1,
       "name": "review-uicolor-hex-extension",
-      "prompt": "Review 这段代码 —— 我在 AcmeProfile 的某个 VC 文件底部加了 `extension UIColor { convenience init?(hex: String) ... }`。这段加在这里合适吗？",
-      "expected_output": "应当指出：(1) 高频会重复造的轮子，repo 大概率已有；(2) 应先 grep 确认；(3) 即便没有也不应写在业务模块 AcmeProfile 里，应下沉到 AcmeTheme / AcmeUI；(4) review 输出应包含『重复实现』警告。",
+      "prompt": "Review 这段代码 —— 我在 TDProfile 的某个 VC 文件底部加了 `extension UIColor { convenience init?(hex: String) ... }`。这段加在这里合适吗？",
+      "expected_output": "应当指出：(1) 高频会重复造的轮子，repo 大概率已有；(2) 应先 grep 确认；(3) 即便没有也不应写在业务模块 TDProfile 里，应下沉到 TodayTheme / TodayUI；(4) review 输出应包含『重复实现』警告。",
       "assertions": [
-        {"name": "flags_potential_duplicate_implementation", "type": "keyword_present_any", "keywords": ["重复", "duplicate", "已有", "现有"]},
-        {"name": "actually_searches_or_recommends_search", "type": "keyword_present_any", "keywords": ["grep", "搜", "search", "AcmeTheme", "AcmeUI"]},
-        {"name": "verdict_not_accept", "type": "verdict_check", "must_not_match": ["accept", "lgtm", "looks good", "通过", "可以合并", "approve"]},
-        {"name": "recommends_relocating_to_shared_package", "type": "keyword_present_any", "keywords": ["AcmeTheme", "AcmeUI", "下沉", "common", "shared"]}
+        {
+          "name": "flags_potential_duplicate_implementation",
+          "type": "keyword_present_any",
+          "keywords": [
+            "重复",
+            "duplicate",
+            "已有",
+            "现有"
+          ]
+        },
+        {
+          "name": "actually_searches_or_recommends_search",
+          "type": "keyword_present_any",
+          "keywords": [
+            "grep",
+            "搜",
+            "search",
+            "TodayTheme",
+            "TodayUI"
+          ]
+        },
+        {
+          "name": "verdict_not_accept",
+          "type": "verdict_check",
+          "must_not_match": [
+            "accept",
+            "lgtm",
+            "looks good",
+            "通过",
+            "可以合并",
+            "approve"
+          ]
+        },
+        {
+          "name": "recommends_relocating_to_shared_package",
+          "type": "keyword_present_any",
+          "keywords": [
+            "TodayTheme",
+            "TodayUI",
+            "下沉",
+            "common",
+            "shared"
+          ]
+        }
       ],
       "files": []
     },
     {
       "id": 2,
-      "name": "cross-package-permission-reuse",
-      "prompt": "AcmeDevices 里加某个系统权限的入口，能不能直接 import AcmeOnboarding 里类似流程？",
-      "expected_output": "应当指出：(1) Business 不能互依；(2) 下沉到 PermissionsKit / AcmeTools 或走 AcmeRouter 中间件；(3) 不要 cherry-pick / copy-paste。",
+      "name": "cross-package-healthkit-reuse",
+      "prompt": "TDDevices 里加 HealthKit 步数权限入口，能不能直接 import TDOnBoarding 里类似流程？",
+      "expected_output": "应当指出：(1) Business 不能互依；(2) 下沉到 PermissionsKit / TodayTools 或走 TodayRouter 中间件；(3) 不要 cherry-pick / copy-paste。",
       "assertions": [
-        {"name": "rejects_direct_import_of_other_business_package", "type": "negative_recommendation", "must_signal_no_for_keyword": "AcmeOnboarding"},
-        {"name": "cites_dependency_layering_rule", "type": "keyword_present_any", "keywords": ["业务", "Business", "依赖", "AGENTS", "分层"]},
-        {"name": "proposes_correct_alternative", "type": "keyword_present_any", "keywords": ["PermissionsKit", "下沉", "中间件", "Router.register", "AcmeTools"]},
-        {"name": "does_not_recommend_copy_paste", "type": "negative_recommendation", "phrases_to_avoid_as_recommendation": ["cherry-pick", "复制粘贴", "抄过来"]}
+        {
+          "name": "rejects_direct_import_of_other_business_package",
+          "type": "negative_recommendation",
+          "must_signal_no_for_keyword": "TDOnBoarding"
+        },
+        {
+          "name": "cites_dependency_layering_rule",
+          "type": "keyword_present_any",
+          "keywords": [
+            "业务",
+            "Business",
+            "依赖",
+            "AGENTS",
+            "分层"
+          ]
+        },
+        {
+          "name": "proposes_correct_alternative",
+          "type": "keyword_present_any",
+          "keywords": [
+            "PermissionsKit",
+            "下沉",
+            "中间件",
+            "Router.register",
+            "TodayTools"
+          ]
+        },
+        {
+          "name": "does_not_recommend_copy_paste",
+          "type": "negative_recommendation",
+          "phrases_to_avoid_as_recommendation": [
+            "cherry-pick",
+            "复制粘贴",
+            "抄过来"
+          ]
+        }
+      ],
+      "files": []
+    },
+    {
+      "id": 3,
+      "name": "if-else-branch-buildup-strategy-refactor",
+      "prompt": "我想在现有的 ChatMessageSender.send(_ msg:) 函数里加一个分支处理新增的 'skill_event' 类型消息。当前函数已经有 `if msg.isSystem / else if msg.isError / else { 普通消息 }` 三个分支，每个分支 15-25 行逻辑。我打算照葫芦画瓢加 `else if msg.isSkillEvent { ... }`。这个改动 OK 吗？",
+      "expected_output": "应当指出：(1) 这是典型的『在已有函数里加 if/else 特判』补丁式信号——分支已经到 4 个，函数被强塑成多种联动语义；(2) 推荐 Strategy 模式重构（MessageSender protocol + 各类型独立实现 + factory 选择）；(3) 如果本次任务范围只允许加这一个 case，至少要显式登记技术债，不要埋 TODO 注释；(4) 不应直接说『加 else if 即可』。",
+      "assertions": [
+        {
+          "name": "flags_patchwork_signal",
+          "type": "keyword_present_any",
+          "keywords": [
+            "补丁",
+            "patch",
+            "if/else",
+            "特判",
+            "分支"
+          ]
+        },
+        {
+          "name": "recommends_strategy_or_split",
+          "type": "keyword_present_any",
+          "keywords": [
+            "Strategy",
+            "策略",
+            "拆函数",
+            "拆分",
+            "protocol"
+          ]
+        },
+        {
+          "name": "does_not_just_say_add_branch",
+          "type": "negative_recommendation",
+          "phrases_to_avoid_as_main_recommendation": [
+            "直接加 else if",
+            "加一个分支即可",
+            "照葫芦画瓢"
+          ]
+        },
+        {
+          "name": "addresses_tech_debt_if_scope_limited",
+          "type": "keyword_present_any",
+          "keywords": [
+            "技术债",
+            "tech debt",
+            "登记",
+            "ticket",
+            "issue",
+            "范围"
+          ]
+        }
+      ],
+      "files": []
+    },
+    {
+      "id": 4,
+      "name": "copy-paste-similar-logic-extract",
+      "prompt": "我在 TDChannels 的 connect 流程里需要『检查权限 → 弹 alert → 处理用户选择 → 上报埋点』这一套 4 步流程。TDDevices 里我已经写过类似的、TDOnBoarding 的 NotificationVC 里也有一份。我打算从 TDDevices 复制粘贴一份过来改下变量名。这样 OK 吗？",
+      "expected_output": "应当指出：(1) 同样的 4 步流程出现在 3 个业务模块里 = 跨模块复用信号；(2) Business 之间不能互相依赖（参考 AGENTS.md 依赖分层）；(3) 应下沉到 PermissionsKit / TodayTools / common 层抽出统一的 PermissionFlow；(4) 不应『复制粘贴改名』，会导致 3 份独立漂移、未来 bug 修一处忘修两处。",
+      "assertions": [
+        {
+          "name": "rejects_copy_paste_approach",
+          "type": "negative_recommendation",
+          "phrases_to_avoid_as_main_recommendation": [
+            "复制粘贴",
+            "copy paste",
+            "抄过来",
+            "照搬"
+          ]
+        },
+        {
+          "name": "identifies_cross_module_duplication",
+          "type": "keyword_present_any",
+          "keywords": [
+            "3 个",
+            "三个",
+            "重复",
+            "跨模块",
+            "跨 package",
+            "duplicate"
+          ]
+        },
+        {
+          "name": "proposes_extract_to_shared_layer",
+          "type": "keyword_present_any",
+          "keywords": [
+            "下沉",
+            "抽出",
+            "PermissionsKit",
+            "TodayTools",
+            "common",
+            "共享层"
+          ]
+        },
+        {
+          "name": "warns_about_drift_or_maintenance",
+          "type": "keyword_present_any",
+          "keywords": [
+            "漂移",
+            "drift",
+            "维护",
+            "不一致",
+            "改一处"
+          ]
+        }
+      ],
+      "files": []
+    },
+    {
+      "id": 5,
+      "name": "swallow-error-vs-root-cause",
+      "prompt": "ChatVC 里点 send 按钮偶尔 crash，stack trace 显示 `viewModel.currentThread!.id` unwrap 了 nil。我打算把 `!` 改成 `?` 安全 unwrap，或者外面包一层 `if let _ = viewModel.currentThread { ... }`，crash 就没了。这样可以吗？",
+      "expected_output": "应当指出：(1) 这是看现象不查根因的补丁式修复——crash 消失不等于问题修复；(2) 应做 5-Why 根因分析：currentThread 为什么是 nil？是 async 时序问题、是 launch task 顺序问题、还是用户态恢复路径问题？(3) 找到根因后再修——可能根因在 LaunchManager 启动顺序或 ViewModel 数据加载时机，而不在点击按钮的瞬间；(4) 如果 nil 是合法状态（用户没选 thread），应显式分支处理（show empty state / disable button），不是 silent return；(5) 如果只是 hotfix，要同时开 ticket 跟进根因。",
+      "assertions": [
+        {
+          "name": "rejects_symptom_only_fix",
+          "type": "keyword_present_any",
+          "keywords": [
+            "根因",
+            "root cause",
+            "5-Why",
+            "症状",
+            "现象",
+            "治标"
+          ]
+        },
+        {
+          "name": "asks_why_nil",
+          "type": "keyword_present_any",
+          "keywords": [
+            "为什么",
+            "时序",
+            "async",
+            "launch",
+            "启动顺序",
+            "加载时机"
+          ]
+        },
+        {
+          "name": "does_not_just_recommend_safe_unwrap",
+          "type": "negative_recommendation",
+          "phrases_to_avoid_as_main_recommendation": [
+            "改成 ? 即可",
+            "加个 if let 就行",
+            "包一层就好"
+          ]
+        },
+        {
+          "name": "addresses_legitimate_nil_branch",
+          "type": "keyword_present_any",
+          "keywords": [
+            "合法",
+            "显式分支",
+            "empty state",
+            "disable",
+            "降级"
+          ]
+        }
+      ],
+      "files": []
+    },
+    {
+      "id": 6,
+      "name": "fat-vc-architectural-refactor-open",
+      "prompt": "TDChat 的 ChatSheetViewController 现在已经 1500+ 行（11 个 extension 切片 + ChatSheetState + 注入的 ChatViewModel）。新需求要再加一个『AI 工具调用结果预览 panel』功能，同时项目想把这个新 panel 的业务逻辑做到单测覆盖率 ≥ 60%。当前 VC 把 lifecycle / state / 网络 / WebSocket / composer / context menu 都揉在一起。请给我一个明确的实现方案 + 落地步骤。",
+      "expected_output": "应当 (1) 识别项目当前架构是 MVVM 轻量变体（ChatSheetState + ChatViewModel + extension 切片）；(2) 提出把新 panel 隔离成独立子模块的方案（不动主 VC 现有切片）；(3) 给出可单测的设计（ViewModel 不引 UIKit，protocol 注入）；(4) 不过度工程（不强行引入 VIPER / TCA / 全栈重写）；(5) 给出具体落地步骤（PR 拆分 / 文件结构）。",
+      "assertions": [
+        {
+          "name": "identifies_existing_layered_arch",
+          "type": "keyword_present_any",
+          "keywords": [
+            "MVVM",
+            "ChatSheetState",
+            "ChatViewModel",
+            "范式",
+            "extension 切片",
+            "现有"
+          ]
+        },
+        {
+          "name": "proposes_isolated_module_for_panel",
+          "type": "keyword_present_any",
+          "keywords": [
+            "独立",
+            "子模块",
+            "抽出",
+            "Panel",
+            "不污染",
+            "不动"
+          ]
+        },
+        {
+          "name": "addresses_testability",
+          "type": "keyword_present_any",
+          "keywords": [
+            "单测",
+            "覆盖率",
+            "ViewModel",
+            "protocol",
+            "mock",
+            "测试"
+          ]
+        },
+        {
+          "name": "avoids_overengineering",
+          "type": "negative_recommendation",
+          "phrases_to_avoid_as_main_recommendation": [
+            "全栈重写",
+            "推倒重写",
+            "全部重构",
+            "整体迁移"
+          ]
+        },
+        {
+          "name": "gives_actionable_steps",
+          "type": "keyword_present_any",
+          "keywords": [
+            "步骤",
+            "落地",
+            "PR",
+            "文件",
+            "新建",
+            "改动"
+          ]
+        }
+      ],
+      "files": []
+    },
+    {
+      "id": 7,
+      "name": "scattered-state-bugs-open",
+      "prompt": "TDChannels 的 connect flow 现在状态散布到 5 个文件（ChannelsViewModel / ChannelsVC / ChannelsCoordinator / ChannelsCache / WebSocketAdapter），出现过『连了之后 UI 显示已断开 / 重连状态不一致 / 缓存还停在旧 channel』这类 bug 多次。请给我一个判断 + 修复方案。",
+      "expected_output": "应当 (1) 诊断症状是 state 散布 / 多源真相 / 隐式状态机 / 异步竞态；(2) 提出务实修法（合并状态到单一 source of truth，可能用 enum 状态机；可能加 task 取消保护异步竞态）；(3) 不过度工程（不引入 TCA / Redux 全栈）；(4) 给可执行步骤；(5) bonus：如果真的去搜代码确认 user 假设的 5 个文件存不存在，更好。",
+      "assertions": [
+        {
+          "name": "diagnoses_state_or_concurrency_problem",
+          "type": "keyword_present_any",
+          "keywords": [
+            "state",
+            "状态",
+            "散布",
+            "散落",
+            "多源",
+            "source of truth",
+            "状态机",
+            "竞态",
+            "race",
+            "异步"
+          ]
+        },
+        {
+          "name": "proposes_pragmatic_fix",
+          "type": "keyword_present_any",
+          "keywords": [
+            "enum",
+            "状态机",
+            "收敛",
+            "单一",
+            "ViewModel",
+            "FooState",
+            "ChannelsState",
+            "Task",
+            "cancel"
+          ]
+        },
+        {
+          "name": "avoids_overengineering",
+          "type": "negative_recommendation",
+          "phrases_to_avoid_as_main_recommendation": [
+            "全栈引入 TCA",
+            "全栈 Redux",
+            "整套 TCA",
+            "推倒重写",
+            "改成 SwiftUI"
+          ]
+        },
+        {
+          "name": "addresses_actionable_fix",
+          "type": "keyword_present_any",
+          "keywords": [
+            "步骤",
+            "落地",
+            "P0",
+            "P1",
+            "行动",
+            "改动",
+            "修法"
+          ]
+        }
+      ],
+      "files": []
+    },
+    {
+      "id": 8,
+      "name": "cross-platform-business-extraction-open",
+      "prompt": "我们现在 TDModel / TodayCore / TDAPISet 已经被 iOS app + macOS app 共享。新需求是把 chat 业务核心（消息发送 / 缓存 / WebSocket session 管理 / 消息去重 / 排序）也下沉到 common，让 macOS connector 也能用。请给我一个落地方案。",
+      "expected_output": "应当 (1) 识别项目当前的 packages/common ↔ ios/Core ↔ Business 单向分层是 Clean / Hexagonal 工业级简化版；(2) 提出新建 TDChatCore（或类似名字）放到 common 层；(3) 用 protocol / port + adapter 处理跨端差异；(4) 警告 common 层不能 import UIKit / AppKit；(5) 不过度工程（不上 5 件套全套）。",
+      "assertions": [
+        {
+          "name": "identifies_existing_layered_arch",
+          "type": "keyword_present_any",
+          "keywords": [
+            "packages/common",
+            "分层",
+            "已经",
+            "现有",
+            "Clean",
+            "Hexagonal"
+          ]
+        },
+        {
+          "name": "proposes_extracting_core_to_common",
+          "type": "keyword_present_any",
+          "keywords": [
+            "TDChatCore",
+            "下沉",
+            "common",
+            "抽出",
+            "新建",
+            "新包"
+          ]
+        },
+        {
+          "name": "mentions_protocol_or_port_or_adapter",
+          "type": "keyword_present_any",
+          "keywords": [
+            "protocol",
+            "port",
+            "adapter",
+            "中间件",
+            "Router.register",
+            "端口"
+          ]
+        },
+        {
+          "name": "warns_no_uikit_in_common",
+          "type": "keyword_present_any",
+          "keywords": [
+            "UIKit",
+            "AppKit",
+            "不能 import",
+            "不依赖",
+            "不引"
+          ]
+        },
+        {
+          "name": "avoids_overengineering",
+          "type": "negative_recommendation",
+          "phrases_to_avoid_as_main_recommendation": [
+            "全套 Clean",
+            "5 件套",
+            "全套.*Hexagonal",
+            "Use Case 层",
+            "Domain 层",
+            "重写整个",
+            "推倒重写"
+          ]
+        }
       ],
       "files": []
     }

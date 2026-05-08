@@ -91,15 +91,57 @@ planner 返回后：
 >
 > 这条比「主 agent 主动推进流程」优先级**高**。宁可多问一轮，不要替用户拍板。
 
+#### 阶段 1.5: 用户决策后必须调 planner 同步 spec（强制闸口）
+
+> ⛔ **用户反复强调过的高优先级规则**：用户对 spec 给出**实质决策**后，主 agent 的下一个 tool call **必须**是 `Agent(subagent_type="planner")`，把决策传给 planner 让它写进 spec 文件。**不能**跳过这一步直接调 generator —— 否则 generator 看到的 spec 不包含用户最终确认 / 调整的内容，主 agent 中转的版本可能丢信息。
+
+**触发**（任一即触发）：
+
+- 用户回复明确同意词（「开始 / 开 / ok 开始 / 干 / go / 实现吧 / 没问题开始」）→ planner 把"用户已确认 spec、授权进入实现阶段"追加到更新日志
+- 用户回复「改 spec / 改方向 / 加 / 减 X」→ planner 落地调整（这本来就要调 planner）
+- 用户回复「不用 generator，我自己改 / 跳过」→ planner 把"用户决定跳过 generator 阶段"追加到更新日志，记下范围
+
+**不触发**：
+
+- 用户回复模糊（「嗯」「让我看看」「先放着」「再想想」）→ 继续等用户进一步指令，**不调** planner
+- 用户回复「我先看 spec，等我说开始」→ 等用户后续给实质决策再调
+
+调 planner 同步的 prompt 模板：
+
+```
+Agent({
+  description: "<需求一句话> — 同步用户决策",
+  subagent_type: "planner",
+  prompt: """
+    场景：用户决策同步（dispatch-pipeline 阶段 1.5）
+
+    Worktree slug: <slug>
+    Worktree 绝对路径: <pwd>
+    Spec 文件绝对路径: <pwd>/.specs/<slug>.md
+
+    用户在 AskUserQuestion 里挑的选项：<原选项标签>
+    用户回复原话：<贴用户原话>
+    决策含义（主 agent 摘要的一句话）：<例：用户确认 spec、授权进入实现阶段 / 用户要求把 X 加进硬约束 / 用户决定跳过 generator>
+
+    按 ~/.claude/agents/planner.md 的"二次调用：用户决策同步"场景 SOP 工作。
+  """
+})
+```
+
+planner 同步完返回后，主 agent 再次 Read 一遍 `.specs/<slug>.md` 确认改动落地，**然后**才进入下一步（阶段 2 调 generator / 等用户进一步指令 / 其他分支）。
+
 #### 自检 checklist（每次准备调 generator 前过一遍）
 
 - [ ] 我的上一个 tool call 是 planner 返回？→ 如果是，下一步**绝不能**直接调 generator
 - [ ] 我向用户展示了 spec 路径 + 摘要？
 - [ ] 我用 AskUserQuestion 问过用户「是否开始实现」？
 - [ ] 用户给了**明确同意词**？（不是「嗯」「ok」之外的模糊词）
-- [ ] 4 项全部 ✅ → 才能 invoke generator
+- [ ] **我已经在用户决策后调 planner 同步进 spec、并 Read 确认了？**（阶段 1.5 强制闸口）
+- [ ] 5 项全部 ✅ → 才能 invoke generator
 
 ### 阶段 2: 调 generator（用户说「开始」之后）
+
+> 前提：阶段 1.5 已经跑过 —— 用户决策已经由 planner 同步进 `.specs/<slug>.md`。如果还没跑，**回去补**，不要继续往下。
 
 #### Step 0: 选模式
 

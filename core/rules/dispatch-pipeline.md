@@ -170,10 +170,14 @@ Agent({
 generator 返回有两种情况：
 
 - **正常完成** → **进入阶段 2.5（review-fix 循环）**，不要直接进入阶段 3。
-- **带「需要 planner 更新 spec」标注** → 主 agent：
-  1. 重新调 planner（传入 generator 的反馈）让 planner 更新 spec
-  2. planner 改完 spec → 主 agent 再问用户「spec 更新了，要看一眼再继续吗？」
-  3. 用户同意 → 重新调 generator 继续
+- **带「需要 planner 更新 spec」标注** → generator 返回的结构化结论里会有 `needs_planner_update: true` + `feedback_file`（指向 `.specs/<slug>-feedback.md`）+ `feedback_iter`（本轮 iter 编号）+ `feedback_summary`。主 agent：
+  1. 用 `Read` 看一眼 `feedback_file` 自检（确认 generator 真的写了文件、文件里有对应 iter 章节、不是空 placeholder）
+  2. 把 `feedback_summary` + feedback 文件路径展示给用户，让用户先有上下文（不要贴整份 feedback）
+  3. 调 planner 走「场景 B：generator 反馈更新」，prompt 里**必须**带：feedback 文件绝对路径、本轮 iter 编号、spec 文件绝对路径。**不要**在 prompt 里复述 feedback 内容 —— planner 会自己 Read 文件
+  4. planner 改完 spec → 主 agent Read 一下 spec 末尾「更新日志」确认改动落地 → 再问用户「spec 更新了，要看一眼再继续吗？」
+  5. 用户同意 → 重新调 generator 继续（generator 下一轮启动会自己 Read spec 看 planner 改了什么）
+
+**为什么走文件而不是 prompt 中转**：generator 和 planner 在不同 context，原来主 agent 把 generator 反馈以 prompt 文本中转给 planner，主 agent 容易漏信息（特别是 generator 列的"已经做完"/"已停手"/"placeholder 状态"三类细节）；feedback 文件让 generator 和 planner 直接通过文件对话，主 agent 只做路由。
 
 #### 2B: 并行模式（spec 标注多个 parallel-N 组时）
 
@@ -230,12 +234,13 @@ Agent({...serial...}, run_in_background: true)
 
 ##### 单组异常处理
 
-任一组 generator 返回「需要 planner 更新 spec」标注：
+任一组 generator 返回「需要 planner 更新 spec」标注（结构化结论里 `needs_planner_update: true`）：
 
 1. 让其他正在跑的组**继续跑完**（结果暂存到 sub-worktree，不丢弃）
-2. 重新调 planner，传入该组的反馈让 planner 更新 spec（包括可能的并行分组重划分）
-3. spec 更新后 → 用户拍板 → 主 agent 决定下一步：
-   - 该组单独重做（其他组结果保留）
+2. **该组的 feedback 文件**写在该组**自己的 sub-worktree** 下（路径形如 `<sub-worktree>/.specs/<sub-slug>-feedback.md`），不在主 worktree。Read 一下确认文件存在 + iter 章节落地
+3. 调 planner，prompt 里带：feedback 文件绝对路径（在 sub-worktree 下）、本轮 iter 编号、**spec 文件绝对路径（在主 worktree 下，因为 .specs/ gitignored、sub-worktree 没有 spec）**。planner 改 spec 主文件、不修 sub-worktree 的 feedback 文件
+4. spec 更新后 → 用户拍板 → 主 agent 决定下一步：
+   - 该组单独重做（其他组结果保留；重做时 generator 在 sub-worktree 内继续读主 worktree 的 spec）
    - 整组重新分组（如果 planner 重划了）→ 清理所有 sub-worktree 重来
 
 ### 阶段 2.5: review-fix 循环

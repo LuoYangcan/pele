@@ -548,6 +548,55 @@ Agent({
 
 > 串行模式（2A）下不存在阶段 5 —— 阶段 3A 的 executor 已经在 review-fix 后跑过（见阶段 2.5 时机说明），不需要重复。
 
+## 主 agent / planner / generator 在 §8 进度状态上的写权限边界
+
+§8（TODO/DOING/DONE）**默认**是 generator 的写权限：
+
+- ✅ generator: 每完成一个 task，把对应行从 TODO 移到 DONE。这是日常完成度迁移
+- ❌ planner: 默认不动 §8（避免 planner 与 generator 在同一节互相覆盖）
+- ❌ 主 agent: 默认不动 §8（按本 rule「主 agent 绝对不能做的事」第 2 条）
+
+但下面两种场景下，**planner 必须改 §8**（这是**计划性结构改动**、不是完成度迁移、不算抢 generator 写权限）：
+
+### 场景 A: 用户决策导致已 DONE task 范围扩大（task 拆分）
+
+**触发**：用户在阶段 1.5 / 2 / 2.5 / 3 给的决策让一个**已 DONE** 的 task 范围扩大（例：原 task-5 = "POST 阶段失败"，用户决策 B 后扩成 "POST + commit 时机 + sidecar"，但 task-5 已经在 §8 标了 DONE）。
+
+planner 必须做：
+
+1. §2 把原 task 拆成 task-Na（已 DONE 子范围）+ task-Nb（待做新增子范围）
+2. §8 同步：task-N 行 → 删除；新增 task-Na 标 DONE、task-Nb 标 TODO
+3. 在 §8 段头加一行校准说明：`§8 校准说明（YYYY-MM-DD iter-N 处理）：本节由 planner 因 task 拆分破例修改一次。日常完成度迁移仍由 generator 自己写。`
+
+### 场景 B: 旧 task 被用户决策完全移出 scope（task 删除）
+
+**触发**：用户决策让某 task 完全不再做。
+
+planner 必须做：
+
+1. §2 给该 task 行加删除线 + 一句说明（保留审计痕迹）
+2. §8 同步：从 TODO/DOING/DONE 任一段把该 task 行**删掉**（不留删除线 —— §8 是状态视图、删除线行是噪声）
+
+### 主 agent 调 planner 时的 checklist
+
+调 planner 走场景 A / B 时，prompt 里**必须显式**点出：
+
+- 触发场景（用户决策 / generator 反馈）+ 用户原话
+- 受影响的 task ID 列表
+- 期望 planner 做的 §8 改动（拆 / 删 / 状态调整）+ 明确写「主 agent 与用户特批 planner 改 §8」
+
+不要让 planner 自己猜「这次能不能改 §8」—— 主 agent 显式授权 planner 才动。
+
+### Generator 启动前 §8 漂移自救（不停手等指令）
+
+generator 启动前发现 §8 ↔ §2 / §7 不一致时，**§2 是真相源**，按下面处理（详见 `~/.claude/agents/generator.md` Step 1.5）：
+
+- §2 列了 task 但 §8 缺 → 自己加进 §8 TODO 继续干
+- §8 标 DONE 但 §7 进度记录说"未完成" → 自己退回 DOING 继续干
+- §8 有 task 但 §2 没列 → 这是真冲突 → 跑 Step 4 不确定流程（让 planner 处理）
+
+前两种是漂移、自救即可，**不要**写 feedback 文件停手；第三种才是真不确定。这条是为避免 planner / generator 双方退守 SOP 边界 → §8 漂移没人改 → 死锁。
+
 ## 主 agent **绝对不能**做的事
 
 - ❌ Edit / Write / NotebookEdit 任何代码文件 —— 一律走 generator

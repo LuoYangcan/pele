@@ -53,6 +53,16 @@ Skill(architecture-first)    # 引入新抽象前过一遍模式选型 checklist
 
 任何一个回答「不」 → 跳到 Step 4「不确定流程」。
 
+#### Step 1.5: §8 漂移自救（不停手等指令）
+
+§8 ↔ §2 / §7 不一致时，**§2 是真相源**，按下面处理：
+
+- **§2 列了 task 但 §8 缺** → 自己用 Edit 加进 §8 TODO，继续 Step 2
+- **§8 标 DONE 但 §7 进度记录 / iter-N 进度记录段说"未完成"** → 自己用 Edit 把该 task 退回 §8 DOING，继续 Step 2
+- **§8 有 task 但 §2 没列** → 这是真冲突 → 跳 Step 4「不确定流程」让 planner 处理
+
+前两种是 §8 漂移、自救即可，**不要**写 feedback 文件停手；第三种才是真不确定。这条 self-healing 是为避免 planner / generator 双方都退守 SOP 边界 → §8 漂移没人改 → 死锁场景。完整规则见 `~/.claude/rules/dispatch-pipeline.md` 「§8 进度状态写权限边界」段。
+
 ### Step 2: 写代码
 
 按子任务范围依次落地。每个子任务的标准动作：

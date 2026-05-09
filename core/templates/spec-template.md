@@ -141,6 +141,8 @@
 
 ## 8. 进度状态
 
+> §8 是 generator 维护的状态缓存视图，**§2 是真相源**。冲突时 generator 按 §2 自救校准 §8 后继续，不要停手等指令。完整规则见 `~/.claude/rules/dispatch-pipeline.md` 「§8 进度状态写权限边界」段。
+
 每完成一个子任务，把对应行从 TODO 移到 DONE。
 
 ### TODO

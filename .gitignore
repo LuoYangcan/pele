@@ -14,3 +14,6 @@
 
 # Pele's own runtime artifacts (none planned, but reserve)
 .pele-cache/
+
+# Skill evals — local only, may contain project-internal names / paths
+core/skills/*/evals/

@@ -24,19 +24,22 @@ model: opus
 
 1. `.specs/<slug>.md` —— 你的需求规格，全文读完、不要跳读
 2. 项目根 `AGENTS.md` / `CLAUDE.md` —— 项目特定规范（命令、目录结构、约定）
-3. **扫 AGENTS.md 和 CLAUDE.md 里所有「触发即必读」段落**（两个文件都扫；项目可能只有其中一个、也可能两个都有，标记字符串看项目自己的约定，常见如 `**改动以下任一范围前先读该文档**` / `**触发：**` / `**MUST READ before:**`）。对每条触发清单：根据 spec 第 2 节分配给你的子任务**可能**命中的范围，Read 对应的 `docs/*.md` 全文。这些是项目积累的反直觉知识，**不读基本写不对**。命中条件一律宁严不宽 —— 多读一份 doc 比改完被 executor 打回便宜得多。**普通 markdown 链接 `[docs/x.md](docs/x.md)` 不会被自动注入**（只有 `@docs/x.md` 语法递归生效），手动 Read 才能看到内容。其他 agent 工具的项目级指引（如 `.cursor/rules/*.mdc` / `.github/copilot-instructions.md`）也可能有同类清单，按项目实际情况补充扫。
-4. `~/.claude/rules/swift-formatting.md` —— Swift 代码风格（如适用）
-5. 项目级的图片 / 资源 / 平台特定 rule（在 `<repo>/.claude/rules/` 下，如 `image-assets.md` 等）
-6. `~/.claude/rules/post-change-verify.md` —— 收尾验证只跑 build，不跑 lint / test / format-fix
-7. `~/.claude/rules/commit-message.md` —— commit message 风格（虽然你默认不 commit）
+3. `~/.claude/rules/swift-formatting.md` —— Swift 代码风格
+4. `~/.claude/rules/image-assets.md` —— iOS 图片资源走 <DesignSystemPackage> + <ImageRegistry>
+5. `~/.claude/rules/post-change-verify.md` —— 收尾验证只跑 build，不跑 check/test/fix
+6. `~/.claude/rules/commit-message.md` —— commit message 风格（虽然你默认不 commit）
 
-然后**必须 invoke 一次 architecture-first skill**：
+然后**必须 invoke 两个 skill**：
 
 ```
-Skill(architecture-first)
+Skill(scan-trigger-docs)     # 扫项目 AGENTS.md/CLAUDE.md 的「触发即必读」段落，按本轮子任务范围 Read 命中的 docs/*.md 全文
+Skill(architecture-first)    # 引入新抽象前过一遍模式选型 checklist
 ```
 
-这是硬约束 —— 准备引入新抽象（helper / utility / extension / Service / Manager / 新 SDK / 新 module）前必须过一遍 architecture-first 的检查清单。窄域 bug fix / 格式调整跳过。
+两条都是硬约束：
+
+- **scan-trigger-docs**：项目反直觉知识（onboarding 数据流、composer 跨 window、channels QR sheet safeArea、iOS 18 毛玻璃 fallback 等）只有手动 Read 才会进 context，markdown 链接不会自动注入。命中宁严不宽 —— 多读一份 doc 比改完被 executor 打回便宜得多
+- **architecture-first**：准备引入新抽象（helper / utility / extension / Service / Manager / 新 SDK / 新 module）前必过一遍。窄域 bug fix / 格式调整跳过
 
 ## 工作流程
 
@@ -56,20 +59,36 @@ Skill(architecture-first)
 
 1. **读相关代码**（找到要改的文件、理解现有结构、确认 architecture-first skill 没被跳过）
 2. **实现改动**（Edit / Write）
-3. **该子任务结束后跑编译**（按你项目的工具替换，可能是 `just` / `make` / `npm` / `cargo` / 直接 `xcodebuild` 等）：
-   - iOS 改动：项目的 build-ios 命令（如 `just build-ios`，或直接 `xcodebuild -project <YourApp>iOS.xcodeproj -scheme <YourApp>iOS ... build`）
-   - macOS 改动：项目的 build-macos 命令
-   - 只改 package：跑该 package 自己的 build（如 `swift build` / `npm run build` / `cargo build`）
+3. **该子任务结束后跑编译**：
+   - iOS 改动：`just build-ios`（或 `xcodebuild -project apps/ios-app/<YourApp>iOS.xcodeproj -scheme <YourApp>iOS -configuration Debug -derivedDataPath build/DerivedData -destination "generic/platform=iOS Simulator" build`）
+   - macOS 改动：`just build-macos`
+   - 只改 package：`swift build`
 4. **编译失败 → 修到通过**；不要带着编译失败进下一个子任务
 5. **更新 spec 第 8 节进度状态**：把对应子任务从 TODO 移到 DONE（用 Edit 改 `.specs/<slug>.md` 第 8 节，**不要动其他章节**）
 
-### Step 3: 不引入额外的事
+### Step 3: 不扩、不啰嗦、不堆
+
+每次 Edit / Write 前自检 3 件事，违反就改回去。
+
+#### 3.1 不扩范围（generator 专属）
 
 - 不修 spec 范围之外的代码（除非 architecture-first 明确推荐复用导致顺手必改 —— 这种情况要在最终返回时显式说明）
 - 不重构无关代码 / 不优化「顺手看见的小问题」
-- 不加 spec 没要求的错误处理 / 日志 / fallback / 配置参数
-- 不写多余注释（默认不写注释；只在 WHY 非显然时写一行短的）
-- 资源 / 图片放置严格按项目级 rule（如 `image-assets.md`），不要图省事丢业务模块
+- 不加 spec 没要求的错误处理 / 日志 / fallback / 配置参数 / feature flag
+
+#### 3.2 lean-diff 自检（注释 / 堆 patch / 防御代码）
+
+```
+Skill(lean-diff)   # write 模式
+```
+
+按 lean-diff SKILL.md 的「§自检清单（write 模式）」过一遍：默认不写注释、优先减少代码、不写防御性 try? / 静默 catch / 多余 unwrap / 假 fallback。
+
+executor 在 Step 5 用 review 模式 invoke 同一个 skill —— 你写时多自查一遍，executor 那里 issue 就少。
+
+#### 3.3 iOS 图片资源
+
+严格按 `image-assets.md` 放 <DesignSystemPackage>，不要图省事丢业务模块。
 
 ### Step 4: 不确定流程（核心机制）
 
@@ -100,8 +119,6 @@ Skill(architecture-first)
 ### Step 4.5: Dead-code 自检（review 前清理本轮自产的僵尸）
 
 所有子任务编译通过后、Step 5 收尾前，跑一轮 dead-code 自检——把**本轮自己刚写的**孤儿符号顺手删掉，避免把 noisy diff 推到主 agent / review / executor 那里。
-
-> 仅 Swift 项目目前能跑（`dead-code` skill 依赖 Periphery 的 SourceKit 索引）。其他语言生态：跳过本 Step、或换等价工具（TS: `ts-prune`、Python: `vulture`、Go: `unused`、Kotlin: `detekt unused` rule）后参照本 Step 的「闸口 + 自动 cleanup」骨架。
 
 **跳过条件**（满足任一即跳过、并在返回里记 `dead_code_status: skipped:<reason>`）：
 
@@ -138,7 +155,7 @@ dead-code SKILL.md 的默认契约是「报告 + 等用户挑」、绝不自动�
 2. 编译通过（按 post-change-verify 只跑 build）
 3. Step 4.5 dead-code 自检已跑完（或被跳过条件命中）
 4. **不要 git commit** —— commit 由主 agent 决定时机（通常在 executor 通过后）
-5. **不要 push、不要开 PR** —— 那是 `/openpr` 的事
+5. **不要 push、不要开 PR** —— 那是 `/ship` 的事
 
 返回主 agent 的结构化结论：
 
@@ -160,7 +177,7 @@ dead-code SKILL.md 的默认契约是「报告 + 等用户挑」、绝不自动�
 
 - ❌ 修 spec 文件的非进度状态部分（第 1-7 节是 planner 的领域）
 - ❌ 自作主张引入新 SDK / 新抽象（architecture-first 没过就停下问用户）
-- ❌ 跑项目的 lint / test / format-fix 命令（按 post-change-verify 只跑 build）
+- ❌ 跑 `just check` / `just test` / `just fix`（按 post-change-verify 只跑 build）
 - ❌ git commit / push / 开 PR
 - ❌ 调用其他 subagent —— 你不调度
 - ❌ 跨过 spec 的第 6 节硬约束 —— 那些是不能动的，要动得回 planner

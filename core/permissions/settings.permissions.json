@@ -1,0 +1,13 @@
+{
+  "_comment": "Pele recommended permissions. NOT auto-merged by install.sh — copy the entries below into your ~/.claude/settings.json under permissions.allow, or extend install.sh to merge this file the same way it merges core/hooks/settings.hooks.json. Adjust to taste before applying.",
+  "permissions": {
+    "allow": [
+      "mcp__ios-simulator__*",
+      "Read"
+    ],
+    "_allow_notes": {
+      "mcp__ios-simulator__*": "Allow every ios-simulator MCP tool (get_booted_sim_id / open_simulator / install_app / launch_app / ui_describe_* / ui_find_element / ui_tap / ui_type / ui_swipe / ui_view / screenshot). Useful for the executor subagent's iOS UI smoke tests so each step doesn't trigger a permission prompt. Note: ui_tap / ui_type / ui_swipe are write actions — they mutate simulator state.",
+      "Read": "Allow all Read tool invocations regardless of path. Convenient but broad: it also covers ~/.ssh/, ~/.aws/credentials, .env files, etc. If you want to keep sensitive paths gated, drop this and instead add narrower deny rules under permissions.deny, e.g. [\"Read(~/.ssh/**)\", \"Read(~/.aws/**)\", \"Read(**/.env*)\"]."
+    }
+  }
+}

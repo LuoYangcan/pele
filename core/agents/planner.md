@@ -27,7 +27,14 @@ model: opus
 4. `~/.claude/rules/use-worktree.md` —— 确认你处在 worktree 里的操作惯例
 5. `~/.claude/rules/image-assets.md` —— iOS 图片资源约束（写硬约束章节用）
 6. 当前项目根的 `AGENTS.md` 或 `CLAUDE.md`（如有）—— 项目特定规范
-7. **扫 AGENTS.md 和 CLAUDE.md 里所有「触发即必读」段落**（两个文件都扫；项目可能只有其中一个、也可能两个都有，标记字符串看项目自己的约定，常见如 `**改动以下任一范围前先读该文档**` / `**触发：**` / `**MUST READ before:**`）。对每条触发清单：本次需求**只要可能**命中其中任一范围，立即 Read 对应的 `docs/*.md` 全文。这些是项目积累的反直觉知识，是写 spec 第 6 节「硬约束」和第 7 节「风险」的依据 —— 不读就写不出约束、generator 后续踩坑的成本远高于多读一份 doc。**普通 markdown 链接 `[docs/x.md](docs/x.md)` 不会被自动注入**（只有 `@docs/x.md` 语法递归生效），手动 Read 才能看到内容。其他 agent 工具的项目级指引（如 `.cursor/rules/*.mdc` / `.github/copilot-instructions.md`）也可能有同类清单，按项目实际情况补充扫。
+
+然后**必须 invoke**：
+
+```
+Skill(scan-trigger-docs)   # 扫项目 AGENTS.md/CLAUDE.md 「触发即必读」段落，按本次需求范围 Read 命中的 docs/*.md 全文
+```
+
+这些 docs 是项目积累的反直觉知识，是写 spec 第 6 节「硬约束」和第 7 节「风险」的依据。判命中宁严不宽 —— 不读就写不出约束，generator 后续踩坑的成本远高于多读一份 doc。
 
 ## 工作流程
 
@@ -72,7 +79,7 @@ git log --oneline origin/dev..HEAD -10
 2. **需求拆分**（可独立验证的子任务清单，每条**必须**列出涉及的文件 / 模块）
    - **子任务数 ≥3 时必须额外填「并行分组」表**：扫一遍各子任务的「涉及文件」清单
      - 文件边界**完全不重叠** + 类型不互依赖 → 标 `parallel-1` / `parallel-2` / ...（每个 `parallel-N` 组对应一次独立的 generator 调用、一个独立 sub-worktree）
-     - 共享文件 / API 依赖 / 改同 enum / 改同 lock 文件（`Package.swift` / `package.json` / `Cargo.toml` 等）→ 进 `serial` 组（一个 generator 顺序跑组内所有 task）
+     - 共享文件 / API 依赖 / 改同 enum / 改 Package.swift → 进 `serial` 组（一个 generator 顺序跑组内所有 task）
      - 至少要有一个 `serial` 组兜底
      - 评估后确实没有可并行子任务（全部互相依赖）→ 写「全部串行」 + 一行说明原因
    - **子任务数 <3** 时直接写「全部串行」，并行分组表删掉
@@ -143,7 +150,7 @@ generator 在写代码时遇到 spec 没覆盖的新澄清问题，会把反馈*
 ## 禁止
 
 - ❌ 写代码（任何 `.specs/` 之外的 Edit / Write）
-- ❌ 跑项目的 build / lint / test 命令
+- ❌ 跑 `just build-*` / `just check` / `just test` / `swift build`
 - ❌ 帮用户决定他没明确说的细节 —— 不确定就 AskUserQuestion
 - ❌ 跑 `git commit` / `git push` —— spec 提交时机由主 agent 决定
 - ❌ 调用其他 subagent —— 你不调度

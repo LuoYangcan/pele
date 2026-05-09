@@ -19,6 +19,7 @@ Drop-in install adds the following under `~/.claude/`:
 | **skills/** | `reuse-first` (search-existing-code-before-abstracting checklist) · `dead-code` (Periphery-backed zombie-symbol scanner for recent diff, with auto-cleanup hook in `generator` Step 4.5) |
 | **templates/** | `spec-template.md` (the structure planner writes) |
 | **hooks/** | Protected-branch guard · `spec-before-code` enforcement · per-prompt clarification reminder |
+| **permissions/** | `settings.permissions.json` — recommended `permissions.allow` entries (e.g. `mcp__ios-simulator__*`). **Not auto-merged** by `install.sh`; copy entries into your settings manually |
 
 Optional extras (gated by install flags):
 
@@ -54,6 +55,8 @@ cd ~/Developer/pele
    Editing files in `~/Developer/pele/core/...` takes effect immediately — no reinstall needed.
 2. **Backs up** any pre-existing files in `~/.claude/` to `~/.claude.backup-<timestamp>/` before linking. Nothing is destroyed.
 3. **Merges hooks** into `~/.claude/settings.json` using `jq`. Your `model`, `mcpServers`, `permissions`, and other keys are preserved. The pre-merge `settings.json` is also backed up.
+
+   For an optional starter set of recommended permissions (e.g. an `mcp__ios-simulator__*` allow-list so the executor's iOS UI smoke steps don't prompt for each tool call), see `core/permissions/settings.permissions.json` and copy the entries you want into your `~/.claude/settings.json`'s `permissions.allow` array. This file is **not** auto-merged.
 
 ### Requirements
 
@@ -138,6 +141,7 @@ Pele uses **symlinks**, so you customize by editing the source files in `~/Devel
 - Add a new subagent → `core/agents/<name>.md`, then reference it from a rule (e.g. `dispatch-pipeline.md`)
 - Add a slash command → `core/commands/<name>.md`
 - Add project-specific hooks → edit `~/.claude/settings.json` directly (your edits are preserved across re-installs as long as you don't touch the `.hooks` key Pele manages)
+- Add recommended permissions → edit `core/permissions/settings.permissions.json`, then copy entries into your `~/.claude/settings.json`'s `permissions.allow` (this file is not auto-merged by `install.sh`)
 - Disable a rule → just delete the symlink in `~/.claude/rules/` (or the source file in `~/Developer/pele/core/rules/`); the index in `CLAUDE.md` is progressive-disclosure, missing files are silently ignored
 
 For project-specific overrides (per-repo CLAUDE.md, per-repo hooks), use the standard Claude Code mechanisms in `<repo>/.claude/` — they layer on top of pele's globals.
@@ -174,7 +178,8 @@ pele/
 │   ├── commands/
 │   ├── skills/
 │   ├── templates/
-│   └── hooks/settings.hooks.json
+│   ├── hooks/settings.hooks.json
+│   └── permissions/settings.permissions.json   # recommended permissions, not auto-merged
 ├── figma-extras/            # --figma
 │   └── hooks/settings.hooks.json
 └── docs/

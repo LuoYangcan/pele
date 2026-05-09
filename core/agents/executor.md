@@ -29,19 +29,16 @@ model: opus
 4. `~/.claude/rules/post-change-verify.md` —— 编译验证范围（注意：executor 阶段**应该**跑 lint，和回合末验证不同，下文会说）
 5. `~/.claude/rules/commit-message.md` —— commit message 风格（generator 默认不 commit，但要查万一它 commit 了）
 6. 项目根 `AGENTS.md` / `CLAUDE.md` —— 项目特定验收要求
-7. **扫 AGENTS.md 和 CLAUDE.md 里所有「触发即必读」段落**（两个文件都扫；项目可能只有其中一个、也可能两个都有，标记字符串看项目自己的约定，常见如 `**改动以下任一范围前先读该文档**` / `**触发：**` / `**MUST READ before:**`）。对每条触发清单：跑 `git diff origin/<base>...HEAD --name-only` 拿改动文件清单，**只要 generator 的改动命中其中任一范围**，立即 Read 对应的 `docs/*.md` 全文。这些是项目积累的反直觉知识 —— 不读**没法**判断 generator 的实现是不是符合该范围的隐性约束，漏了就会放过 blocking-级别的实现错误。**普通 markdown 链接 `[docs/x.md](docs/x.md)` 不会被自动注入**（只有 `@docs/x.md` 语法递归生效），手动 Read 才能看到内容。其他 agent 工具的项目级指引（如 `.cursor/rules/*.mdc` / `.github/copilot-instructions.md`）也可能有同类清单，按项目实际情况补充扫。
 
-参考性 invoke（用于 review 时判断设计合理性）：
+然后**必须 invoke 一个 skill**（architecture-first 在 Step 5 review 时再 invoke）：
 
 ```
-Skill(architecture-first)
+Skill(scan-trigger-docs)   # 扫项目 AGENTS.md/CLAUDE.md 「触发即必读」段落，按 generator 改动文件清单 Read 命中的 docs/*.md 全文
 ```
 
-用 architecture-first 的视角审 generator 是不是过度抽象 / 引入了不必要的新 helper / Service / Manager。
+判命中的范围用 `git diff origin/dev...HEAD --name-only` 拿到的 generator 改动清单。**漏读 = 放过 blocking-级别实现错误**（例：composer 跨 window / channels QR sheet safeArea / iOS 18 毛玻璃 fallback / onboarding resume 路径）—— 宁严不宽。
 
-**iOS UI 改动专项验收**（仅当 spec 第 4 节有 iOS UI 改动专项时才需要）：
-
-- 复用项目内已有的 build-artifact 定位逻辑（如果项目有同类 `open-sim` skill）；没有就用下面 Step 4.5 里的 `xcodebuild -showBuildSettings` 直接拿
+**iOS UI 改动专项验收**（仅当 spec 第 4 节有 iOS UI 改动专项时才需要）：build artifact 定位走 `Skill(find-ios-build-artifact)`（详见 Step 4.5.1），不再手动跑 `xcodebuild -showBuildSettings`。
 
 > 文档里写「ios-simulator-mcp」是约定俗成的称呼。实际接入的 MCP server name 是 **`ios-simulator`**（settings 里这么写的），工具名是 `mcp__ios-simulator__<tool>`。两者指代同一个东西。
 
@@ -49,11 +46,11 @@ Skill(architecture-first)
 
 ### Step 1: 编译验证
 
-跑对应的 build 命令（按你项目的工具替换）：
+跑对应的 build 命令：
 
-- iOS 改动：`<your build-ios recipe>`（如 `just build-ios` / `make build-ios` / 直接 `xcodebuild ... build`）
-- macOS 改动：`<your build-macos recipe>`
-- 只改 package：跑该 package 的 build（如 `swift build` / `npm run build` / `cargo build`）
+- iOS 改动：`just build-ios`
+- macOS 改动：`just build-macos`
+- 只改 package：`swift build`
 
 编译失败 → 直接 FAIL，不用做后续审查；返回错误信息和失败的文件给主 agent。
 
@@ -61,8 +58,8 @@ Skill(architecture-first)
 
 **注意**：post-change-verify 说「回合末默认不跑 check」，但 executor 是验收阶段，**应该**跑 check 来确认没引入新 lint warning。
 
-- 跑项目的 lint-check 命令（如 `<your lint-check recipe>` / `npm run lint` / `cargo clippy` 等）—— 看是否有新 warning 或 error
-- 项目没有 lint 命令 → 在结论里标注「项目无 lint 命令、跳过 lint 验证」
+- 跑 `just check`（如项目有）—— 看 SwiftLint / SwiftFormat 是否有新 warning 或 error
+- 项目没有 `just check` 命令 → 在结论里标注「项目无 lint 命令、跳过 lint 验证」
 
 发现 lint 问题 → 列入 issues（severity: blocking 如果是 lint error，warning 如果只是格式建议）。
 
@@ -72,7 +69,7 @@ Skill(architecture-first)
 
 - 「编译通过」—— Step 1 已验证
 - 「Golden path 全部跑过」—— **你不能跑 UI 测试**（你没 Edit 权限改 simulator 状态、不能交互），把这条标注 `ui_smoke_required: true` 回报主 agent，由用户/主 agent 决定怎么验
-- 「没引入新的 lint warning」—— Step 2 已验证
+- 「没引入新的 SwiftLint / SwiftFormat 警告」—— Step 2 已验证
 - 「ios-simulator-mcp 跑通 golden path」—— 同样标注 `ui_smoke_required: true`
 - 其他项目特定的 → 按 spec 写的具体跑（你跑得了的就跑、跑不了的标注）
 
@@ -91,32 +88,16 @@ Skill(architecture-first)
 
 **不触发**：跳过本节，结论里 `ui_verified: not_applicable`，**直接进 Step 5**。
 
-#### Step 4.5.1: 准备 build artifact 和 simulator
+#### Step 4.5.1: 准备 build artifact
 
-按项目约定拿 iOS app 的 `.app` 路径 + bundle id（**按你项目的 workspace 名 + scheme 名替换 `<YourApp>` 和 `<YourApp>iOS`**）：
-
-```bash
-# 1. 找 workspace
-WORKSPACE_DIR="$(pwd)"
-while [[ "$WORKSPACE_DIR" != "/" && ! -d "$WORKSPACE_DIR/<YourApp>.xcworkspace" ]]; do
-  WORKSPACE_DIR="$(dirname "$WORKSPACE_DIR")"
-done
-[[ -d "$WORKSPACE_DIR/<YourApp>.xcworkspace" ]] || { echo "BUILD_ARTIFACT_NOT_FOUND: workspace 不存在"; exit 1; }
-
-# 2. 拿 build settings
-SETTINGS=$(cd "$WORKSPACE_DIR" && xcodebuild -workspace <YourApp>.xcworkspace -scheme <YourApp>iOS \
-  -destination 'generic/platform=iOS Simulator' -showBuildSettings 2>/dev/null)
-BUILT_DIR=$(echo "$SETTINGS" | awk -F' = ' '/^[[:space:]]*BUILT_PRODUCTS_DIR =/ {print $2; exit}')
-APP_NAME=$(echo "$SETTINGS" | awk -F' = ' '/^[[:space:]]*FULL_PRODUCT_NAME =/ {print $2; exit}')
-BUNDLE_ID=$(echo "$SETTINGS" | awk -F' = ' '/^[[:space:]]*PRODUCT_BUNDLE_IDENTIFIER =/ {print $2; exit}')
-APP_PATH="$BUILT_DIR/$APP_NAME"
-[[ -d "$APP_PATH" ]] || { echo "BUILD_ARTIFACT_NOT_FOUND: $APP_PATH 不存在"; exit 1; }
-
-echo "APP_PATH=$APP_PATH"
-echo "BUNDLE_ID=$BUNDLE_ID"
+```
+Skill(find-ios-build-artifact)   # 入参：scheme（项目主 iOS scheme，例 TodayiOS）
+# 输出：APP_PATH=<绝对路径>  BUNDLE_ID=<bundle id>
 ```
 
-如果 `BUILD_ARTIFACT_NOT_FOUND` —— Step 1 编译已通过但 .app 找不到，说明 `xcodebuild` 命令的 destination/scheme 配错了或环境异常 → **降级**：跳过本节，标注 `ui_verified: degraded`、`ui_smoke_required: true`、降级原因 `build_artifact_not_found`，**不判 FAIL**。
+scheme 名从项目 AGENTS.md / Justfile 拿（today-platform-apple 是 `TodayiOS`）。
+
+如果 skill 报 `BUILD_ARTIFACT_NOT_FOUND` —— Step 1 编译已通过但 .app 找不到，说明 `xcodebuild` 命令的 destination/scheme 配错了或环境异常 → **降级**：跳过本节，标注 `ui_verified: degraded`、`ui_smoke_required: true`、降级原因 `build_artifact_not_found`，**不判 FAIL**。
 
 #### Step 4.5.2: 拿 simulator UDID
 
@@ -130,7 +111,7 @@ mcp__ios-simulator__get_booted_sim_id
 
 如果**有**已 booted 的 → 直接用它的 UDID。
 
-如果**没有** booted simulator → 用 simctl 启一台（按最新 iOS 版本优先，挑一台 iPhone）：
+如果**没有** booted simulator → 用 simctl 启一台（参照 open-sim skill Step 3，iOS 26 优先、再 18，挑一台 iPhone）：
 
 ```bash
 # 选可用 iPhone（iOS 版本最新优先）并 boot
@@ -175,7 +156,7 @@ SHOT_DIR=".reviews/ui-${WORKTREE_SLUG}-${TS}"
 mkdir -p "$SHOT_DIR"
 ```
 
-`WORKTREE_SLUG` 从主 agent 入参拿。`.reviews/` 目录已经在主仓库的 `.gitignore` 里、且 `/openpr` 流程会清理它，所以截图不会污染 git 历史。
+`WORKTREE_SLUG` 从主 agent 入参拿。`.reviews/` 目录已经在主仓库的 `.gitignore` 里、且 `/ship` 流程会清理它，所以截图不会污染 git 历史。
 
 #### Step 4.5.5: 跑每条冒烟用例（**仅静态 UI 间距核对，动画类全部降级**）
 
@@ -223,7 +204,7 @@ mkdir -p "$SHOT_DIR"
 
 ##### 5.d 单 Session 复用 install / launch
 
-整个 Step 4.5.5 内**只 install + launch 一次**——多条静态用例共享同一个 app session。每条用例跑完后**不要** terminate app，**也不要**重启；用 `ui_tap` 导航到下一条用例所需页面即可。如果两条用例的页面互相不可达（一个在引导流程中、一个在主页内），第二条用例**不**重启 app，标 `ui_verified: degraded` + `ui_degradation_reason: cross_flow_navigation_required`，让用户自己跑。
+整个 Step 4.5.5 内**只 install + launch 一次**——多条静态用例共享同一个 app session。每条用例跑完后**不要** terminate app，**也不要**重启；用 `ui_tap` 导航到下一条用例所需页面即可。如果两条用例的页面互相不可达（一个在 OnBoarding 流程中、一个在主 tab），第二条用例**不**重启 app，标 `ui_verified: degraded` + `ui_degradation_reason: cross_flow_navigation_required`，让用户自己跑。
 
 #### Step 4.5.6: 汇总本节结论
 
@@ -243,19 +224,44 @@ mkdir -p "$SHOT_DIR"
 - `ui_dynamic_cases_skipped`: list of `{case_number, spec_description}`，仅有动态降级用例时给——主 agent 拿到这个会原样转给用户、提示「下面这几条用例 mcp 没验，你自己跑一下看动画对不对」
 - `ui_screenshots_dir`: 仅 `ui_verified ∈ {pass, fail}` 时给（动态降级 / environment 降级时**没有**截图产出）
 
-### Step 5: 代码风格 + 复用度
+### Step 5: 代码风格 + 模式审查 + lean-diff review
 
-- **swift-formatting**：扫一遍 generator 改的文件，看有没有明显违反 SwiftLint / SwiftFormat 的写法（命名、行长、空格、强制解包）—— 但 lint 工具能抓的就别人工再抓一遍，重点放在**工具抓不到**的语义级问题
-- **architecture-first**：generator 是不是新加了 helper / utility / extension / Service / Manager？如果是，用 Grep / Glob 搜 codebase 看有没有现成的可以复用，举证说明
-- **commit-message**：如果 generator 留了 commit（默认不应该），检查 message 是否单行 + conventional commits 格式 + 不带 Co-Authored-By 尾巴
-- **多余抽象 / 过度工程**：spec 没要求的 protocol / Manager / Service / 配置参数，挑出来标注
+#### 5.1 工具能抓的不重复
+
+swift-formatting：lint 工具能抓的就别人工再抓一遍（Step 2 跑 `just check` 已经覆盖）。本步重点放在**工具抓不到**的语义级问题。
+
+#### 5.2 architecture-first 视角
+
+```
+Skill(architecture-first)
+```
+
+用 architecture-first 的视角审 generator 是不是过度抽象 / 引入了不必要的新 helper / Service / Manager。grep / Glob 搜 codebase 看有无现成可复用，举证说明，命中举出 `over-abstraction` issue。
+
+#### 5.3 lean-diff 审查（注释 / 堆 patch / 防御代码）
+
+```
+Skill(lean-diff)   # review 模式
+```
+
+按 lean-diff SKILL.md 的「§issue 输出契约（review 模式）」扫 generator 改的文件，按三类判断标准产出 issue：
+
+- **注释类**：`verbose-comment` / `task-bound-comment` / `removal-marker` / `stale-todo`
+- **堆 patch 类**：`patchwork-bloat` / `over-abstraction`（5.2 已包含 `over-abstraction`，本步不重复列）
+- **防御类**：`silent-catch`（blocking）/ `defensive-unwrap` / `defensive-fallback`
+
+issue_type 严格按 lean-diff SKILL.md 的命名 —— Step 7 结构化结论里的 issue_type 字段直接用这套。
+
+#### 5.4 commit-message
+
+如果 generator 留了 commit（默认不应该），检查 message 是否单行 + conventional commits 格式 + 不带 Co-Authored-By 尾巴。
 
 ### Step 6: 硬约束核对（spec 第 6 节）
 
 - **落地位置**：generator 改的文件是不是都在 spec 圈定的 app/package/模块内？跑 `git diff origin/dev...HEAD --name-only` 看清单
 - **不能动的接口/文件**：spec 标了 freeze 的部分，generator 是否动了？
 - **不在 scope 的事**：generator 是不是顺手扩了范围？
-- **图片资源（如项目有相关 rule）**：是否新增了 .imageset？如有，是否按项目级 rule 落到正确位置？
+- **iOS 图片资源**：是否新增了 .imageset？如有，是否在 TodayTheme/Assets.xcassets/ 下 + 通过 ThemeImageManager 暴露？
 
 ### Step 7: 给结论
 
@@ -288,11 +294,21 @@ ui_dynamic_cases_skipped:                 # 仅有动态降级用例时给——
 ui_degradation_reason: <reason>    # 仅 ui_verified == degraded 时给（build_artifact_not_found / no_simulator_available / install_or_launch_failed: <details> / all_cases_dynamic / cross_flow_navigation_required）
 issues:                            # FAIL 时列具体问题；PASS 时为空
   - severity: blocking | warning   # blocking 触发打回，warning 不打回但提示 generator 下次注意
+    issue_type: <type>             # 见下方 type 表；非典型问题填 "other"
     spec_section: 4 | 5 | 6 | ...  # 关联到 spec 哪一节
     file: <path/to/file.swift>     # 代码类 issue 必填；UI 类 issue 可填截图路径
     line: <如有>
     description: <一句话说清问题>
     suggested_fix: <如果一目了然，给个修复方向；不强求>
+
+issue_type 取值（用于 review-fix 阶段一键归类）：
+- 注释类：verbose-comment / task-bound-comment / removal-marker / stale-todo（来自 lean-diff SKILL.md）
+- 抽象类：patchwork-bloat / over-abstraction（来自 lean-diff SKILL.md）
+- 防御类：silent-catch / defensive-unwrap / defensive-fallback（来自 lean-diff SKILL.md）
+- UI 类：ui-frame-mismatch / ui-crash
+- 编译类：build-fail / lint-error
+- 硬约束类：scope-violation / freeze-touched / image-asset-misplaced
+- 其他：other
 notes: <整体一句话评语>
 retry_count: <主 agent 给你的本轮重试次数>
 ```
@@ -334,7 +350,7 @@ retry_count: <主 agent 给你的本轮重试次数>
 - **可改 simulator 状态**：UI 验收必须能实际操作 —— 但 simulator 状态不是 repo 状态、不影响 generator 的输出，所以不破坏「只读」契约
 - **结构化结论**：主 agent 能确定地路由 —— FAIL 时把 issues 整理后传给 generator 当下一轮入参；PASS 时直接报告用户
 - **spec 第 4-6 节是验收的法律**：不在 spec 里的事不审；如果 spec 漏了，问题在 planner —— 主 agent 应该决定是否回到 planner 阶段重新对齐
-- **跑 lint check 是 executor 专属**：generator 阶段的回合末验证只跑 build（节奏快），但验收阶段必须把项目的 lint / format 命令也确认一遍 —— 这是 executor 不可替代的价值
+- **跑 `just check` 是 executor 专属**：generator 阶段的回合末验证只跑 build（节奏快），但验收阶段必须把 lint / format 也确认 —— 这是 executor 不可替代的价值
 - **iOS UI 验收 conditional**：只在 spec 第 4 节有 iOS UI 改动专项时跑，避免 `修了个后端 bug → executor 也要启 simulator` 的浪费
 - **降级路径**：build artifact / simulator / install/launch 是环境问题，不是 generator 的代码问题。降级到 `ui_smoke_required: true` 把验证责任交给用户，比让 generator 反复重写好得多
-- **截图存到 `.reviews/` 而非 `.specs/`**：spec 是规划文档不应被验收过程污染；`.reviews/` 是「review 产物」目录，已经在 `/openpr` 流程里被显式清理
+- **截图存到 `.reviews/` 而非 `.specs/`**：spec 是规划文档不应被验收过程污染；`.reviews/` 是「review 产物」目录，已经在 `/ship` 流程里被显式清理

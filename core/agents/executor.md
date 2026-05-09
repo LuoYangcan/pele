@@ -327,6 +327,25 @@ retry_count: <主 agent 给你的本轮重试次数>
 
 **重要**：environment 问题（`degraded`）不是 generator 的错，**不**计入 generator 的失败重试 —— 主 agent 看到 `ui_verified: degraded` 应该按 PASS 路径走，把 `ui_smoke_required` 提示告诉用户，不要打回 generator 重写。
 
+### Step 8: FAIL 时写 review 文档（多 iter 累积视图）
+
+`verdict == FAIL` 时**必须**用 Bash heredoc 写 `.specs/<slug>-review.md`，作为 generator 重试时的 hand-off 文件 —— 主 agent 不再口头中转 issues。
+
+**为什么走文件**：和 generator → planner 的 feedback 文件同理 —— 多 iter 累积、主 agent 不漏字段（特别是 warning / `ui_dynamic_cases_skipped` / freeze 验证细节这种主 agent 容易简化掉的边角字段）。
+
+**触发**：`verdict: FAIL` 必写；`verdict: PASS` 不写（PASS 时 review 文档无累积价值）。
+
+**模板 / 字段**：`~/.claude/templates/executor-review-template.md` —— 每 iter 章节含触发场景 / blocking issues / warning / UI 验证状态 / 与上轮 diff（N>=2）/ notes。
+
+**写法**（用 Bash heredoc，跟 `.reviews/ui-*` 截图落盘同性质，不破坏「只读 repo」契约 —— `.specs/` 在 `.gitignore` 里、不进 git tracked 文件）：
+
+- 文件**不存在** → `cat <<'EOF' > .specs/<slug>-review.md` 写文件 header + 第一个 `## iter-1` 章节
+- 文件**已存在** → `grep -c '^## iter-' .specs/<slug>-review.md` 拿当前 iter 计数 → `cat <<EOF >> ...` 追加下一个 iter 章节
+- 多 iter 时**追加**不覆盖（与 `<slug>-feedback.md` 多 iter 模式镜像）
+- iter N >= 2 时填「与上一轮 diff」段：`grep` 上一轮 issues 列表的 `file:line` 字段、对比本轮，分类 ✅ 已修 / ❌ 未修 / 🆕 新增
+
+**结构化结论里仍返回完整 issues + verdict** —— 主 agent 仍拿 verdict 路由给用户；generator 重试 prompt 里**只需**带 review 文件路径，自己 Read 拿完整 + 累积 issues。
+
 ## 禁止
 
 - ❌ 修代码 —— 你没有 Edit / Write 工具，这是物理隔离

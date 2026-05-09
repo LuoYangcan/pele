@@ -492,9 +492,9 @@ done
 i = 1
 while i <= 3:
     调 generator，prompt 里追加：
-      - executor 上轮的 issues 列表
+      - **review 文件绝对路径**: `.specs/<slug>-review.md`（executor 在 FAIL 时已写，含完整 issues + 多 iter 累积视图）
       - 本轮是第 i 次重试 / 共 3 次
-      - 显式说「请按 issues 修复，不要扩大改动范围」
+      - 显式说「请 Read review 文件拿完整 issues + 上轮 status diff，按 issues 修复，不要扩大改动范围」
     generator 返回 → 调 executor (retry_count = i)
     if executor.verdict == PASS: break
     i += 1
@@ -512,6 +512,8 @@ if i > 3:
 ```
 
 **不要超过 3 次**自动重试 —— 一直失败说明问题不在代码、是规划或理解层面，需要人介入。
+
+> **为什么 generator prompt 里指 review 文件路径而不是中转 issues 文本**：和阶段 2 generator → planner feedback 文件同理 —— 多 iter 累积、主 agent 不漏字段。详见 `~/.claude/agents/executor.md` Step 8。
 
 #### 并行模式下的 scope 限定
 

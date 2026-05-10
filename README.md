@@ -13,10 +13,10 @@ Drop-in install adds the following under `~/.claude/`:
 | Layer | Contents |
 |---|---|
 | **CLAUDE.md** | Top-level index that progressively discloses rules / skills / agents on demand |
-| **rules/** | `dispatch-pipeline` · `use-worktree` · `spec-before-code` · `iteration-checkpoint` · `parallel-subagents` · `post-change-verify` · `commit-message` · `swift-formatting` |
+| **rules/** | `dispatch-pipeline` · `spec-before-code` · `iteration-checkpoint` · `parallel-subagents` · `post-change-verify` · `commit-message` · `swift-formatting` (`use-worktree` is now a skill — see below; `rules/use-worktree.md` is a stub redirect) |
 | **agents/** | `planner` · `generator` · `executor` (the three-stage pipeline) |
 | **commands/** | `/openpr` · `/review` · `/pr-review` |
-| **skills/** | `architecture-first` (pattern / architecture selection before adding abstraction) · `dead-code` (Periphery-backed zombie-symbol scanner for recent diff, with auto-cleanup hook in `generator` Step 4.5) · `scan-trigger-docs` (read project AGENTS.md trigger-on-touch docs; shared by all three subagents) · `lean-diff` (single source of truth for verbose-comment / patchwork-bloat / silent-catch judgments — write mode for `generator`, review mode for `executor`) · `find-ios-build-artifact` (locate iOS Simulator `.app` + bundle id via `xcodebuild -showBuildSettings`; used by `executor` UI smoke + project-level `open-sim`) |
+| **skills/** | `use-worktree` (new-topic worktree isolation; full SOP for fetch / branch / `<project-specific>` init steps) · `architecture-first` (pattern / architecture selection before adding abstraction) · `dead-code` (Periphery-backed zombie-symbol scanner for recent diff, with auto-cleanup hook in `generator` Step 4.5) · `scan-trigger-docs` (read project AGENTS.md trigger-on-touch docs; shared by all three subagents) · `lean-diff` (single source of truth for verbose-comment / patchwork-bloat / silent-catch judgments — write mode for `generator`, review mode for `executor`) · `find-ios-build-artifact` (locate iOS Simulator `.app` + bundle id via `xcodebuild -showBuildSettings`; used by `executor` UI smoke + project-level `open-sim`) |
 | **templates/** | `spec-template.md` (the structure planner writes) |
 | **hooks/** | Protected-branch guard · `spec-before-code` enforcement · per-prompt clarification reminder |
 | **permissions/** | `settings.permissions.json` — recommended `permissions.allow` entries (e.g. `mcp__ios-simulator__*`). **Not auto-merged** by `install.sh`; copy entries into your settings manually |

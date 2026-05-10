@@ -2,12 +2,28 @@
 
 下列规则是**按需加载**的指针，不预先注入正文。遇到匹配的触发信号时，用 Read 读取对应文件再应用；不匹配就不必读。
 
+## 每轮自检（写代码请求适用）
+
+收到会落地 Edit / Write / NotebookEdit 的请求时，按下面顺序自检：
+
+A) **澄清**（请求已经够清楚就跳过）—— 用 AskUserQuestion 问清：① 目标 ② 硬约束（落地位置 / 栈 / 不能动什么）③ 任何自己没理解 / 存疑的点
+
+B) **新话题进 worktree**（「新任务 / 另一个 / 接下来做 X」类信号）—— 第一次 Edit 前基于最新 origin/dev 建 worktree，**不要**用 `EnterWorktree(name=...)`（会继承当前 HEAD）：
+  ```
+  git fetch origin dev
+  git worktree add .worktrees/<slug> -b <type/scope-slug> origin/dev
+  EnterWorktree(path=.worktrees/<slug>)
+  # 项目特定：跑 worktree 初始化（生成 xcodeproj / npm install / build 等）
+  ```
+
+C) **回合 checkpoint**：同一需求卡 >3 回合用户仍不满 → 停下用 AskUserQuestion 问清；>7 回合 → 从头对齐方向（不要自动抛弃现有代码）。
+
+**不触发**：纯问答 / 读代码 / 查状态 / 改 meta 配置（rule、memory、hook、settings）。完整规则见下方索引、按需 Read。
+
 ## Workflow 规则
 
 - [dispatch-pipeline](rules/dispatch-pipeline.md) — **触发：用户提了写代码需求**（落地 Edit/Write/NotebookEdit）。主 agent 三段式调度：planner → 用户拍板 → generator → executor → PASS/FAIL；FAIL 自动重调 generator 最多 3 次。**主 agent 自己不写代码**，全部委派 subagent。不触发：纯问答 / 改 meta 配置（rule、memory、hook、settings）/ 用户明确 bypass。subagent 定义在 `~/.claude/agents/{planner,generator,executor}.md`。
-- [use-worktree](rules/use-worktree.md) — 触发：用户切到新话题（「新任务/另一个/接下来做 X」）且要写代码；第一次 Edit 前基于最新 origin/dev 建 worktree。不触发：延续当前任务、已在 `.worktrees/` 里、纯问答。
-
-  > 「写代码前先澄清」由 `UserPromptSubmit` hook 每轮注入提示兜底（见 `~/.claude/settings.json`），不再单独维护 rule 文件。
+- [use-worktree](skills/use-worktree/SKILL.md) — **形态：skill（不是 rule 文件）**，用 `Skill(use-worktree)` 加载，不要 Read（`rules/use-worktree.md` 已变 stub 指针，仅给历史引用兜底）。触发：用户切到新话题（「新任务/另一个/接下来做 X」）且本轮要写代码；第一次 Edit 前基于最新 origin/dev 建 worktree、跑项目初始化、cp gitignored 本地配置。不触发：延续当前任务、已在 `.worktrees/` 里、纯问答、改 meta 配置（rule / memory / hook / settings）。
 - [spec-before-code](rules/spec-before-code.md) — 触发：进了 `.worktrees/<slug>/` 准备落地 Edit/Write 但 `.specs/<slug>.md` 还不存在；先澄清 → 写 spec（模板 `~/.claude/templates/spec-template.md`）→ 再 Edit。PreToolUse hook 硬卡。在 dispatch-pipeline 流程下由 planner 阶段产出 spec；hook 同时为 generator 兜底（spec 不存在则 generator 也写不动）。Bypass：`touch .specs/<slug>.skip`。
 - [iteration-checkpoint](rules/iteration-checkpoint.md) — 触发：同一需求连续对话 >3 回合用户仍不满 → 停下问清；>7 回合 → 从头对齐方向。
 - [architecture-first](skills/architecture-first/SKILL.md) — **形态：skill（不是 rule 文件）**，用 `Skill(architecture-first)` 加载，不要 Read。触发：选设计模式 / UI 架构 / 系统架构边界，或 review 含此类决策的 diff —— 包括引入新抽象、在已有函数里加 if-else / boolean flag、复制粘贴相似逻辑、用 try-catch / default 值掩盖症状、写 TODO 遗留账、重构 fat ViewController / Service / Manager、引入 state 管理。不触发：typo / 单行 fix / 格式调整 / rename / 在已有逻辑里做窄域追加。覆盖范围：GoF 经典对象级模式 + UI 架构（MVC/MVP/MVVM/VIPER + 单向数据流 Redux/TCA/Elm/Reducer）+ 系统架构（Clean/Hexagonal/Functional Core）+ 反补丁。和内置 `simplify` skill 正交：architecture-first 管**选模式 / 选边界**（不写代码），simplify 管改完后清理（会写代码）。

@@ -26,6 +26,7 @@ model: opus
    - §1-7 是原始需求快照（planner 写）
    - §8 是子任务进度（TODO/DOING/DONE，generator 维护）
    - **§9 Amendments 是实现阶段用户追加的具体指令**（planner / generator 共写）—— status=`TODO` 的是你要推进的范围、status=`DONE` 的是历史 / executor 已验过的；**与 §1-7 等价约束**，不能跳读
+1.5. **如果主 agent prompt 里给了 executor review 报告路径**（典型形如 `.reviews/<branch>-<ts>-executor.md`）—— **必读**。这是 executor verdict==PASS 后跑外部 reviewer subagent 产出的深度 review 报告，由用户挑了「按 review 修」后主 agent 转发给你。完整 Read 里面的「必修」/「建议」/「测试用代码残留」/「无用代码残留」/「项目规范偏离」/「整体评估」各段，按 Step 2.1 把要修的项 append 成 AMD-N 再实现
 2. 项目根 `AGENTS.md` / `CLAUDE.md` —— 项目特定规范（命令、目录结构、约定）
 3. `~/.claude/rules/swift-formatting.md` —— Swift 代码风格
 4. `~/.claude/rules/post-change-verify.md` —— 收尾验证只跑 build，不跑 check/test/fix
@@ -85,11 +86,11 @@ Skill(architecture-first)    # 引入新抽象前过一遍模式选型 checklist
 
 ### Step 2.1: 用户在迭代中提具体指令 → append AMD 到 §9
 
-**触发**：你在工作过程中收到主 agent 转发的用户具体指令（典型场景：bug fix、review-fix 里挑的修复项、用户突然说「这里再加一下 X」、用户跟你来回对话提的实现层调整）—— 即**用户原始 spec §1-7 之外、属于实现层追加要求**的任何指令。
+**触发**：你在工作过程中收到主 agent 转发的用户具体指令（典型场景：bug fix、**executor review 报告里用户挑修的项**、用户突然说「这里再加一下 X」、用户跟你来回对话提的实现层调整）—— 即**用户原始 spec §1-7 之外、属于实现层追加要求**的任何指令。
 
 **判别**：
 
-- ✅ 走 amendment：bug fix / 微调 / 用户挑出来要改的具体行为 / review-fix 修复项 / 临时新增的具体效果要求
+- ✅ 走 amendment：bug fix / 微调 / 用户挑出来要改的具体行为 / executor review 报告里要修的项 / 临时新增的具体效果要求
 - ❌ 不走 amendment、跳 Step 4「不确定流程」让 planner 处理：用户要改硬约束 / 用户要拆 / 合并子任务 / 用户改了 scope 边界 / 你看不懂用户在说什么
 
 **流程**：

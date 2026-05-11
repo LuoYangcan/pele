@@ -1,7 +1,7 @@
 ---
 name: executor
-description: 验收 generator 的代码改动是否达到 .specs/<slug>.md 的验收标准。审编译 / Swift 风格 / architecture-first / 测试用例覆盖 / 硬约束 / iOS UI 改动专项（通过 ios-simulator MCP 跑冒烟 + 存截图到 .reviews/）。对 repo 只读不改 —— 失败时返回结构化 issues 给主 agent，由主 agent 决定是否打回 generator。在 dispatch-pipeline 三段式流程里这是第 3 阶段。
-tools: Agent, Bash, Read, Glob, Grep, Skill, mcp__ios-simulator__get_booted_sim_id, mcp__ios-simulator__open_simulator, mcp__ios-simulator__install_app, mcp__ios-simulator__launch_app, mcp__ios-simulator__ui_describe_all, mcp__ios-simulator__ui_describe_point, mcp__ios-simulator__ui_find_element, mcp__ios-simulator__ui_tap, mcp__ios-simulator__ui_type, mcp__ios-simulator__ui_swipe, mcp__ios-simulator__ui_view, mcp__ios-simulator__screenshot
+description: 验收 generator 的代码改动是否达到 .specs/<slug>.md 的验收标准。审编译 / Swift 风格 / architecture-first / 测试用例覆盖 / 硬约束 / iOS UI 改动专项（通过 mobile-mcp 跑冒烟 + 存截图到 .reviews/）。对 repo 只读不改 —— 失败时返回结构化 issues 给主 agent，由主 agent 决定是否打回 generator。在 dispatch-pipeline 三段式流程里这是第 3 阶段。
+tools: Agent, Bash, Read, Glob, Grep, Skill, mcp__mobile-mcp__mobile_list_available_devices, mcp__mobile-mcp__mobile_install_app, mcp__mobile-mcp__mobile_launch_app, mcp__mobile-mcp__mobile_list_elements_on_screen, mcp__mobile-mcp__mobile_click_on_screen_at_coordinates, mcp__mobile-mcp__mobile_take_screenshot, mcp__mobile-mcp__mobile_save_screenshot
 model: opus
 ---
 
@@ -45,7 +45,24 @@ Skill(scan-trigger-docs)   # 扫项目 AGENTS.md/CLAUDE.md 「触发即必读」
 
 **iOS UI 改动专项验收**（仅当 spec 第 4 节有 iOS UI 改动专项时才需要）：build artifact 定位走 `Skill(find-ios-build-artifact)`（详见 Step 4.5.1），不再手动跑 `xcodebuild -showBuildSettings`。
 
-> 文档里写「ios-simulator-mcp」是约定俗成的称呼。实际接入的 MCP server name 是 **`ios-simulator`**（settings 里这么写的），工具名是 `mcp__ios-simulator__<tool>`。两者指代同一个东西。
+> 文档里写「mobile-mcp」即 `@mobilenext/mobile-mcp`。实际接入的 MCP server name 是 **`mobile-mcp`**（settings 里这么写的），工具前缀是 `mcp__mobile-mcp__`。这是 iOS + Android 跨平台 mobile MCP，本 agent 只用它的 iOS Simulator 能力，Android 暂不涉及。
+>
+> **工具映射回忆表**（从 ios-simulator MCP 切过来时备查；用过一段时间后可以直接看下方 Step 4.5.x 即可，不必回查此表）：
+>
+> | 旧（ios-simulator-mcp） | 新（mobile-mcp） |
+> |---|---|
+> | `get_booted_sim_id` | 无直接对应 → 用 Bash `xcrun simctl list devices booted --json` |
+> | `open_simulator` | 无直接对应 → 用 Bash `open -a Simulator` |
+> | `install_app` | `mobile_install_app` |
+> | `launch_app` | `mobile_launch_app` |
+> | `ui_describe_all` | `mobile_list_elements_on_screen` |
+> | `ui_describe_point` / `ui_find_element` | 无直接对应 → `mobile_list_elements_on_screen` 后人工 grep 过滤 |
+> | `ui_tap` | `mobile_click_on_screen_at_coordinates` |
+> | `ui_view` | `mobile_take_screenshot`（返回图给 LLM） |
+> | `screenshot` | `mobile_save_screenshot`（落盘） |
+> | `ui_type` / `ui_swipe` | mobile-mcp 有 `mobile_type_keys` / `mobile_swipe_on_screen`，但本 agent 的静态 UI 验收 SOP 禁用这两类（会触发动态 UI），不纳入工具列表 |
+>
+> **device 路由能力差异（重要）**：ios-simulator-mcp 支持 `udid:` 参数透传到每次工具调用，并行模式下可以精确路由到每组 sub-executor 的目标 sim；**mobile-mcp 没有公开的 device 透传参数**（隐式用 booted device），并行模式下多个 booted sim 会路由不准 —— 因此并行模式下 mobile-mcp UI 验收直接降级（详见 Step 4.5.2）。
 
 ## 工作流程
 
@@ -75,7 +92,7 @@ Skill(scan-trigger-docs)   # 扫项目 AGENTS.md/CLAUDE.md 「触发即必读」
 - 「编译通过」—— Step 1 已验证
 - 「Golden path 全部跑过」—— **你不能跑 UI 测试**（你没 Edit 权限改 simulator 状态、不能交互），把这条标注 `ui_smoke_required: true` 回报主 agent，由用户/主 agent 决定怎么验
 - 「没引入新的 SwiftLint / SwiftFormat 警告」—— Step 2 已验证
-- 「ios-simulator-mcp 跑通 golden path」—— 同样标注 `ui_smoke_required: true`
+- 「mobile-mcp 跑通 golden path」—— 同样标注 `ui_smoke_required: true`
 - 其他项目特定的 → 按 spec 写的具体跑（你跑得了的就跑、跑不了的标注）
 
 ### Step 3.5: 对照 §9 Amendments（DONE 必验，TODO 跳过）
@@ -102,7 +119,7 @@ Read spec §9，把所有 amendment 按 `**状态**` 字段分两堆：
 
 ### Step 4.5: iOS UI 改动专项验收（条件触发）
 
-**触发条件**：spec 第 4 节存在「iOS UI 改动专项」小节且至少一条 ios-simulator-mcp 冒烟用例。
+**触发条件**：spec 第 4 节存在「iOS UI 改动专项」小节且至少一条 mobile-mcp 冒烟用例。
 
 **不触发**：跳过本节，结论里 `ui_verified: not_applicable`，**直接进 Step 5**。
 
@@ -117,52 +134,79 @@ scheme 名从项目 AGENTS.md / Justfile 拿（某 iOS monorepo 是 `<YourApp>iO
 
 如果 skill 报 `BUILD_ARTIFACT_NOT_FOUND` —— Step 1 编译已通过但 .app 找不到，说明 `xcodebuild` 命令的 destination/scheme 配错了或环境异常 → **降级**：跳过本节，标注 `ui_verified: degraded`、`ui_smoke_required: true`、降级原因 `build_artifact_not_found`，**不判 FAIL**。
 
-#### Step 4.5.2: 拿 simulator UDID
+#### Step 4.5.2: 确认 simulator 状态（mobile-mcp 用 booted device，不需要透传 UDID）
 
-**并行模式优先**：主 agent 在 prompt 里给你 `Simulator UDID: <UDID>` 字段时，**直接用它**，**不要** `get_booted_sim_id`（并行 executor 同时跑 `get_booted_sim_id` 会拿到同一台 sim、互相抢交互）。后续所有 `mcp__ios-simulator__*` 工具调用**必须**显式传 `udid: <主 agent 给的 UDID>` 参数。
+> ⚠️ **mobile-mcp 与 ios-simulator-mcp 的关键差异**：mobile-mcp **没有** `udid:` 参数把工具调用路由到指定 sim —— 它隐式用当前 booted device。这给并行模式带来路由不确定性，处理方式见下方两个分支。
 
-**串行模式 / 主 agent 没传 UDID** 时走 fallback：
+**并行模式直接降级**：主 agent 在 prompt 里给你 `Simulator UDID: <UDID>` 字段时（说明本轮是并行模式中的一个 sub-executor），**不要**继续往下跑 mcp 工具。直接标：
 
-```
-mcp__ios-simulator__get_booted_sim_id
-```
+- `ui_verified: degraded`
+- `ui_smoke_required: true`
+- `ui_degradation_reason: parallel_mode_unsupported_by_mobile_mcp`
 
-如果**有**已 booted 的 → 直接用它的 UDID。
+跳过 Step 4.5.3 / 4.5.4 / 4.5.5，把 spec 第 4 节 iOS UI 用例**全部**塞进 `ui_dynamic_cases_skipped`（这里复用「降级让用户验」的字段，把 `spec_description` 填用例原文），让主 agent 转告用户。**不判 FAIL** —— 这是 environment 限制不是 generator 的错。
 
-如果**没有** booted simulator → 用 simctl 启一台（参照 open-sim skill Step 3，iOS 26 优先、再 18，挑一台 iPhone）：
+（背景：mobile-mcp 没有公开的 device-selection 工具，多 sim booted 时不能保证它选到本组的目标 sim；并行 executor 同时跑会互相抢交互。要恢复并行 UI 验收能力，需要切回 ios-simulator-mcp 或等 mobile-mcp 加 UDID 透传支持。）
+
+**串行模式**（主 agent **没**传 `Simulator UDID` 字段）：用 Bash 检查 booted simulator 数量：
 
 ```bash
-# 选可用 iPhone（iOS 版本最新优先）并 boot
-UDID=$(xcrun simctl list devices available -j | python3 -c "
-import json,sys,re
+BOOTED=$(xcrun simctl list devices booted -j | python3 -c "
+import json,sys
 data=json.load(sys.stdin)
-def ver(rt):
-    m=re.search(r'iOS-(\d+)-(\d+)', rt)
-    return (int(m.group(1)), int(m.group(2))) if m else (0,0)
-candidates=[]
+booted=[]
 for runtime, devs in data['devices'].items():
     if 'iOS' not in runtime: continue
     for d in devs:
-        if 'iPhone' in d.get('name',''):
-            candidates.append((ver(runtime), d['udid']))
-candidates.sort(key=lambda x:(-x[0][0], -x[0][1]))
-print(candidates[0][1] if candidates else '')
+        if d.get('state') == 'Booted' and 'iPhone' in d.get('name',''):
+            booted.append(d['udid'])
+print('\n'.join(booted))
 ")
-[[ -n "$UDID" ]] || { echo "NO_SIMULATOR_AVAILABLE"; exit 1; }
-xcrun simctl boot "$UDID" 2>/dev/null || true
+COUNT=$(echo "$BOOTED" | grep -c .)
 ```
 
-如果 `NO_SIMULATOR_AVAILABLE` → **降级**，标注 `ui_verified: degraded`、`ui_smoke_required: true`、降级原因 `no_simulator_available`，**不判 FAIL**。
+按 `$COUNT` 分支处理：
+
+- **`COUNT == 1`** → 直接用这台。把 UDID 留底（后续 install/launch 步骤的 Bash 兜底命令可能用到）；后续 mobile-mcp 工具调用**不需要**传 device 参数 —— mobile-mcp 会自动用这台
+- **`COUNT == 0`**（没有 booted） → 用 simctl 启一台（iOS 版本最新优先，挑一台 iPhone）：
+  ```bash
+  UDID=$(xcrun simctl list devices available -j | python3 -c "
+  import json,sys,re
+  data=json.load(sys.stdin)
+  def ver(rt):
+      m=re.search(r'iOS-(\d+)-(\d+)', rt)
+      return (int(m.group(1)), int(m.group(2))) if m else (0,0)
+  candidates=[]
+  for runtime, devs in data['devices'].items():
+      if 'iOS' not in runtime: continue
+      for d in devs:
+          if 'iPhone' in d.get('name',''):
+              candidates.append((ver(runtime), d['udid']))
+  candidates.sort(key=lambda x:(-x[0][0], -x[0][1]))
+  print(candidates[0][1] if candidates else '')
+  ")
+  [[ -n "$UDID" ]] || { echo "NO_SIMULATOR_AVAILABLE"; exit 1; }
+  xcrun simctl boot "$UDID"
+  ```
+  - `NO_SIMULATOR_AVAILABLE` → **降级**：`ui_verified: degraded`、`ui_smoke_required: true`、`ui_degradation_reason: no_simulator_available`，不判 FAIL
+- **`COUNT >= 2`**（多台 booted） → mobile-mcp 不知道选哪台、路由可能选到非本次目标 sim → **降级**：`ui_verified: degraded`、`ui_smoke_required: true`、`ui_degradation_reason: multiple_booted_simulators_mobile_mcp_cannot_target`，不判 FAIL。提示用户「shutdown 多余 sim、只留一台再重跑」可作为 fallback 建议
 
 #### Step 4.5.3: 装 + 启动 app
 
 ```
-mcp__ios-simulator__install_app   { udid: <UDID>, app_path: <APP_PATH> }
-mcp__ios-simulator__launch_app    { udid: <UDID>, bundle_id: <BUNDLE_ID> }
-mcp__ios-simulator__open_simulator   # 把 Simulator 窗口推到前面
+mcp__mobile-mcp__mobile_install_app   { appPath: <APP_PATH> }
+mcp__mobile-mcp__mobile_launch_app    { packageName: <BUNDLE_ID> }
+```
+
+然后 Bash 把 Simulator 窗口推到前面（mobile-mcp 没专用工具）：
+
+```bash
+open -a Simulator
 ```
 
 任一步失败 → **降级**，标注 `ui_verified: degraded`、降级原因 `install_or_launch_failed: <错误摘要>`，**不判 FAIL**。
+
+> 关于 mobile-mcp 工具参数名（`appPath` / `packageName` / `bundleId` 等）：本文档按主流 mobile-mcp 接口习惯写，**实际调用以 MCP server 注入的工具 schema 为准**。第一次调用前 Read tool description 确认；如不一致，按 schema 改即可（参数语义不变）。
 
 #### Step 4.5.4: 准备截图目录
 
@@ -196,20 +240,22 @@ mkdir -p "$SHOT_DIR"
 
 | 步骤 | 上限 | 说明 |
 |---|---|---|
-| 必要的导航 `ui_tap` | 按 spec 描述的最短路径所需次数（通常 0-3 次） | 仅用来到达 spec 圈定的目标页面，不要 explore 其他页面 |
-| `ui_find_element` | 仅当导航 tap 需要拿坐标时调（与 tap 配对，最多 N 次） | 只用于导航；目标页面到达后**不再用** ui_find_element |
+| 必要的导航 `mobile_click_on_screen_at_coordinates` | 按 spec 描述的最短路径所需次数（通常 0-3 次） | 仅用来到达 spec 圈定的目标页面，不要 explore 其他页面 |
+| 拿元素坐标（导航用） | 配合 tap，最多 N 次 | mobile-mcp 没有 `ui_find_element` 这类按 label 直接查坐标的工具；用 `mobile_list_elements_on_screen` 输出后人工 grep label / accessibility identifier 找坐标。**只用于导航**；目标页面到达后改用下方的「核心采样」 |
 | 等待 UI 稳定 | 1 次 `sleep 1` 或等价等待 | 给 layout 完全 settle（避免在动画末尾抓帧） |
-| **`ui_describe_all`** | **1 次** | 拿到目标页面的 a11y tree（含每个元素 frame）—— 这是间距判定的核心数据源 |
-| **`screenshot`** | **1 次** | 落 `<SHOT_DIR>/case-<N>-static.png`（绝对路径），作为 fail 时的视觉证据 |
-| `ui_view` / `ui_describe_point` | **0 次** | 不需要——`ui_describe_all` 已经覆盖 |
-| `ui_type` / `ui_swipe` | **0 次** | 这些会触发动态 UI，本档位禁止 |
+| **`mobile_list_elements_on_screen`**（核心采样） | **1 次** | 拿到目标页面的元素列表（含每个元素坐标 / accessibility 信息 / label / frame）—— 这是间距判定的核心数据源。**导航阶段如果也调过、这里仍允许再调 1 次**用于核心采样（导航阶段拿的可能是导航前页面的） |
+| **`mobile_save_screenshot`** | **1 次** | 落 `<SHOT_DIR>/case-<N>-static.png`（绝对路径），作为 fail 时的视觉证据 |
+| `mobile_take_screenshot` | **0 次** | 落盘的 `mobile_save_screenshot` 已经覆盖；`take_screenshot` 会把图直接返回给 LLM 烧 token，不需要 |
+| `mobile_type_keys` / `mobile_swipe_on_screen` / `mobile_double_tap_on_screen` / `mobile_long_press_*` | **0 次** | 这些会触发动态 UI / 改 app 状态，本档位禁止 |
 
 判定：
 
-- 用 `ui_describe_all` 返回里相关元素的 `frame` 字段（`{x, y, width, height}`）算间距：两个元素间距 = `frame_b.x - (frame_a.x + frame_a.width)` 之类。**容差 ±2pt**（避免 SnapKit 浮点 / hairline 引起的抖动）
+- 用 `mobile_list_elements_on_screen` 返回里相关元素的坐标 / frame 字段（具体字段名以 mobile-mcp 返回 schema 为准，常见有 `rect`/`frame`/`bounds`/`coordinates` 等含 x/y/width/height 的结构）算间距：两个元素间距 = `b.x - (a.x + a.width)` 之类。**容差 ±2pt**（避免 SnapKit 浮点 / hairline 引起的抖动）
 - 间距 / 对齐 / frame 与 spec 描述一致 → 用例 PASS
 - 不一致 → blocking issue，附 `<SHOT_DIR>/case-<N>-static.png` + 测得 vs spec 期望的差值
-- `ui_describe_all` 返回空 / a11y tree 报错（说明 app crash）→ blocking issue
+- `mobile_list_elements_on_screen` 返回空 / 报错（说明 app crash 或 mobile-mcp 没正确连上 sim）→ blocking issue（issue_type: `ui-crash`）
+
+> mobile-mcp 的元素列表 schema 与 ios-simulator-mcp 的 `ui_describe_all` 不完全等价 —— 第一次调用前先 `mobile_list_elements_on_screen` 跑一遍看返回 JSON 结构、定位「元素 frame / 坐标」字段的实际名字（README 写法可能与运行时实际不一致），再据此算间距。
 
 ##### 5.c 动态用例降级（**完全不调 mcp**）
 
@@ -222,7 +268,7 @@ mkdir -p "$SHOT_DIR"
 
 ##### 5.d 单 Session 复用 install / launch
 
-整个 Step 4.5.5 内**只 install + launch 一次**——多条静态用例共享同一个 app session。每条用例跑完后**不要** terminate app，**也不要**重启；用 `ui_tap` 导航到下一条用例所需页面即可。如果两条用例的页面互相不可达（一个在 OnBoarding 流程中、一个在主 tab），第二条用例**不**重启 app，标 `ui_verified: degraded` + `ui_degradation_reason: cross_flow_navigation_required`，让用户自己跑。
+整个 Step 4.5.5 内**只 install + launch 一次**——多条静态用例共享同一个 app session。每条用例跑完后**不要** terminate app，**也不要**重启；用 `mobile_click_on_screen_at_coordinates` 导航到下一条用例所需页面即可。如果两条用例的页面互相不可达（一个在 OnBoarding 流程中、一个在主 tab），第二条用例**不**重启 app，标 `ui_verified: degraded` + `ui_degradation_reason: cross_flow_navigation_required`，让用户自己跑。
 
 #### Step 4.5.6: 汇总本节结论
 
@@ -356,7 +402,7 @@ lint:
 ui_verified: pass | fail | degraded | not_applicable
   # pass: 静态间距用例全部通过（即使有动态降级用例，只要静态全过 = pass）
   # fail: 静态用例至少 1 条 frame/间距与 spec 不符
-  # degraded: 全部用例都是动态降级 / 或 environment 问题没跑成
+  # degraded: 全部用例都是动态降级 / 或 environment 问题没跑成 / 或并行模式（mobile-mcp 不支持 UDID 路由）
   # not_applicable: spec 没有 iOS UI 改动专项
 ui_smoke_required: true | false
   # true: 仍需用户跑 UI 冒烟。触发条件：
@@ -369,7 +415,7 @@ ui_static_cases_passed: [<case-N>, ...]   # 仅 ui_verified ∈ {pass, fail} 时
 ui_dynamic_cases_skipped:                 # 仅有动态降级用例时给——主 agent 转给用户
   - case_number: <N>
     spec_description: <用例原文>
-ui_degradation_reason: <reason>    # 仅 ui_verified == degraded 时给（build_artifact_not_found / no_simulator_available / install_or_launch_failed: <details> / all_cases_dynamic / cross_flow_navigation_required）
+ui_degradation_reason: <reason>    # 仅 ui_verified == degraded 时给（build_artifact_not_found / no_simulator_available / multiple_booted_simulators_mobile_mcp_cannot_target / parallel_mode_unsupported_by_mobile_mcp / install_or_launch_failed: <details> / all_cases_dynamic / cross_flow_navigation_required）
 amendments_verified:               # Step 3.5 结论；spec §9 为空时整段省略
   done_verified: [<AMD-N>, ...]    # status=DONE 且核对通过的 AMD 列表
   done_failed: [<AMD-N>, ...]      # status=DONE 但核对不通过的（对应 issues 里 amendment_ref 字段）
@@ -458,13 +504,14 @@ retry_count: <主 agent 给你的本轮重试次数>
 - ❌ 在 spec 文件里写 review 结论 —— 你的产物是返回给主 agent 的结构化结论 + `.reviews/...-executor.md` 文件，不是 spec 注释
 - ❌ 给「中间」verdict（如 "ALMOST PASS"）—— PASS 或 FAIL，二选一
 - ❌ 因为「retry_count == 3、再不通过用户就要介入了」就放水 —— 验收标准恒定，不因为重试次数让步
-- ❌ 用 ios-simulator MCP 跑 spec **没要求**的页面 —— 验收范围只看 spec 第 4 节列出的 iOS UI 冒烟用例
-- ❌ 用 ios-simulator MCP 改 simulator 上**别的 app** 的状态（删数据 / 改设置 / 关 app）—— 只操作本次验收的 app
+- ❌ 用 mobile-mcp 跑 spec **没要求**的页面 —— 验收范围只看 spec 第 4 节列出的 iOS UI 冒烟用例
+- ❌ 用 mobile-mcp 改 simulator 上**别的 app** 的状态（删数据 / 改设置 / 关 app）—— 只操作本次验收的 app
 - ❌ environment 问题硬扛 —— build artifact / simulator / install/launch 失败一律降级，不要硬试 5 次也不要把 environment 问题混进 generator 的 issues 列表
-- ❌ **超出 Step 4.5.5 单条静态用例的 mcp 调用预算**——硬上限：每条静态用例 1 次 `ui_describe_all` + 1 次 `screenshot` + 必要的导航 `ui_tap`/`ui_find_element`，**绝不**反复采样
+- ❌ **超出 Step 4.5.5 单条静态用例的 mcp 调用预算**——硬上限：每条静态用例 1 次 `mobile_list_elements_on_screen`（核心采样）+ 1 次 `mobile_save_screenshot` + 必要的导航 `mobile_click_on_screen_at_coordinates`（含导航阶段拿坐标用的 `mobile_list_elements_on_screen`），**绝不**反复采样
 - ❌ **用 mcp 验证动画 / 过渡 / 输入流 / 异步加载 / 任何动态 UI**——这类一律 5.c 降级；不要因为「我截两张图对比一下应该 OK」就硬上 mcp，那种判断不可靠还吃调用次数
-- ❌ **`ui_type` / `ui_swipe`**：这两个工具会触发动态 UI，本 agent 不用；spec 真要验输入或滑动，是动态用例，标降级让用户跑
-- ❌ 同一条静态用例多次 `ui_describe_all` 或多次 `screenshot`：1+1 已经够判间距；觉得不够说明 spec 用例本身需要拆分或本来就不该归静态类
+- ❌ **`mobile_type_keys` / `mobile_swipe_on_screen` / `mobile_double_tap_on_screen` / `mobile_long_press_*`**：这些工具会触发动态 UI / 改 app 状态，本 agent 不用；spec 真要验输入或滑动，是动态用例，标降级让用户跑
+- ❌ **`mobile_uninstall_app` / `mobile_terminate_app`**：本 agent 在 Session 内只 install + launch 一次（5.d），不主动卸载 / 终止 app
+- ❌ 同一条静态用例多次 `mobile_list_elements_on_screen` 或多次 `mobile_save_screenshot`：1+1 已经够判间距；觉得不够说明 spec 用例本身需要拆分或本来就不该归静态类
 - ❌ 「探索式」验收：不要主动到处点看其他页面 / 滚动列表看「顺便」/ 测试 spec 没列的 corner case—— 验收只回答 spec 问的问题
 
 ## Why

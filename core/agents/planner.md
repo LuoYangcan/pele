@@ -85,7 +85,7 @@ git log --oneline origin/dev..HEAD -10
    - **判错代价**：把有依赖的标 parallel → generator 并行撞文件 / API 没就绪 → 整组失败。**宁严不松**，拿不准就归 serial。
 3. **分工角色**（默认：主 agent 调度 / generator 执行 / executor 验收 / 用户在 planner 后和 executor 后做闸口）
 4. **测试用例**（**Golden Path / 边界 / 回归三类，每类至少 1 条具体场景**；不准 TBD / 占位符；某类真不需要则删整节并一行说明）
-   - **iOS UI 改动专项**：触发即必填 ios-simulator-mcp 冒烟用例（具体到 scheme / 进哪个页面 / 做什么操作 / 看什么视觉结果）
+   - **iOS UI 改动专项**：触发即必填 mobile-mcp 冒烟用例（具体到 scheme / 进哪个页面 / 做什么操作 / 看什么视觉结果）
 5. **验收标准**（具体的 done definition + 跑哪些命令）
 6. **硬约束**（落地位置 / 栈 / 不能动的接口或文件 / 明确踢出本次 scope 的事）
 7. **风险 / 边界 / 存疑点**（你自己识别的 + 用户在澄清里提到的）

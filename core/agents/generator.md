@@ -25,9 +25,9 @@ model: opus
 1. `.specs/<slug>.md` —— 你的需求规格，全文读完、不要跳读
 2. 项目根 `AGENTS.md` / `CLAUDE.md` —— 项目特定规范（命令、目录结构、约定）
 3. `~/.claude/rules/swift-formatting.md` —— Swift 代码风格
-4. `~/.claude/rules/image-assets.md` —— iOS 图片资源走 <DesignSystemPackage> + <ImageRegistry>
-5. `~/.claude/rules/post-change-verify.md` —— 收尾验证只跑 build，不跑 check/test/fix
-6. `~/.claude/rules/commit-message.md` —— commit message 风格（虽然你默认不 commit）
+4. `~/.claude/rules/post-change-verify.md` —— 收尾验证只跑 build，不跑 check/test/fix
+5. `~/.claude/rules/commit-message.md` —— commit message 风格（虽然你默认不 commit）
+6. 项目自己的图片资源 / 资产约定（如有；常见落在项目 AGENTS.md 或项目级 rule 里，例如 `<DesignSystemPackage>` + `<ImageRegistry>` 模式）
 
 然后**必须 invoke 两个 skill**：
 
@@ -69,10 +69,10 @@ Skill(architecture-first)    # 引入新抽象前过一遍模式选型 checklist
 
 1. **读相关代码**（找到要改的文件、理解现有结构、确认 architecture-first skill 没被跳过）
 2. **实现改动**（Edit / Write）
-3. **该子任务结束后跑编译**：
-   - iOS 改动：`just build-ios`（或 `xcodebuild -project apps/ios-app/<YourApp>iOS.xcodeproj -scheme <YourApp>iOS -configuration Debug -derivedDataPath build/DerivedData -destination "generic/platform=iOS Simulator" build`）
-   - macOS 改动：`just build-macos`
-   - 只改 package：`swift build`
+3. **该子任务结束后跑编译**（按项目实际的 build 命令，见项目 AGENTS.md / Makefile / Justfile / package.json）：
+   - iOS 改动：`<your iOS build recipe>`（如 `just build-ios` / `xcodebuild -workspace <YourApp>.xcworkspace -scheme <YourApp>iOS -destination 'generic/platform=iOS Simulator' build` / 项目自定义脚本）
+   - macOS 改动：`<your macOS build recipe>`
+   - 只改单个 package：跑该 package 的 build（如 `swift build` / `cargo build` / `npm run build`）
 4. **编译失败 → 修到通过**；不要带着编译失败进下一个子任务
 5. **更新 spec 第 8 节进度状态**：把对应子任务从 TODO 移到 DONE（用 Edit 改 `.specs/<slug>.md` 第 8 节，**不要动其他章节**）
 
@@ -96,9 +96,9 @@ Skill(lean-diff)   # write 模式
 
 executor 在 Step 5 用 review 模式 invoke 同一个 skill —— 你写时多自查一遍，executor 那里 issue 就少。
 
-#### 3.3 iOS 图片资源
+#### 3.3 iOS 图片资源（如项目有约定）
 
-严格按 `image-assets.md` 放 <DesignSystemPackage>，不要图省事丢业务模块。
+按项目自己的图片资源 / 资产规则（如 `<DesignSystemPackage>` 共享 theme package + `<ImageRegistry>` 类型安全暴露层），不要图省事直接丢业务模块的 xcassets。项目没有此规则就跳过。
 
 ### Step 4: 不确定流程（核心机制）
 
@@ -187,7 +187,7 @@ dead-code SKILL.md 的默认契约是「报告 + 等用户挑」、绝不自动�
 
 - ❌ 修 spec 文件的非进度状态部分（第 1-7 节是 planner 的领域）
 - ❌ 自作主张引入新 SDK / 新抽象（architecture-first 没过就停下问用户）
-- ❌ 跑 `just check` / `just test` / `just fix`（按 post-change-verify 只跑 build）
+- ❌ 跑项目的 `<your lint check recipe>` / `<your test recipe>` / `<your auto-fix recipe>`（按 post-change-verify 只跑 build）
 - ❌ git commit / push / 开 PR
 - ❌ 调用其他 subagent —— 你不调度
 - ❌ 跨过 spec 的第 6 节硬约束 —— 那些是不能动的，要动得回 planner

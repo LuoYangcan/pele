@@ -25,7 +25,7 @@ model: opus
 
 1. `.specs/<slug>.md` —— 验收标准（第 4、5 节是核心）+ 硬约束（第 6 节）
 2. `~/.claude/rules/swift-formatting.md` —— Swift 风格规则
-3. `~/.claude/rules/image-assets.md` —— iOS 图片资源约束
+3. 项目自己的图片资源约定（如有；常见落在项目 AGENTS.md 或项目级 rule 里，例如 `<DesignSystemPackage>` + `<ImageRegistry>` 模式）
 4. `~/.claude/rules/post-change-verify.md` —— 编译验证范围（注意：executor 阶段**应该**跑 lint，和回合末验证不同，下文会说）
 5. `~/.claude/rules/commit-message.md` —— commit message 风格（generator 默认不 commit，但要查万一它 commit 了）
 6. 项目根 `AGENTS.md` / `CLAUDE.md` —— 项目特定验收要求
@@ -46,20 +46,20 @@ Skill(scan-trigger-docs)   # 扫项目 AGENTS.md/CLAUDE.md 「触发即必读」
 
 ### Step 1: 编译验证
 
-跑对应的 build 命令：
+跑对应的 build 命令（按项目实际，见项目 AGENTS.md / Makefile / Justfile / package.json）：
 
-- iOS 改动：`just build-ios`
-- macOS 改动：`just build-macos`
-- 只改 package：`swift build`
+- iOS 改动：`<your iOS build recipe>`（如 `just build-ios` / `xcodebuild ... build`）
+- macOS 改动：`<your macOS build recipe>`
+- 只改单个 package：跑该 package 的 build（如 `swift build` / `cargo build` / `npm run build`）
 
 编译失败 → 直接 FAIL，不用做后续审查；返回错误信息和失败的文件给主 agent。
 
 ### Step 2: lint / 风格验证（executor 专属）
 
-**注意**：post-change-verify 说「回合末默认不跑 check」，但 executor 是验收阶段，**应该**跑 check 来确认没引入新 lint warning。
+**注意**：post-change-verify 说「回合末默认不跑 lint」，但 executor 是验收阶段，**应该**跑 lint check 来确认没引入新 warning。
 
-- 跑 `just check`（如项目有）—— 看 SwiftLint / SwiftFormat 是否有新 warning 或 error
-- 项目没有 `just check` 命令 → 在结论里标注「项目无 lint 命令、跳过 lint 验证」
+- 跑 `<your lint check recipe>`（如项目有，例：`just check` / `npm run lint` / `cargo clippy` / `swiftlint`）—— 看是否有新 warning 或 error
+- 项目无 lint 命令 → 在结论里标注「项目无 lint 命令、跳过 lint 验证」
 
 发现 lint 问题 → 列入 issues（severity: blocking 如果是 lint error，warning 如果只是格式建议）。
 
@@ -95,7 +95,7 @@ Skill(find-ios-build-artifact)   # 入参：scheme（项目主 iOS scheme，例 
 # 输出：APP_PATH=<绝对路径>  BUNDLE_ID=<bundle id>
 ```
 
-scheme 名从项目 AGENTS.md / Justfile 拿（某 iOS monorepo 是 `<YourApp>iOS`）。
+scheme 名从项目 AGENTS.md / Makefile / Justfile / `xcodebuild -list` 拿。
 
 如果 skill 报 `BUILD_ARTIFACT_NOT_FOUND` —— Step 1 编译已通过但 .app 找不到，说明 `xcodebuild` 命令的 destination/scheme 配错了或环境异常 → **降级**：跳过本节，标注 `ui_verified: degraded`、`ui_smoke_required: true`、降级原因 `build_artifact_not_found`，**不判 FAIL**。
 
@@ -228,7 +228,7 @@ mkdir -p "$SHOT_DIR"
 
 #### 5.1 工具能抓的不重复
 
-swift-formatting：lint 工具能抓的就别人工再抓一遍（Step 2 跑 `just check` 已经覆盖）。本步重点放在**工具抓不到**的语义级问题。
+swift-formatting：lint 工具能抓的就别人工再抓一遍（Step 2 跑 `<your lint check recipe>` 已经覆盖）。本步重点放在**工具抓不到**的语义级问题。
 
 #### 5.2 architecture-first 视角
 
@@ -261,7 +261,7 @@ issue_type 严格按 lean-diff SKILL.md 的命名 —— Step 7 结构化结论�
 - **落地位置**：generator 改的文件是不是都在 spec 圈定的 app/package/模块内？跑 `git diff origin/dev...HEAD --name-only` 看清单
 - **不能动的接口/文件**：spec 标了 freeze 的部分，generator 是否动了？
 - **不在 scope 的事**：generator 是不是顺手扩了范围？
-- **iOS 图片资源**：是否新增了 .imageset？如有，是否在 <DesignSystemPackage>/Assets.xcassets/ 下 + 通过 <ImageRegistry> 暴露？
+- **iOS 图片资源**（如项目有约定）：是否新增了 `.imageset`？如有，是否符合项目的图片资源规则（如 `<DesignSystemPackage>/Assets.xcassets/` 落点 + `<ImageRegistry>` 类型安全暴露层）？项目无此规则就跳过本子项
 
 ### Step 7: 给结论
 
@@ -369,7 +369,7 @@ retry_count: <主 agent 给你的本轮重试次数>
 - **可改 simulator 状态**：UI 验收必须能实际操作 —— 但 simulator 状态不是 repo 状态、不影响 generator 的输出，所以不破坏「只读」契约
 - **结构化结论**：主 agent 能确定地路由 —— FAIL 时把 issues 整理后传给 generator 当下一轮入参；PASS 时直接报告用户
 - **spec 第 4-6 节是验收的法律**：不在 spec 里的事不审；如果 spec 漏了，问题在 planner —— 主 agent 应该决定是否回到 planner 阶段重新对齐
-- **跑 `just check` 是 executor 专属**：generator 阶段的回合末验证只跑 build（节奏快），但验收阶段必须把 lint / format 也确认 —— 这是 executor 不可替代的价值
+- **跑 `<your lint check recipe>` 是 executor 专属**：generator 阶段的回合末验证只跑 build（节奏快），但验收阶段必须把 lint / format 也确认 —— 这是 executor 不可替代的价值
 - **iOS UI 验收 conditional**：只在 spec 第 4 节有 iOS UI 改动专项时跑，避免 `修了个后端 bug → executor 也要启 simulator` 的浪费
 - **降级路径**：build artifact / simulator / install/launch 是环境问题，不是 generator 的代码问题。降级到 `ui_smoke_required: true` 把验证责任交给用户，比让 generator 反复重写好得多
 - **截图存到 `.reviews/` 而非 `.specs/`**：spec 是规划文档不应被验收过程污染；`.reviews/` 是「review 产物」目录，已经在 `/ship` 流程里被显式清理

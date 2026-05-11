@@ -75,7 +75,7 @@
 
 **iOS UI 改动专项**（触发信号：改了 SwiftUI/UIKit view、改了图片资源、改了样式/布局/颜色、需求里出现 UI 字眼。任一命中则**必填**至少 1 条；不触发则删掉本小节）：
 
-- [ ] **ios-simulator-mcp 冒烟**：<scheme + 进入哪个页面 + 做什么操作 + 看什么视觉/行为结果>
+- [ ] **mobile-mcp 冒烟**：<scheme + 进入哪个页面 + 做什么操作 + 看什么视觉/行为结果>
   - 例：`<YourApp>iOS-Dev` → 打开「设置」tab → 点"主题" → 看到新加的卡片在最顶部、深色模式下背景色正确、点击有 push 动画
 - [ ] ...
 
@@ -117,7 +117,7 @@
 - [ ] 第 4 节列出的 golden path 全部肉眼/手测验证过
 - [ ] 第 4 节列出的边界场景至少快速过一遍
 - [ ] 没有引入新的 lint / format 警告
-- [ ] **iOS UI 改动专项**（触发条件同第 4 节，命中则必勾；macOS UI 改动不强制）：ios-simulator-mcp 跑通 golden path 无 crash + 视觉符合预期
+- [ ] **iOS UI 改动专项**（触发条件同第 4 节，命中则必勾；macOS UI 改动不强制）：mobile-mcp 跑通 golden path 无 crash + 视觉符合预期
 - [ ] <项目特定>：...
 
 ## 6. 硬约束

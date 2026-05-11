@@ -53,10 +53,10 @@
 
 **spec 必须额外满足**：
 
-1. 第 4 节 Golden Path 里**至少 1 条**用 ios-simulator-mcp 的冒烟步骤——明确写清楚：跑哪个 scheme、打开哪个页面、做什么操作、看什么视觉/行为结果（避免「打开模拟器跑一下」这种空话）
-2. 第 5 节 Done Definition 里加一条：`ios-simulator-mcp 跑通 golden path 无 crash + 视觉符合预期`
+1. 第 4 节 Golden Path 里**至少 1 条**用 mobile-mcp 的冒烟步骤——明确写清楚：跑哪个 scheme、打开哪个页面、做什么操作、看什么视觉/行为结果（避免「打开模拟器跑一下」这种空话）
+2. 第 5 节 Done Definition 里加一条：`mobile-mcp 跑通 golden path 无 crash + 视觉符合预期`
 
-**仅 iOS 适用**：macOS UI 改动暂不强制（`ios-simulator-mcp` 名字本身就是 iOS 专属；macOS 端按项目现状走 build + 手动 open）。
+**仅 iOS 适用**：mobile-mcp 虽然是 iOS+Android 跨平台 MCP，本规则只在 iOS UI 改动时触发；macOS UI 改动暂不强制（按项目现状走 build + 手动 open）。
 
 ### 第 3 步：写完 spec 后**停手等用户审核**（默认契约）
 

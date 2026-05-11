@@ -74,7 +74,7 @@ Skill(architecture-first)    # 引入新抽象前过一遍模式选型 checklist
 
 1. **读相关代码**（找到要改的文件、理解现有结构、确认 architecture-first skill 没被跳过）
 2. **实现改动**（Edit / Write）
-3. **该子任务结束后跑编译**（按项目实际的 build 命令，见项目 AGENTS.md / Makefile / Justfile / package.json）：
+3. **该子任务结束后跑编译**：
    - iOS 改动：`<your iOS build recipe>`（如 `just build-ios` / `xcodebuild -workspace <YourApp>.xcworkspace -scheme <YourApp>iOS -destination 'generic/platform=iOS Simulator' build` / 项目自定义脚本）
    - macOS 改动：`<your macOS build recipe>`
    - 只改单个 package：跑该 package 的 build（如 `swift build` / `cargo build` / `npm run build`）

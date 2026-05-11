@@ -115,14 +115,16 @@ Three retries is a hard cap — you don't want generator and executor in an infi
 
 ```
 ~/.claude/
-├── CLAUDE.md          → ~/Developer/pele/core/CLAUDE.md
-├── rules/<name>.md    → ~/Developer/pele/core/rules/<name>.md
-├── agents/<name>.md   → ~/Developer/pele/core/agents/<name>.md
-├── commands/<name>.md → ~/Developer/pele/core/commands/<name>.md
-├── skills/<name>      → ~/Developer/pele/core/skills/<name>      (symlink dir)
-├── templates/<name>.md→ ~/Developer/pele/core/templates/<name>.md
-├── scripts/<name>.sh  → ~/Developer/pele/scripts/<name>.sh
+├── CLAUDE.md          → <pele-checkout>/core/CLAUDE.md
+├── rules/<name>.md    → <pele-checkout>/core/rules/<name>.md
+├── agents/<name>.md   → <pele-checkout>/core/agents/<name>.md
+├── commands/<name>.md → <pele-checkout>/core/commands/<name>.md
+├── skills/<name>      → <pele-checkout>/core/skills/<name>      (symlink dir)
+├── templates/<name>.md→ <pele-checkout>/core/templates/<name>.md
+├── scripts/<name>.sh  → <pele-checkout>/scripts/<name>.sh
 └── settings.json      (regular file — only the .hooks key is managed by pele)
 ```
+
+`<pele-checkout>` is wherever you cloned pele (defaults to `~/Developer/pele/` via `bootstrap.sh`, override with `PELE_INSTALL_DIR=`; or clone manually anywhere and run `./install.sh` from there — it auto-detects its location).
 
 Symlinks mean `git pull` in the pele repo updates everything in `~/.claude/` instantly. No reinstall needed for content updates. The exception is `settings.json` (because it's a JSON merge, not a symlink) — re-run `install.sh` if you change `core/hooks/settings.hooks.json`.

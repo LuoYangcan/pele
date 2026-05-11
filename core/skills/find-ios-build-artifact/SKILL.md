@@ -1,6 +1,6 @@
 ---
 name: find-ios-build-artifact
-description: Locate the just-built iOS Simulator `.app` bundle for a project — output `APP_PATH` (absolute) + `BUNDLE_ID` so callers can `simctl install` / `simctl launch` / mcp install_app+launch_app. Walks up from cwd to find a `.xcworkspace`, runs `xcodebuild -showBuildSettings` to read `BUILT_PRODUCTS_DIR / FULL_PRODUCT_NAME / PRODUCT_BUNDLE_IDENTIFIER`, then verifies the `.app` exists. Use when an executor / open-sim / similar caller has just built iOS with `just build-ios` (or equivalent) and now needs the build artifact paths. Skip when the caller already knows `APP_PATH` and `BUNDLE_ID`, when there's no `.xcworkspace` ancestor (project uses bare xcodeproj — caller must adapt), or when targeting macOS / device (this skill is iOS Simulator only).
+description: Locate the just-built iOS Simulator `.app` bundle for a project — output `APP_PATH` (absolute) + `BUNDLE_ID` so callers can `simctl install` / `simctl launch` / mcp install_app+launch_app. Walks up from cwd to find a `.xcworkspace`, runs `xcodebuild -showBuildSettings` to read `BUILT_PRODUCTS_DIR / FULL_PRODUCT_NAME / PRODUCT_BUNDLE_IDENTIFIER`, then verifies the `.app` exists. Use when an executor / open-sim / similar caller has just built iOS with the project's `<your iOS build recipe>` (e.g. `just build-ios`, `xcodebuild ... build`, or a project-specific script) and now needs the build artifact paths. Skip when the caller already knows `APP_PATH` and `BUNDLE_ID`, when there's no `.xcworkspace` ancestor (project uses bare xcodeproj — caller must adapt), or when targeting macOS / device (this skill is iOS Simulator only).
 ---
 
 # find-ios-build-artifact
@@ -45,7 +45,7 @@ done
 
 ### Step 2: 确定 scheme
 
-caller 应该传入 scheme 名（例：`TodayiOS` / `MyAppiOS`）。如果没传：
+caller 应该传入 scheme 名（如项目 `<YourApp>iOS` / `AcmeiOS` 等）。如果没传：
 
 ```bash
 # 列 workspace 全部 scheme，让 caller 自己挑
@@ -77,7 +77,7 @@ APP_PATH="$BUILT_DIR/$APP_NAME"
 ### Step 4: 验证 `.app` 实际存在
 
 ```bash
-[[ -d "$APP_PATH" ]] || { echo "BUILD_ARTIFACT_NOT_FOUND: $APP_PATH 不存在 — 先跑 just build-ios / Xcode build / xcodebuild build"; exit 1; }
+[[ -d "$APP_PATH" ]] || { echo "BUILD_ARTIFACT_NOT_FOUND: $APP_PATH 不存在 — 先跑 <your iOS build recipe>（如 just build-ios / Xcode build / xcodebuild build）"; exit 1; }
 ```
 
 `-showBuildSettings` 会**返回路径**即使还没 build，`.app` 实际不存在。验证一下避免 caller 拿到不存在的路径继续 `simctl install` 报错。
@@ -108,8 +108,8 @@ echo "SCHEME=$SCHEME"
 ### Executor 4.5.1（iOS UI 改动专项）
 
 ```
-Skill(find-ios-build-artifact)   # 入参：scheme = TodayiOS
-# 输出：APP_PATH=/path/to/Today.app, BUNDLE_ID=ai.today.app
+Skill(find-ios-build-artifact)   # 入参：scheme = <YourApp>iOS
+# 输出：APP_PATH=/abs/path/to/<YourApp>.app, BUNDLE_ID=com.example.<yourapp>
 
 # 失败 → 标 ui_verified: degraded + reason: build_artifact_not_found，不判 FAIL
 # 成功 → 进 4.5.2 拿 simulator UDID
@@ -118,8 +118,8 @@ Skill(find-ios-build-artifact)   # 入参：scheme = TodayiOS
 ### open-sim skill Step 2
 
 ```
-Skill(find-ios-build-artifact)   # 入参：scheme = TodayiOS
-# 失败 → 提示用户 "先跑 just build-ios"
+Skill(find-ios-build-artifact)   # 入参：scheme = <YourApp>iOS
+# 失败 → 提示用户 "先跑 <your iOS build recipe>"
 # 成功 → 进 Step 3 选模拟器、装启
 ```
 

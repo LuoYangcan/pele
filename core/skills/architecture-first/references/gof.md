@@ -491,7 +491,7 @@ HealthKitRouter.shared = RealHealthKitService()
 try await HealthKitRouter.shared.requestAuthorization()
 ```
 
-**iOS 落点**：跨业务模块服务调用（`TodayRouter` / `Router.register(serviceType:)`）/ View 能力混入（`Trackable` / `Themeable`）/ 测试替身（生产用真实，测试用 fake）
+**iOS 落点**：跨业务模块服务调用（项目级 Router + `Router.register(serviceType:)` 模式）/ View 能力混入（`Trackable` / `Themeable`）/ 测试替身（生产用真实，测试用 fake）
 
 **不该用**：真的是 is-a 关系且只有单一继承层级（`UIButton: UIControl` 是 OK 的）/ 没有多个实现 / 没有测试需求
 

@@ -25,7 +25,7 @@ model: opus
 2. `~/.claude/rules/spec-before-code.md` —— 8 节内容的硬约束（特别是 Golden Path / 边界 / 回归三类必填、iOS UI 改动专项）
 3. `~/.claude/rules/iteration-checkpoint.md` —— 理解什么时候要 AskUserQuestion 澄清
 4. `~/.claude/rules/use-worktree.md` —— 确认你处在 worktree 里的操作惯例
-5. `~/.claude/rules/image-assets.md` —— iOS 图片资源约束（写硬约束章节用）
+5. 项目自己的图片资源 / 资产约定（如有；写硬约束章节用，例如 `<DesignSystemPackage>` + `<ImageRegistry>` 模式）
 6. 当前项目根的 `AGENTS.md` 或 `CLAUDE.md`（如有）—— 项目特定规范
 
 然后**必须 invoke**：
@@ -150,7 +150,7 @@ generator 在写代码时遇到 spec 没覆盖的新澄清问题，会把反馈*
 ## 禁止
 
 - ❌ 写代码（任何 `.specs/` 之外的 Edit / Write）
-- ❌ 跑 `just build-*` / `just check` / `just test` / `swift build`
+- ❌ 跑项目的任何 build / lint / test 命令（`<your X recipe>` 系列都是 generator / executor 的事，不是 planner 的）
 - ❌ 帮用户决定他没明确说的细节 —— 不确定就 AskUserQuestion
 - ❌ 跑 `git commit` / `git push` —— spec 提交时机由主 agent 决定
 - ❌ 调用其他 subagent —— 你不调度

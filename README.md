@@ -33,26 +33,31 @@ Optional extras (gated by install flags):
 curl -fsSL https://raw.githubusercontent.com/LuoYangCan/pele/main/scripts/bootstrap.sh | bash
 ```
 
-The bootstrap script clones the repo to `~/Developer/pele/` and runs `./install.sh`. Pass flags after `--` :
+The bootstrap script clones the repo to `<pele-checkout>` (defaults to `~/Developer/pele/`, override with `PELE_INSTALL_DIR=<path>` before piping to bash) and runs `./install.sh`. Pass flags after `--` :
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/LuoYangCan/pele/main/scripts/bootstrap.sh | bash -s -- --figma
+
+# Install to a non-default location:
+PELE_INSTALL_DIR=~/code/pele curl -fsSL https://raw.githubusercontent.com/LuoYangCan/pele/main/scripts/bootstrap.sh | bash
 ```
 
 ### Manual (git clone)
 
 ```bash
-git clone https://github.com/LuoYangCan/pele.git ~/Developer/pele
-cd ~/Developer/pele
+git clone https://github.com/LuoYangCan/pele.git <pele-checkout>   # e.g. ~/Developer/pele, ~/code/pele, anywhere
+cd <pele-checkout>
 ./install.sh             # core only
 ./install.sh --figma     # + Figma extras
 ./install.sh --dry-run   # see what would change without touching anything
 ```
 
+`install.sh` auto-detects its own location, so `<pele-checkout>` can be anywhere — it doesn't have to be `~/Developer/pele/`. Throughout this doc `<pele-checkout>` is a placeholder for wherever you put the repo.
+
 ### What install does
 
 1. **Symlinks** `core/` (and `--figma` content if enabled) into `~/.claude/`.
-   Editing files in `~/Developer/pele/core/...` takes effect immediately — no reinstall needed.
+   Editing files in `<pele-checkout>/core/...` takes effect immediately — no reinstall needed.
 2. **Backs up** any pre-existing files in `~/.claude/` to `~/.claude.backup-<timestamp>/` before linking. Nothing is destroyed.
 3. **Merges hooks** into `~/.claude/settings.json` using `jq`. Your `model`, `mcpServers`, `permissions`, and other keys are preserved. The pre-merge `settings.json` is also backed up.
 
@@ -68,12 +73,13 @@ cd ~/Developer/pele
 
 > ⚠️ **Some rule files contain placeholders** like `<YourApp>` and `<your build recipe>`. They're project-specific defaults that you should review and replace, otherwise Claude will see the literal `<YourApp>` text in your rules.
 
-Pele's rule files use placeholders for project-specific paths and commands so the same rules can apply to any project. After install, **edit the placeholders in your `~/Developer/pele/` checkout** to match your project. Since `~/.claude/` is symlinked to it, your edits take effect immediately — no reinstall needed.
+Pele's rule files use placeholders for project-specific paths and commands so the same rules can apply to any project. After install, **edit the placeholders in your `<pele-checkout>`** to match your project. Since `~/.claude/` is symlinked to it, your edits take effect immediately — no reinstall needed.
 
 Common placeholders:
 
 | Placeholder | Meaning | Replace with (example) |
 |---|---|---|
+| `<pele-checkout>` | Where you cloned pele (the directory containing `install.sh`) | `~/Developer/pele/` (default), `~/code/pele/`, anywhere — `bootstrap.sh` honors `PELE_INSTALL_DIR`, `install.sh` auto-detects |
 | `<YourApp>` | Your iOS app name (workspace + scheme stem) | `Acme`, `MyApp` |
 | `<YourApp>iOS` | Your iOS scheme name | `AcmeiOS` |
 | `<your-monorepo>` | Your repo / monorepo name | `acme-platform-apple` |
@@ -91,14 +97,14 @@ Common placeholders:
 **Find all placeholders in your installed rules:**
 
 ```bash
-cd ~/Developer/pele
+cd <pele-checkout>   # wherever you cloned pele
 grep -rEn '<(YourApp|your-monorepo|your (build|iOS build|macOS build|lint check|test|auto-fix) recipe|DesignSystemPackage|ImageRegistry)' core/ --include='*.md'
 ```
 
 **Bulk-replace one** (example: `<YourApp>` → `Acme`):
 
 ```bash
-cd ~/Developer/pele
+cd <pele-checkout>
 find core/ -name '*.md' -exec sed -i '' 's|<YourApp>|Acme|g' {} +
 git diff   # review then commit if you want to track
 ```
@@ -142,24 +148,24 @@ See `core/rules/dispatch-pipeline.md` for the full contract.
 
 ## Customize
 
-Pele uses **symlinks**, so you customize by editing the source files in `~/Developer/pele/`:
+Pele uses **symlinks**, so you customize by editing the source files in `<pele-checkout>`:
 
 - Add a new rule → `core/rules/<name>.md` + add an entry to `core/CLAUDE.md` index
 - Add a new subagent → `core/agents/<name>.md`, then reference it from a rule (e.g. `dispatch-pipeline.md`)
 - Add a slash command → `core/commands/<name>.md`
 - Add project-specific hooks → edit `~/.claude/settings.json` directly (your edits are preserved across re-installs as long as you don't touch the `.hooks` key Pele manages)
 - Add recommended permissions → edit `core/permissions/settings.permissions.json`, then copy entries into your `~/.claude/settings.json`'s `permissions.allow` (this file is not auto-merged by `install.sh`)
-- Disable a rule → just delete the symlink in `~/.claude/rules/` (or the source file in `~/Developer/pele/core/rules/`); the index in `CLAUDE.md` is progressive-disclosure, missing files are silently ignored
+- Disable a rule → just delete the symlink in `~/.claude/rules/` (or the source file in `<pele-checkout>/core/rules/`); the index in `CLAUDE.md` is progressive-disclosure, missing files are silently ignored
 
 For project-specific overrides (per-repo CLAUDE.md, per-repo hooks), use the standard Claude Code mechanisms in `<repo>/.claude/` — they layer on top of pele's globals.
 
 ## Uninstall
 
 ```bash
-~/Developer/pele/uninstall.sh
+<pele-checkout>/uninstall.sh
 ```
 
-Removes every symlink in `~/.claude/` that points into `~/Developer/pele/`. Does **not** auto-restore from `~/.claude.backup-*/` — those are kept for you to restore manually if needed:
+Removes every symlink in `~/.claude/` that points into `<pele-checkout>`. Does **not** auto-restore from `~/.claude.backup-*/` — those are kept for you to restore manually if needed:
 
 ```bash
 # Restore your original CLAUDE.md

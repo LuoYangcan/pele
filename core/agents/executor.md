@@ -23,12 +23,15 @@ model: opus
 
 按顺序 Read：
 
-1. `.specs/<slug>.md` —— 验收标准（第 4、5 节是核心）+ 硬约束（第 6 节）
+1. `.specs/<slug>.md` —— 验收标准（第 4、5 节是核心）+ 硬约束（第 6 节）+ **§9 Amendments**
+   - **§9 Amendments 是与 §1-7 等价的验收基线**：用户在实现阶段追加的具体指令（bug fix / 微调 / review-fix 修复项）一律在这里
+   - `status=DONE` 的 AMD 条目 → **本轮必验**（generator 声称做完了，你来核对是否真满足）；不满足列 blocking issue，issue 字段里加 `amendment_ref: AMD-N`
+   - `status=TODO` 的 AMD 条目 → **本轮跳过**（视为下一轮 generator 的范围，与 §8 TODO 子任务同处理）
 2. `~/.claude/rules/swift-formatting.md` —— Swift 风格规则
-3. 项目自己的图片资源约定（如有；常见落在项目 AGENTS.md 或项目级 rule 里，例如 `<DesignSystemPackage>` + `<ImageRegistry>` 模式）
-4. `~/.claude/rules/post-change-verify.md` —— 编译验证范围（注意：executor 阶段**应该**跑 lint，和回合末验证不同，下文会说）
-5. `~/.claude/rules/commit-message.md` —— commit message 风格（generator 默认不 commit，但要查万一它 commit 了）
-6. 项目根 `AGENTS.md` / `CLAUDE.md` —— 项目特定验收要求
+3. `~/.claude/rules/post-change-verify.md` —— 编译验证范围（注意：executor 阶段**应该**跑 lint，和回合末验证不同，下文会说）
+4. `~/.claude/rules/commit-message.md` —— commit message 风格（generator 默认不 commit，但要查万一它 commit 了）
+5. 项目根 `AGENTS.md` / `CLAUDE.md` —— 项目特定验收要求
+6. 项目自己的图片资源约定（如有；常见落在项目 AGENTS.md 或项目级 rule 里，例如 `<DesignSystemPackage>` + `<ImageRegistry>` 模式）
 
 然后**必须 invoke 一个 skill**（architecture-first 在 Step 5 review 时再 invoke）：
 
@@ -72,6 +75,19 @@ Skill(scan-trigger-docs)   # 扫项目 AGENTS.md/CLAUDE.md 「触发即必读」
 - 「没引入新的 SwiftLint / SwiftFormat 警告」—— Step 2 已验证
 - 「ios-simulator-mcp 跑通 golden path」—— 同样标注 `ui_smoke_required: true`
 - 其他项目特定的 → 按 spec 写的具体跑（你跑得了的就跑、跑不了的标注）
+
+### Step 3.5: 对照 §9 Amendments（DONE 必验，TODO 跳过）
+
+Read spec §9，把所有 amendment 按 `**状态**` 字段分两堆：
+
+- **status=DONE**：generator 声称已实现，**逐条核对**：
+  1. 看 AMD 的「**指令**」字段（要做什么 / 达到什么效果）
+  2. 看「**影响范围**」字段（涉及哪些文件 / 模块）
+  3. grep / 读代码确认 generator 的 diff 是否覆盖该指令（必要时打开「影响范围」列出的文件）
+  4. 不满足 → blocking issue：`issue_type: amendment-not-fulfilled`，`amendment_ref: AMD-N`，描述写明「AMD-N 要求 X，但代码里 Y」
+- **status=TODO**：跳过本轮，在结论 notes 里提一句「§9 还有 N 条 amendment 处于 TODO，不在本轮范围」
+
+**Amendment 与 §4 测试用例不重复验**：amendment 的「指令」常常是直接给出预期行为（"按钮点击后展示 loading"），不必要求 spec §4 同步加测试用例 —— 你按 amendment 的「指令」原文直接核对即可。
 
 ### Step 4: 对照测试用例（spec 第 4 节）
 
@@ -292,10 +308,15 @@ ui_dynamic_cases_skipped:                 # 仅有动态降级用例时给——
   - case_number: <N>
     spec_description: <用例原文>
 ui_degradation_reason: <reason>    # 仅 ui_verified == degraded 时给（build_artifact_not_found / no_simulator_available / install_or_launch_failed: <details> / all_cases_dynamic / cross_flow_navigation_required）
+amendments_verified:               # Step 3.5 结论；spec §9 为空时整段省略
+  done_verified: [<AMD-N>, ...]    # status=DONE 且核对通过的 AMD 列表
+  done_failed: [<AMD-N>, ...]      # status=DONE 但核对不通过的（对应 issues 里 amendment_ref 字段）
+  todo_skipped: [<AMD-N>, ...]     # status=TODO 跳过本轮的（不影响 verdict）
 issues:                            # FAIL 时列具体问题；PASS 时为空
   - severity: blocking | warning   # blocking 触发打回，warning 不打回但提示 generator 下次注意
     issue_type: <type>             # 见下方 type 表；非典型问题填 "other"
-    spec_section: 4 | 5 | 6 | ...  # 关联到 spec 哪一节
+    spec_section: 4 | 5 | 6 | 9 | ...  # 关联到 spec 哪一节（§9 amendment 类用 9）
+    amendment_ref: AMD-N           # 仅 issue 关联到 §9 amendment 时给（spec_section 也写 9）
     file: <path/to/file.swift>     # 代码类 issue 必填；UI 类 issue 可填截图路径
     line: <如有>
     description: <一句话说清问题>
@@ -308,6 +329,7 @@ issue_type 取值（用于 review-fix 阶段一键归类）：
 - UI 类：ui-frame-mismatch / ui-crash
 - 编译类：build-fail / lint-error
 - 硬约束类：scope-violation / freeze-touched / image-asset-misplaced
+- Amendment 类：amendment-not-fulfilled（§9 中 status=DONE 的 AMD 实际没满足）
 - 其他：other
 notes: <整体一句话评语>
 retry_count: <主 agent 给你的本轮重试次数>
@@ -320,6 +342,7 @@ retry_count: <主 agent 给你的本轮重试次数>
 - 没有 blocking 级别的 issue
 - spec 第 5 节的验收标准除「需用户/真机验证」类目外都达成
 - spec 第 6 节硬约束没被破坏
+- **§9 Amendments 所有 `status=DONE` 条目都核对通过**（即 `amendments_verified.done_failed` 为空）；`status=TODO` 不影响 verdict
 - iOS UI 改动专项（如适用）：`ui_verified` 为 `pass`、`degraded`、或 `not_applicable` 都可 PASS；只有 `fail` 不行
   - `degraded` 时必须同时 `ui_smoke_required: true`，把验证责任交给用户
 
@@ -369,6 +392,7 @@ retry_count: <主 agent 给你的本轮重试次数>
 - **可改 simulator 状态**：UI 验收必须能实际操作 —— 但 simulator 状态不是 repo 状态、不影响 generator 的输出，所以不破坏「只读」契约
 - **结构化结论**：主 agent 能确定地路由 —— FAIL 时把 issues 整理后传给 generator 当下一轮入参；PASS 时直接报告用户
 - **spec 第 4-6 节是验收的法律**：不在 spec 里的事不审；如果 spec 漏了，问题在 planner —— 主 agent 应该决定是否回到 planner 阶段重新对齐
+- **§9 Amendments 与 §1-7 等价**：用户在实现阶段追加的具体指令一样要验，但只验 status=DONE 的；TODO 跳过 —— 与 §8 子任务一致的口径，避免「generator 还没做完就被打回」的误判
 - **跑 `<your lint check recipe>` 是 executor 专属**：generator 阶段的回合末验证只跑 build（节奏快），但验收阶段必须把 lint / format 也确认 —— 这是 executor 不可替代的价值
 - **iOS UI 验收 conditional**：只在 spec 第 4 节有 iOS UI 改动专项时跑，避免 `修了个后端 bug → executor 也要启 simulator` 的浪费
 - **降级路径**：build artifact / simulator / install/launch 是环境问题，不是 generator 的代码问题。降级到 `ui_smoke_required: true` 把验证责任交给用户，比让 generator 反复重写好得多

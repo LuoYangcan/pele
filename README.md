@@ -159,6 +159,24 @@ Pele uses **symlinks**, so you customize by editing the source files in `<pele-c
 
 For project-specific overrides (per-repo CLAUDE.md, per-repo hooks), use the standard Claude Code mechanisms in `<repo>/.claude/` — they layer on top of pele's globals.
 
+## Maintainer: syncing personal `~/.claude/` → public `pele/core/`
+
+If you maintain a fork of pele (or you are the original maintainer), you'll iterate on `~/.claude/` locally with real project names (e.g. `TodayiOS`, `just build-ios`, `~/Developer/pele/`) and periodically push improvements back into the public `core/` with those names decoupled to placeholders.
+
+`scripts/sync-from-local.sh` automates the mechanical part: it `cp`s the right files, applies the established token-replacement dictionary (`TodayiOS` → `<YourApp>iOS`, `TDChat` → `<ChatModule>`, etc.), and flags everything that needs paragraph-level review. It's a first-pass tool, not a substitute for reading `git diff`.
+
+```bash
+cd <pele-checkout>
+git fetch origin
+git worktree add .worktrees/sync-N -b chore/sync-from-local-N origin/main
+cd .worktrees/sync-N
+../../scripts/sync-from-local.sh --dry-run   # preview
+../../scripts/sync-from-local.sh             # do it
+# … manual review of the flagged locations, then commit + PR
+```
+
+Full SOP, the placeholder dictionary, and the rationale for not auto-fixing everything are in **[docs/sync-from-local.md](docs/sync-from-local.md)**.
+
 ## Uninstall
 
 ```bash

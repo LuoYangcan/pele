@@ -158,6 +158,68 @@
 
 - [x] <已完成 + 一句话验证方式>
 
+## 9. Amendments
+
+> **用途**：实现阶段用户追加的具体指令（bug fix / review-fix 挑出的修复项 / 临时新增的具体要求）一律**追加**到此处，**不修改 §1-7**——保持原始需求快照纯净，方便回溯"最初想要什么"。
+>
+> **写权限（与 §8 同为共写域，与 §1-7 的 planner-only 不同）**：
+>
+> - **planner** 在二次调用时追加：场景 A 用户决策是实现层指令（bug fix / 微调）→ append AMD；场景 A 用户决策是真改硬约束 / 拆任务 → 仍 Edit §1-7（不走 amendment）
+> - **generator** 在迭代中追加：用户在主对话里直接提具体指令（bug fix / 改某处效果） → generator 自己 Edit 把 `### AMD-N` append 到 §9 后再动手实现
+> - 双方都**只追加、不修改、不删除**已有 AMD 条目（保留审计痕迹）；状态字段 TODO ↔ DONE 由当事 agent 推进时自己改
+>
+> **executor 验收**：
+>
+> - status=**DONE** 的 amendment 与 §1-7 等价、**必须验收**；不满足 → issues 里标 `amendment_ref: AMD-N`
+> - status=**TODO** 的 amendment 跳过本轮验收（视为"下一轮 generator 的范围"，与 §8 TODO 子任务同处理）
+
+### 模板（每条 amendment 按此格式追加，AMD-N 编号自增）
+
+```markdown
+### AMD-N (YYYY-MM-DD HH:MM) [planner 写 | generator 写] — [TODO | DONE]
+
+- **触发**：<用户原话 / 反馈来源——例：用户在阶段 2.5 review-fix 里挑的 / 用户跟 generator 对话提的 bug / 用户决策同步阶段提的>
+- **指令**：<具体要做什么、改哪里、达到什么效果>
+- **影响范围**：<涉及的文件 / 模块；如新增子任务，在 §8 TODO 也加一行>
+- **状态**：TODO | DONE
+```
+
+### 初始状态
+
+> 暂无 amendments。
+
+## 10. Review 流程（仅说明，不需填写）
+
+> 本节是给用户 / generator / executor / 主 agent 看的元说明，**spec 编写者不用填**任何内容。完整定义见 `~/.claude/agents/executor.md` Step 6.5 + `~/.claude/rules/dispatch-pipeline.md` 阶段 3A PASS 后流程。
+>
+> **时机**：executor verdict==PASS 后**自动**跑一次外部 reviewer subagent（Opus 4.7 extended thinking，~5-10 分钟）。review 与 verdict 解耦——report 中的 findings **不影响** PASS/FAIL、**不进** executor 的 issues list、**不进** retry 循环。
+>
+> **报告位置**：`.reviews/<branch>-<ts>-executor.md`（gitignored；`/openpr` 推 PR 前会自动清理）。后缀 `-executor` 与主动 `/review` 跑的报告区分。
+>
+> **review issues 处理路径**：
+>
+> 1. 主 agent 拿到 verdict==PASS + review 报告元信息 → 展示给用户（review_verdict / 各类 findings 计数 / 一句话摘要 / 报告绝对路径）
+> 2. AskUserQuestion 问「review 怎么处理」，选项含「全部采纳修」/「只修 must-fix」/「自己挑」/「跳过」
+> 3. 用户挑修 → 主 agent 调 generator → generator 按 §9 Step 2.1 把要修的项 append 成 AMD（`[generator 写]`）→ 实现 → 改 AMD 状态 DONE
+> 4. retry executor（主 agent 显式传 `run_review_subagent: false`，**不重跑 review**） → verdict==PASS 后直接进「文档同步问询」环节，不再回到 review 闸口
+>
+> **bypass**：
+>
+> - 用户在主对话里**显式说**「跳过 review」 → 主 agent 调 executor 时显式传 `run_review_subagent: false`
+> - 用户主动跑 `/review` 或 `/codex:review` slash command 永远可用（任何时候都可以），但产物落在 `.reviews/<branch>-<ts>.md`（无 `-executor` 后缀）
+>
+> **review 在哪种场景不跑**：
+>
+> | 场景 | review 跑不跑 |
+> | --- | --- |
+> | 第一次 executor，verdict==PASS | ✅ 跑 |
+> | 第一次 executor，verdict==FAIL（编译/lint/spec 任一失败） | ❌ 不跑（fast-fail，retry 期间不浪费时间） |
+> | 阶段 4 retry，verdict 仍 FAIL | ❌ 不跑 |
+> | 阶段 4 retry，verdict==PASS | ✅ 跑（终态 review） |
+> | 阶段 3A PASS 后 review-fix 引起的 retry | ❌ 不跑（review 已采纳） |
+> | 并行模式 3B 各组单独验收 | ❌ 不跑（留给阶段 5 整体跑） |
+> | 并行模式阶段 5 最终验收 | ✅ 跑 |
+
 ---
 
 > 完成所有 DONE、走 `/openpr` 推 PR 之前，把这个 spec 文件删掉（或整个 `.specs/` 目录删掉）。

@@ -13,17 +13,23 @@
   ↓ 用户拍板「开始」
 [generator subagent] —— 独立 context、按 spec 写代码 + 跑编译
   ↓
-[阶段 2.5] 主 agent: 报告 + 默认跑 1 轮代码 review（/review 或 /codex:review）
-              → 用户挑要修的项 → generator 按 review 修 → 不限轮循环（用户拍板停）
-  ↓ 用户拍板「进 executor」
-[executor subagent] —— 独立 context、只读 review + 验收
+[executor subagent] —— 独立 context、跑硬验收（spec/build/lint/AMD/UI/硬约束）
+  ↓ verdict==PASS
+[executor 内嵌 Step 6.5] —— PASS 后跑一次外部 reviewer subagent（Opus 4.7 extended thinking，~5-10 分钟）
   ↓
-PASS → 主 agent 报告用户 + AskUserQuestion 问「是否总结+更新文档」 → 按用户选择执行 → 等下一步指令
-FAIL → 主 agent 把 issues 整理给 generator 重写（最多 3 次）
+主 agent: 报告 verdict==PASS + 展示 review 报告摘要 + AskUserQuestion 问「review 怎么处理」
+  ↓
+[review-fix 子循环（按需）] —— 用户挑修 → generator 按 Step 2.1 append AMD 再修 → retry executor（run_review_subagent: false 跳过 review）→ 再 PASS 后直接报告（不重 review）
+  ↓
+主 agent: AskUserQuestion 问「是否总结+更新文档」 → 按用户选择执行 → 等下一步指令
+
+verdict==FAIL 路径：主 agent 把 issues 整理给 generator 重写（最多 3 次）
 3 次都失败 → 报给用户拍板
 ```
 
 > ⚡ **并行模式扩展**：spec 第 2 节并行分组里有**多个** `parallel-N` 组时，阶段 2 / 3 走「并行模式」—— 见下方 **2B / 3B / 3C / 阶段 5** 子节。串行模式（只有 `serial` 组 / 写「全部串行」）按上图原流程跑。判别由 planner 在 spec 里标注、用户在阶段 1 末尾审 spec 时拍板，主 agent 自己**不**判断是否并行。
+>
+> 🔁 **review 在并行模式下的处理**：3B 各组 executor 都传 `run_review_subagent: false`（单组不跑 review）；review 只在 3C 合并 + 阶段 5 最终 executor 跑一次。
 
 ## 触发
 
@@ -243,88 +249,44 @@ Agent({...serial...}, run_in_background: true)
    - 该组单独重做（其他组结果保留；重做时 generator 在 sub-worktree 内继续读主 worktree 的 spec）
    - 整组重新分组（如果 planner 重划了）→ 清理所有 sub-worktree 重来
 
-### 阶段 2.5: review-fix 循环
+### 阶段 2.5: ~~review-fix 循环~~（已废弃，review 搬进 executor Step 6.5）
 
-> **时机**：
-> - 串行模式（2A）：阶段 2 完成后、阶段 3 前
-> - 并行模式（2B）：挪到阶段 3C 后（合并到主 worktree 之后）—— 分散 review 没意义、整体 review 一次
+> **历史**：本阶段曾在 generator 完成后让用户挑「跑 /review / 跑 /codex:review / 跳过」，review 通过后才进 executor。
+>
+> **现状**：generator 完成后**直接**进阶段 3（executor）。代码 review 由 executor 在 verdict==PASS 后内嵌跑一次（详见 `~/.claude/agents/executor.md` Step 6.5）；review 与 verdict 解耦，retry 期间不重复 review。**bypass 入口仍在**：用户主动跑 `/review` 或 `/codex:review` slash command 任何时候都可以，但不是默认流程的一部分。
+>
+> **generator 完成后主 agent 仍要做的事**（合并到阶段 3 入口前）：
+>
+> 1. 把 generator 改动文件清单 + 编译结果 + spec §8 DONE 列表 + **`dead_code_status` 字段透明展示**给用户（透明度，不打扰）：
+>    - `clean` → 一句话过
+>    - `auto_cleaned` → 列出 generator 顺手删了哪些
+>    - `needs_user_review` → **高亮**列出待用户判断的 dead-code 候选；用户可在阶段 3 PASS 后的 review-fix 子循环里挑修
+>    - `skipped:<reason>` → 一句话说明
+> 2. **不再 AskUserQuestion 问「要不要 review」** —— 直接进阶段 3 调 executor
+> 3. 用户**显式说**「先 /review 再 executor」 → 跑 /review 后再进阶段 3；用户**显式说**「不用 executor」 → bypass executor
 
-generator 「正常完成」后默认跑 1 轮代码 review，让用户挑改、generator 修。循环不限轮、由用户拍板停。
-
-**并行模式下 review-fix 期间的 generator 调用退化为串行**（在主 worktree 内调一次 generator 修整体 review issues）—— 合并验证已通过，没必要再分 sub-worktree。
-
-#### Step 1: 报告 + 闸口（决定走 review 还是直接 executor）
-
-主 agent：
-
-1. 把 generator 的改动文件清单 + 编译/build 结果 + spec 第 8 节 DONE 的子任务列表展示给用户。**还要展示 generator 返回结构化结论里的 `dead_code_status` 字段**（见 `agents/generator.md` Step 4.5）：
-   - `clean` → 一句话过：「dead-code 自检 0 candidates」
-   - `auto_cleaned` → 把 `dead_code_auto_cleaned` 列表贴出来，让用户知道 generator 顺手删了哪些本轮自产的孤儿（透明度，不打扰）
-   - `needs_user_review` → **必须高亮**：把 `dead_code_pending_review` 列表完整贴出来，提示用户 generator 自动清不掉、需要你判断；这些项可能在阶段 2.5 review-fix 循环里被采纳删除
-   - `skipped:<reason>` → 一句话说明跳过原因（`no-swift-changes` / `no-periphery` / `spec-opt-out`），让用户知道这一步没跑过
-2. 用 AskUserQuestion 问「下一步」，给选项（**第一个标 Recommended**）：
-   - **跑 /review**（Recommended）—— pele 自带的 deep code review（见 `~/.claude/commands/review.md`），结果落 `.reviews/<branch>-<ts>.md`
-   - **跑 /codex:review**（仅当装了 OpenAI Codex CLI 插件时可选）—— Codex 外部视角 review，作为 cross-check
-   - **跳过 review，直接进 executor** —— 改动很小、或用户已经看过代码
-   - **暂停，等我下一步指令** —— 用户想自己看代码 / 改方向 / 撤回 / 让 generator 改某些子任务
-3. 用户选 review → 进入 Step 2；选「跳过 review」→ 跳到阶段 3 入口；选「暂停」→ 等用户进一步指令，**不要**自动推进
-
-#### Step 2: 触发 review
-
-按用户选择执行：
-
-- **/review**：复刻 `~/.claude/commands/review.md` 的 SOP（git diff 拿改动 → Agent 派发 review subagent → 写 `.reviews/<branch>-<ts>.md`）。**不要**走 Skill 工具尝试 invoke slash command —— 直接按 review.md 步骤手动跑，确定性高
-- **/codex:review**：按 codex 插件提供的 review.md SOP（通过 Bash 调 codex-companion；默认 background 模式，让用户决定 wait / background）。**用户没装 codex 插件时本选项在 Step 1 闸口不出现**
-
-review 完成后回到主 agent。
-
-#### Step 3: 摘要 review，让用户挑
-
-主 agent：
-
-1. **不要**贴整份 review；从 review 文件里提取关键信息：
-   - issues 总数 + 按严重度分布（blocking / warning / nit / suggestion）
-   - 3-5 条最值得关注的 highlight（一句话 + 文件:行）
-   - review 文件**绝对路径**给用户，让他自己打开看细节
-2. AskUserQuestion 问「review 怎么处理？」给 4-5 个选项：
-   - **全部采纳，调 generator 修**
-   - **只采纳 blocking 级，调 generator 修**（review 里的 nitpick 跳过）
-   - **打开 review 文件我自己挑** —— 等用户在主对话里告诉我具体修哪些条目
-   - **再跑另一个 review**（刚跑了 /review 就跑 /codex:review，反之亦然）—— cross-validate
-   - **跳过这次 review，进 executor** —— review 留着以后参考、本轮不修
-
-#### Step 4: 调 generator 按 review 修
-
-```
-Agent({
-  description: "<需求一句话> — 按 review 修",
-  subagent_type: "generator",
-  prompt: """
-    Worktree slug: <slug>
-    Worktree 绝对路径: <pwd>
-    本轮任务: 按代码 review 修复，不扩范围、不修 §1-7
-
-    Review 文件: <绝对路径>
-    采纳范围: <全部 | 只 blocking | 用户挑出的具体条目（列出来）>
-
-    按 ~/.claude/agents/generator.md 的 SOP 工作，本轮重点：
-    - 把采纳的 review issues **按 generator.md Step 2.1 自己 append 成 §9 AMD**（[generator 写]），然后实现、改 DONE
-    - 只改 review 里被采纳的项
-    - 不修 spec §1-7、不扩任务范围
-    - 修完跑编译确认没引入新错
-  """
-})
-```
-
-generator 修完返回 → **回到 Step 1**（重新展示改动 + 4 个闸口选项）。这一轮的 review-fix 算一次迭代结束、由用户决定下一轮还是停。
-
-> **为什么 review-fix 走 AMD 而不是直接改代码不留痕**：review issues 是「用户在实现阶段追加的具体修复指令」，与本 rule 引入 §9 Amendments 的设计目标完全对齐 —— 让审计痕迹留在 spec、让 executor 下一轮验收时能精准对照「这条 AMD 真的修完了吗」。generator 自己 append AMD 是为避免 planner 多一道工序；planner 不参与本步。
-
-#### 循环规则
-
-- **循环不限轮**：每轮 fix 后必须重新走 Step 1 的闸口让用户拍板。主 agent **不**自己判断「review 应该够了」自动进 executor
-- **用户拍板停**：用户选「跳过 review，进 executor」或「暂停」即终止本阶段
-- **review 失败 / Codex 不可用 / Bash 错**：主 agent 把错误告诉用户、AskUserQuestion 问「换另一个 review / 跳过 review 进 executor / 暂停」，**不要**自己重试 5 次也不要硬塞默认行为
+> **「按 review 修」prompt 模板**（阶段 3A PASS 后的 review-fix 子循环复用此模板）：
+>
+> ```
+> Agent({
+>   description: "<需求一句话> — 按 review 修",
+>   subagent_type: "generator",
+>   prompt: """
+>     Worktree slug: <slug>
+>     Worktree 绝对路径: <pwd>
+>     本轮任务: 按 executor review 报告修复，不扩范围、不修 §1-7
+>
+>     Executor review 报告路径: <.reviews/<branch>-<ts>-executor.md 绝对路径>
+>     采纳范围: <全部 | 只 must-fix | 用户挑出的具体条目（列出来）>
+>
+>     按 ~/.claude/agents/generator.md 的 SOP 工作，本轮重点：
+>     - Read review 报告全文，把采纳的项按 Step 2.1 append 成 §9 AMD（[generator 写]），然后实现、改 DONE
+>     - 只改 review 里被采纳的项
+>     - 不修 spec §1-7、不扩任务范围
+>     - 修完跑编译确认没引入新错
+>   """
+> })
+> ```
 
 ### 阶段 3: 调 executor
 
@@ -339,6 +301,7 @@ Agent({
     Worktree 绝对路径: <pwd>
     Generator 改动文件清单: <generator 返回的清单>
     本轮重试次数: <1 | 2 | 3>
+    run_review_subagent: true   ← 默认值；review-fix 后的 retry 改成 false（见下方「3A PASS 后 review-fix 子循环」）
 
     按 ~/.claude/agents/executor.md 的 SOP 工作。
   """
@@ -347,16 +310,80 @@ Agent({
 
 executor 返回结构化结论：
 
-- **verdict == PASS** → 主 agent 报告用户：「executor 通过了 + ui_smoke_required 提示（如有）+ warning 列表（如有）+ ui_screenshots_dir 路径（如有）+ **ui_dynamic_cases_skipped 列表**（如有，**必须把每条 case_number + spec_description 完整列出来，提示用户「下面这几条是动态/动画类用例，executor 没用 mcp 验，请自己跑一下看效果」**）」。
-  
-  **接着用 AskUserQuestion 问「要不要现在总结这次工作 + 更新项目文档？」**，给 3 个选项：
-  
-  - **总结 + 更新文档（推荐）**：主 agent 自己复盘本轮改动里**对未来 agent 行为有持续影响**的部分（新工作流 / 改了项目结构 / 改了模块边界 / 引入新工具链 / 新约定）→ 列出建议更新的具体文档路径 + 每处改动大纲（CLAUDE.md / AGENTS.md / docs/*.md / rules / skills 都可能）→ 用户拍板大方向后 agent Edit 落地 → 让用户 review diff → 满意就 commit
-  - **跳过文档**：本次改动只是常规业务代码 / UI / bug fix，对 agent 没新约束，直接进入下一步
-  - **稍后再说**：留着这次改动，先做别的；后续 `/openpr` 时仍会再问一遍（见 `commands/openpr.md`「文档同步检查」）
-  
-  **不要默认跳过 —— 必须问**。问完按用户的选择执行；用户选完后再告诉用户「可以 `/openpr` 或继续做下一个需求」。
+- **verdict == PASS** → 进入「3A PASS 后流程」（见下方）
 - **verdict == FAIL** → 进入阶段 4
+
+##### 3A PASS 后流程
+
+`verdict == PASS` 时主 agent 顺序做下面三件事，**不要跳序**：
+
+**Step P1: 报告 + UI / amendment 提示**
+
+把这些字段一次性报给用户：
+
+- `executor 通过了`
+- `ui_smoke_required` 提示（如有）+ `ui_screenshots_dir` 路径（如有）
+- `ui_dynamic_cases_skipped` 列表（如有）—— **必须把每条 case_number + spec_description 完整列出来**，提示「下面这几条是动态/动画类用例，executor 没用 mcp 验，请自己跑一下看效果」
+- `warning` 列表（如有）
+- `amendments_verified` 三个 list（done_verified / done_failed 应为空 / todo_skipped）
+
+**Step P2: 展示 review 报告 + AskUserQuestion 问「review 怎么处理」**
+
+按 `review_subagent_status` 路由：
+
+- `success` → 把 review 元信息展示给用户：
+  - `review_subagent_verdict`（pass / pass-with-nits / fail）
+  - `review_findings_count`（must_fix / suggestions / test_residue / dead_code / spec_deviations 各计数）
+  - `review_summary`（一句话）
+  - `review_file` 绝对路径 —— 让用户自己打开看细节，**不要**在 chat 里贴整份 review
+  
+  然后 AskUserQuestion 问「review 怎么处理」，给选项（**第一个标 Recommended**）：
+  
+  - **全部采纳，调 generator 修**（Recommended，当 review_subagent_verdict==fail 时）
+  - **只采纳 must-fix，调 generator 修**（Recommended，当 review_subagent_verdict==pass-with-nits 时）
+  - **打开 review 文件我自己挑** —— 等用户在主对话里列具体条目
+  - **跳过 review，进入下一步** —— review 留着以后参考；当 review_subagent_verdict==pass 时这个是 Recommended
+  
+  用户挑「修」 → 进入「Step P3 review-fix 单轮子循环」；挑「跳过」 → 直接进 Step P4
+  
+- `failed` → 把 `review_subagent_error` 报给用户，AskUserQuestion 问「下一步」，给选项：
+  - **跳过 review，进入下一步**（Recommended）
+  - **主动跑一次 `/review` 重试** —— 走 commands/review.md 的 SOP
+  - **暂停，等我下一步指令**
+- `skipped:verdict_fail` —— 不该出现在 PASS 路径里（这个 status 只在 FAIL 时给）；如果误标了就当 warning 提示用户后忽略
+- `skipped:flag_off` —— 这是 review-fix 子循环后的 retry executor 才会出现（主 agent 自己传了 false），跳过 Step P2 直接进 Step P3 / P4
+
+**Step P3: review-fix 单轮子循环（仅当用户挑「修」时）**
+
+> 单轮 = 跑完一次 generator-fix + 一次 retry-executor 后**就退出子循环**进 Step P4，不再回到 Step P2 重新问 review。这是为了让 review 真的只跑一次、不打扰用户多轮。
+
+1. 调 generator 按 review 修，prompt 用阶段 2.5 末尾的「按 review 修 prompt 模板」（带 `Executor review 报告路径` 字段）
+2. generator 修完返回 → 调 retry executor，prompt 与 3A 入口一样**但显式传 `run_review_subagent: false`**：
+   ```
+   Agent({
+     description: "<需求> — review-fix 后 retry 验收",
+     subagent_type: "executor",
+     prompt: """
+       ...
+       本轮重试次数: <继续累加>
+       run_review_subagent: false   ← 显式跳过 review，避免重复
+       ...
+     """
+   })
+   ```
+3. retry executor 返回：
+   - `verdict == PASS` → 进 Step P4（不重新展示 review，review 已经处理完了）
+   - `verdict == FAIL` → 进阶段 4 失败循环（注意：阶段 4 期间所有 retry executor 都传 `run_review_subagent: false`，因为 review 已经在 P2 阶段跑过且结果已被采纳）
+
+**Step P4: 文档同步问询 + 收尾**
+
+AskUserQuestion 问「要不要现在总结这次工作 + 更新项目文档？」，给 3 个选项：
+
+- **总结 + 更新文档（推荐）**：主 agent 自己复盘本轮改动里**对未来 agent 行为有持续影响**的部分（新工作流 / 改了项目结构 / 改了模块边界 / 引入新工具链 / 新约定）→ 列出建议更新的具体文档路径 + 每处改动大纲（CLAUDE.md / AGENTS.md / docs/*.md / rules / skills 都可能）→ 用户拍板大方向后 agent Edit 落地 → 让用户 review diff → 满意就 commit
+- **跳过文档**：本次改动只是常规业务代码 / UI / bug fix，对 agent 没新约束，直接进入下一步
+- **稍后再说**：留着这次改动，先做别的；后续 `/openpr` 时仍会再问一遍（见 `commands/openpr.md`「文档同步检查」）
+
+**不要默认跳过 —— 必须问**。问完按用户的选择执行；用户选完后再告诉用户「可以 `/openpr` 或继续做下一个需求」。
 
 **iOS UI 专项的 `ui_verified` 字段路由**（不是 verdict 本身，但影响主 agent 怎么报告）：
 
@@ -413,6 +440,7 @@ Agent({
     并行模式: 是
     本组负责的子任务: <task ID 列表>
     Simulator UDID / 模拟环境 ID: <SIM_POOL[parallel-1]>   ← 仅 UI 验收用，串行模式 / 无 UI 验收时省略
+    run_review_subagent: false   ← 并行模式下单组验收不跑 review，review 留到阶段 5 最终验收时跑一次
     
     按 ~/.claude/agents/executor.md 的 SOP 工作。
     本轮验收范围**只看本组负责的子任务**对应的 spec 验收标准；
@@ -487,7 +515,7 @@ done
 # Android: adb -s <emu-id> emu kill；Playwright: 关 browser context；Docker: docker rm -f $POOL
 ```
 
-清理完后 → **进入阶段 2.5（review-fix 循环）**，对整体改动做 review。
+清理完后 → **进入阶段 5（最终 executor，含 review）**。
 
 ### 阶段 4: 失败循环（最多 3 次）
 
@@ -498,7 +526,10 @@ while i <= 3:
       - **review 文件绝对路径**: `.specs/<slug>-review.md`（executor 在 FAIL 时已写，含完整 issues + 多 iter 累积视图）
       - 本轮是第 i 次重试 / 共 3 次
       - 显式说「请 Read review 文件拿完整 issues + 上轮 status diff，按 issues 修复，不要扩大改动范围」
-    generator 返回 → 调 executor (retry_count = i)
+    generator 返回 → 调 executor (retry_count = i)   ← run_review_subagent 默认 true；
+                                                       executor 内 Step 6.5 自动 fast-fail：
+                                                       verdict==FAIL 时 review_subagent_status=skipped:verdict_fail，
+                                                       直到 verdict==PASS 那一轮才真跑 review
     if executor.verdict == PASS: break
     i += 1
 
@@ -529,7 +560,7 @@ if i > 3:
 
 ### 阶段 5: 最终 executor（仅并行模式）
 
-并行模式下 review-fix（阶段 2.5，时机已挪到阶段 3C 后）退出后**必须**再跑一次 executor —— review-fix 期间 generator 可能改了代码，那部分改动还没经过 executor 验收：
+并行模式下 3C 合并 + build 验证通过后**必须**再跑一次 executor —— **review 也在这一步跑**（3B 各组都没跑 review）：
 
 ```
 Agent({
@@ -538,9 +569,10 @@ Agent({
   prompt: """
     Worktree slug: <主 slug>
     Worktree 绝对路径: <主 worktree 绝对路径>
-    Generator 改动文件清单: <review-fix 期间的整体改动清单（包含所有组合并 + review 修改）>
+    Generator 改动文件清单: <各组合并后的整体改动清单>
     本轮重试次数: 1
     最终验收模式: 是
+    run_review_subagent: true   ← 并行模式 review 在此唯一一次入口
     
     按 ~/.claude/agents/executor.md 的 SOP 工作。
     验收范围：spec 第 4 / 5 / 6 节的整体（不分组）。
@@ -548,10 +580,10 @@ Agent({
 })
 ```
 
-- **PASS** → 进入串行流程末尾的「报告用户 + 文档同步问询」逻辑（同 3A 的 PASS 路径）
-- **FAIL** → 走阶段 4 失败循环（**不分组**，整体重做 review-fix 改动），最多 3 次
+- **PASS** → 进入 3A PASS 后流程（Step P1 → P2 → P3 review-fix 子循环（按需）→ P4 文档同步）
+- **FAIL** → 走阶段 4 失败循环（**不分组**，整体重做改动），最多 3 次；阶段 4 retry 期间所有 executor 都传 `run_review_subagent: false`，直到下一次 PASS 才让 review 再跑（或如果首次 review 已经跑过、用户已经看过，retry 后的 PASS 也不重 review）
 
-> 串行模式（2A）下不存在阶段 5 —— 阶段 3A 的 executor 已经在 review-fix 后跑过（见阶段 2.5 时机说明），不需要重复。
+> 串行模式（2A）下不存在阶段 5 —— 阶段 3A 的 executor 已经在第一次 PASS 时跑过 review，不需要重复。
 
 ## 主 agent / planner / generator 在 §8 进度状态上的写权限边界
 

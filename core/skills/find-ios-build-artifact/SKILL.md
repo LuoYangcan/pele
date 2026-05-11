@@ -45,7 +45,7 @@ done
 
 ### Step 2: 确定 scheme
 
-caller 应该传入 scheme 名（如项目 `<YourApp>iOS` / `AcmeiOS` 等）。如果没传：
+caller 应该传入 scheme 名（例：`<YourApp>iOS` / `MyAppiOS`）。如果没传：
 
 ```bash
 # 列 workspace 全部 scheme，让 caller 自己挑
@@ -109,7 +109,7 @@ echo "SCHEME=$SCHEME"
 
 ```
 Skill(find-ios-build-artifact)   # 入参：scheme = <YourApp>iOS
-# 输出：APP_PATH=/abs/path/to/<YourApp>.app, BUNDLE_ID=com.example.<yourapp>
+# 输出：APP_PATH=/path/to/<YourApp>.app, BUNDLE_ID=ai.today.app
 
 # 失败 → 标 ui_verified: degraded + reason: build_artifact_not_found，不判 FAIL
 # 成功 → 进 4.5.2 拿 simulator UDID

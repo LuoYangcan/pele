@@ -294,7 +294,7 @@ rg -n -w "<symbol>" --type swift
 用户选 A / B 后：
 
 1. 对每个要删的符号用 `Edit` 工具删除其声明（连带相邻的注释、空行清理）
-2. 删完每改 3-5 个就跑一次项目的 build 命令（`just build-ios` / `xcodebuild` / `swift build` 等，按项目实际），**早发现编译错** —— 别一次删 20 个再 build，错了不知道是哪个删错了
+2. 删完每改 3-5 个就跑一次项目的 `<your build recipe>`（如 `swift build` / `xcodebuild ... build` / `just build-ios` / `cargo build` / `npm run build` 等），**早发现编译错** —— 别一次删 20 个再 build，错了不知道是哪个删错了
 3. 编译过了再继续；编译错了把那条改动 revert（用 git 或重新写回去），降级到 low-confidence 列表
 4. 全部删完跑最终一次 build 确认整体绿
 5. **不要 commit**——把 diff 留给用户审，commit 是用户的事

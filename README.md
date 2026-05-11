@@ -77,15 +77,22 @@ Common placeholders:
 | `<YourApp>` | Your iOS app name (workspace + scheme stem) | `Acme`, `MyApp` |
 | `<YourApp>iOS` | Your iOS scheme name | `AcmeiOS` |
 | `<your-monorepo>` | Your repo / monorepo name | `acme-platform-apple` |
-| `<your build recipe>` | Your build command | `just build-ios`, `make build`, `npm run build` |
+| `<your build recipe>` | Your generic build command | `just build`, `make build`, `npm run build`, `cargo build` |
+| `<your iOS build recipe>` | Your iOS build command | `just build-ios`, `xcodebuild -workspace Acme.xcworkspace -scheme AcmeiOS -destination 'generic/platform=iOS Simulator' build` |
+| `<your macOS build recipe>` | Your macOS build command | `just build-macos`, `xcodebuild -scheme AcmeMac build` |
+| `<your lint check recipe>` | Your lint / format-check command | `just check`, `npm run lint`, `cargo clippy`, `swiftlint` |
+| `<your test recipe>` | Your test command | `just test`, `swift test`, `npm test`, `cargo test`, `pytest` |
+| `<your auto-fix recipe>` | Your auto-fix / formatter command | `just fix`, `swiftformat .`, `prettier --write`, `cargo fmt` |
 | `<DesignSystemPackage>` | Your shared theme / design package | `AcmeTheme`, `DesignKit` |
-| `<ImageRegistry>` | Your image registry class (image-assets rule) | `ThemeImageManager`, `IconRegistry` |
+| `<ImageRegistry>` | Your image registry class (image-assets rule) | `AcmeImageRegistry`, `IconRegistry` |
+
+> The build / lint / test / fix recipes are deliberately tool-agnostic — pele used to hardcode `just` everywhere, but other projects may use `make` / `npm` scripts / `cargo` / direct shell. Edit the recipe placeholders to point at whatever your project actually runs.
 
 **Find all placeholders in your installed rules:**
 
 ```bash
 cd ~/Developer/pele
-grep -rEn '<(YourApp|your-monorepo|your build recipe|DesignSystemPackage|ImageRegistry)' core/ --include='*.md'
+grep -rEn '<(YourApp|your-monorepo|your (build|iOS build|macOS build|lint check|test|auto-fix) recipe|DesignSystemPackage|ImageRegistry)' core/ --include='*.md'
 ```
 
 **Bulk-replace one** (example: `<YourApp>` → `Acme`):

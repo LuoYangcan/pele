@@ -60,7 +60,7 @@ done
 不要用 grep 抽段落 —— 完整 Read 两份文件再判断。原因：
 
 - CLAUDE.md 可能是 `@AGENTS.md` stub，但也可能项目作者改过、有自己的额外段落
-- 触发 marker 的格式可能因项目而异（`**改动以下任一范围前先读该文档**` 是一种写法，但其他项目可能写成 `## 触发：` / `> 改这里前先读...` / `**Before touching X**: read Y` 等）
+- 触发 marker 的格式可能因项目而异（`**改动以下任一范围前先读该文档**` 是 某 iOS monorepo 的写法，但其他项目可能写成 `## 触发：` / `> 改这里前先读...` 等）
 - 完整读才能判断每条 marker 的语义边界
 
 ### Step 3: 抽出所有「触发即必读」段落
@@ -111,7 +111,7 @@ done
 
 ### Step 6: 补扫其他 agent 工具的项目级指引（按需）
 
-`.cursor/rules/*.mdc` 是 Cursor IDE 的项目级规则文件，部分项目也用它放反直觉知识：
+`.cursor/rules/*.mdc` 是 Cursor IDE 的项目级规则文件，今 某 iOS monorepo 项目里也有几条：
 
 ```bash
 ls "$ROOT/.cursor/rules/" 2>/dev/null

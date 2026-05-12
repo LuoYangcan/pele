@@ -75,6 +75,19 @@
 
 **iOS UI 改动专项**（触发信号：改了 SwiftUI/UIKit view、改了图片资源、改了样式/布局/颜色、需求里出现 UI 字眼。任一命中则**必填**至少 1 条；不触发则删掉本小节）：
 
+**Figma 设计稿引用**（触发条件同上 iOS UI 专项；用户提供了 Figma URL 才填，没有写「无 Figma 设计稿，按 §1 用户原话和下面 mobile-mcp 冒烟条目实现」）：
+
+- **Figma 文件 URL**：`<https://figma.com/design/<fileKey>/<fileName>?node-id=<X-Y>>`
+- **节点 ID**：`<X:Y>`（URL 里 `node-id=X-Y` 把 `-` 替换成 `:`）
+- **页面 / 屏幕名**：<例如「Composer / Empty State / Dark」>
+- **设计稿覆盖范围**：<列出本次实现要对齐的关键面：**图标大小 / 间距 (padding, margin, gap) / 控件样式 (圆角, 描边, 阴影) / 颜色 / 字号 / 行高 / 字重 / 图层结构 / 对齐 (左/中/右/baseline)**；不在 scope 的视觉调整明确踢出>
+- **对齐严格度**（默认 `strict`，除非用户在 §6 硬约束里明确写降级）：
+  - `strict`：图标大小、间距、控件样式、颜色、字号**全部 1:1 还原**，肉眼 diff 即视为不通过；generator 不允许凭感觉调一两个 pt，要改必须 §9 AMD 显式记下并附原因
+  - `loose`：只对齐版式骨架（哪个元素在哪一行哪一列）+ 颜色 token，间距 / 字号允许 ±2pt 误差，需在本字段写明降级原因
+- **generator / executor 使用方式**：调 `mcp__plugin_figma_figma__get_design_context` 或 `get_screenshot` 拉设计图、与 mobile-mcp 实拍截图对比；调 `get_variable_defs` 拿设计 token 对照本仓库 <DesignSystemPackage>/Color/Spacing 常量是否一致
+
+**mobile-mcp 冒烟用例**：
+
 - [ ] **mobile-mcp 冒烟**：<scheme + 进入哪个页面 + 做什么操作 + 看什么视觉/行为结果>
   - 例：`<YourApp>iOS-Dev` → 打开「设置」tab → 点"主题" → 看到新加的卡片在最顶部、深色模式下背景色正确、点击有 push 动画
 - [ ] ...
@@ -118,6 +131,7 @@
 - [ ] 第 4 节列出的边界场景至少快速过一遍
 - [ ] 没有引入新的 lint / format 警告
 - [ ] **iOS UI 改动专项**（触发条件同第 4 节，命中则必勾；macOS UI 改动不强制）：mobile-mcp 跑通 golden path 无 crash + 视觉符合预期
+- [ ] **Figma 设计稿还原**（仅当第 4 节列了 Figma URL 时勾；无 Figma 则跳过本项）：generator 在 Step 4.5 用 mobile-mcp 实拍截图 + figma MCP `get_screenshot` 拉设计稿，按 §4「对齐严格度」字段验收 —— `strict` 模式下图标大小 / 间距 / 控件样式 / 颜色 / 字号 / 字重 / 行高 **全部 1:1** 对齐，肉眼 diff 不通过即视为 FAIL；diff 截图存到 `.reviews/<slug>-figma-diff-*.png`
 - [ ] <项目特定>：...
 
 ## 6. 硬约束

@@ -68,6 +68,21 @@ git log --oneline origin/dev..HEAD -10
 
 不要把 AskUserQuestion 当摆设。模糊的需求**一定要问**，宁可多问一轮也不能写出空 spec。问题尽量提供 2-4 个具体选项让用户挑，不要全是开放题。
 
+#### Step 3.1: Figma 设计稿引用（iOS UI 改动触发）
+
+判定本需求是否触发 iOS UI 改动专项（改 SwiftUI/UIKit view / 改图片资源 / 改样式 / 改布局 / 用户原话有 UI 字眼）。**触发**时：
+
+1. **扫用户已经给的输入** —— 用户消息里有 `figma.com/design/...` 或 `figma.com/board/...` URL 吗？
+   - **有** → 直接抽 `fileKey` 和 `nodeId`（`node-id=X-Y` 把 `-` 替换成 `:`）写进 spec §4「Figma 设计稿引用」段，**不重复问**用户
+   - **没有** → 用 `AskUserQuestion` 问一次，给三个选项：
+     - 「有 Figma 设计稿，URL 是 …」（让用户粘 URL）
+     - 「没有 Figma 设计稿，按口述实现」（spec §4 Figma 段写「无 Figma 设计稿，按 §1 用户原话和 mobile-mcp 冒烟条目实现」）
+     - 「之后再补，先按口述写 spec」（同上，且在 §7 加一条 `❓ Figma 设计稿未提供，generator 实现前需要补 URL`）
+2. **对齐严格度**：spec §4 默认填 `strict`（图标大小 / 间距 / 控件样式 / 颜色 / 字号全部 1:1 对齐）。除非用户**明确**说「大致还原就行」「不用严格对齐」之类降级语，否则不要自降到 `loose`。降级时在 §6 硬约束里**显式记一条**"对齐严格度降级 to loose，原因：<用户原话>"，避免后续 generator / executor 漂移
+3. **不要**主动调 `mcp__plugin_figma_figma__*` 工具去拉设计图 —— planner 只负责落链接 + 严格度。拉图、对照设计稿是 generator Step 4.5 的活，避免 planner / generator 重复跑 token 高的 figma tool
+
+**不触发**（不是 iOS UI 改动）时跳过本 Step、删 spec §4 的 Figma 段。
+
 ### Step 4: 写 spec 到 `.specs/<slug>.md`
 
 `<slug>` = 当前 worktree 目录名（从 `pwd` 末段取）。
@@ -86,6 +101,7 @@ git log --oneline origin/dev..HEAD -10
 3. **分工角色**（默认：主 agent 调度 / generator 执行 / executor 验收 / 用户在 planner 后和 executor 后做闸口）
 4. **测试用例**（**Golden Path / 边界 / 回归三类，每类至少 1 条具体场景**；不准 TBD / 占位符；某类真不需要则删整节并一行说明）
    - **iOS UI 改动专项**：触发即必填 mobile-mcp 冒烟用例（具体到 scheme / 进哪个页面 / 做什么操作 / 看什么视觉结果）
+   - **Figma 设计稿引用**（Step 3.1 触发时填）：把 URL / nodeId / 页面名 / 覆盖范围 / 对齐严格度按模板写齐；用户没给 Figma 时写一行「无 Figma 设计稿」
 5. **验收标准**（具体的 done definition + 跑哪些命令）
 6. **硬约束**（落地位置 / 栈 / 不能动的接口或文件 / 明确踢出本次 scope 的事）
 7. **风险 / 边界 / 存疑点**（你自己识别的 + 用户在澄清里提到的）

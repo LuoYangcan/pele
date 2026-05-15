@@ -106,6 +106,7 @@ declare -a AGENT_FILES=(
   "agents/generator.md"
   "agents/executor.md"
   "agents/planner.md"
+  "agents/ui-reviewer.md"
 )
 declare -a RULE_FILES=(
   "rules/dispatch-pipeline.md"
@@ -129,6 +130,17 @@ declare -a SKILL_NAMES=(
   "use-worktree"
   "architecture-first"
   "dead-code"
+  "review-mobile-ui"
+  "record-ui-animation"
+)
+
+# Skills that ship extra files beyond SKILL.md (helper scripts, etc.) — list
+# them by rel path. evals/ stays gitignored and is NOT listed here.
+declare -a SKILL_EXTRA_FILES=(
+  "skills/record-ui-animation/scripts/prepare.sh"
+  "skills/record-ui-animation/scripts/record-xcrun.sh"
+  "skills/record-ui-animation/scripts/stop-xcrun.sh"
+  "skills/record-ui-animation/scripts/extract.sh"
 )
 
 cp_one() {
@@ -158,9 +170,12 @@ for f in "${AGENT_FILES[@]}";   do cp_one "$f"; done
 for f in "${RULE_FILES[@]}";    do cp_one "$f"; done
 for f in "${TEMPLATE_FILES[@]}";do cp_one "$f"; done
 
-log "==> Syncing skills (only SKILL.md; evals/ stay local)"
+log "==> Syncing skills (SKILL.md + listed extras; evals/ stay local)"
 for s in "${SKILL_NAMES[@]}"; do
   cp_one "skills/$s/SKILL.md"
+done
+for f in "${SKILL_EXTRA_FILES[@]}"; do
+  cp_one "$f"
 done
 echo
 

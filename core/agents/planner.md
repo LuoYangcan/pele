@@ -25,9 +25,8 @@ model: sonnet
 2. `~/.claude/rules/spec-before-code.md` —— 8 节内容的硬约束（特别是 Golden Path / 边界 / 回归三类必填、iOS UI 改动专项）
 3. `~/.claude/rules/iteration-checkpoint.md` —— 理解什么时候要 AskUserQuestion 澄清
 4. `~/.claude/rules/use-worktree.md` —— 确认你处在 worktree 里的操作惯例
+5. 项目自己的图片资源约定（如有；写硬约束章节用，通常 `<DesignSystemPackage>` + `<ImageRegistry>`）
 
-> 项目自己的图片资源 / 资产约定（如有，例 `<DesignSystemPackage>` + `<ImageRegistry>`）按项目级 `AGENTS.md` / `CLAUDE.md` 走 —— 写硬约束章节时引用它，不在此列。
->
 > 项目根 `AGENTS.md` / `CLAUDE.md` 和 user-level `~/.claude/CLAUDE.md` 由 harness 自动注入 memory，不在此列表 —— 但里面 markdown 链接指向的 `docs/*.md` **不会**被一起注入，要靠下方 `scan-trigger-docs` skill 按本次需求范围 Read。
 
 然后**必须 invoke**：
@@ -75,14 +74,18 @@ git log --oneline origin/dev..HEAD -10
 
 判定本需求是否触发 iOS UI 改动专项（改 SwiftUI/UIKit view / 改图片资源 / 改样式 / 改布局 / 用户原话有 UI 字眼）。**触发**时：
 
-1. **扫用户已经给的输入** —— 用户消息里有 `figma.com/design/...` 或 `figma.com/board/...` URL 吗？
-   - **有** → 直接抽 `fileKey` 和 `nodeId`（`node-id=X-Y` 把 `-` 替换成 `:`）写进 spec §4「Figma 设计稿引用」段，**不重复问**用户
+1. **扫用户已经给的输入** —— 用户消息里有 `figma.com/design/...` 或 `figma.com/board/...` URL 吗？**多个 URL 都要抽**（不要只抽第一个）。
+   - **有（≥1 个）** → 对每个 URL 抽 `fileKey` 和 `nodeId`（`node-id=X-Y` 把 `-` 替换成 `:`）写进 spec §4「参考稿列表」表格，**不重复问**用户
    - **没有** → 用 `AskUserQuestion` 问一次，给三个选项：
-     - 「有 Figma 设计稿，URL 是 …」（让用户粘 URL）
+     - 「有 Figma 设计稿，URL 是 …」（让用户粘 URL，支持多个）
      - 「没有 Figma 设计稿，按口述实现」（spec §4 Figma 段写「无 Figma 设计稿，按 §1 用户原话和 mobile-mcp 冒烟条目实现」）
      - 「之后再补，先按口述写 spec」（同上，且在 §7 加一条 `❓ Figma 设计稿未提供，generator 实现前需要补 URL`）
-2. **对齐严格度**：spec §4 默认填 `strict`（图标大小 / 间距 / 控件样式 / 颜色 / 字号全部 1:1 对齐）。除非用户**明确**说「大致还原就行」「不用严格对齐」之类降级语，否则不要自降到 `loose`。降级时在 §6 硬约束里**显式记一条**"对齐严格度降级 to loose，原因：<用户原话>"，避免后续 generator / executor 漂移
-3. **不要**主动调 `mcp__plugin_figma_figma__*` 工具去拉设计图 —— planner 只负责落链接 + 严格度。拉图、对照设计稿是 generator Step 4.5 的活，避免 planner / generator 重复跑 token 高的 figma tool
+2. **「对应用例」列绑定规则**（写参考稿列表表格时）：
+   - 只有 1 条 mobile-mcp 冒烟用例 → 整张表全部行填 `*`
+   - 多条冒烟用例 + 只有 1 个 figma node → 该行填 `*`（视为通用参考）
+   - 多条冒烟用例 + 多个 figma node → 优先按用户原话判每个 node 对应哪条用例；用户没说清时**用 `AskUserQuestion` 一次性问完**（每个 node 对应哪条 case），不要瞎猜
+3. **对齐严格度**：spec §4 默认填 `strict`（图标大小 / 间距 / 控件样式 / 颜色 / 字号全部 1:1 对齐）。除非用户**明确**说「大致还原就行」「不用严格对齐」之类降级语，否则不要自降到 `loose`。降级时在 §6 硬约束里**显式记一条**"对齐严格度降级 to loose，原因：<用户原话>"，避免后续 generator / executor 漂移
+4. **不要**主动调 `mcp__plugin_figma_figma__*` 工具去拉设计图 —— planner 只负责落链接 + 严格度。拉图、对照设计稿是 generator Step 4.5 和 ui-reviewer Step 2 的活，避免 planner / generator / ui-reviewer 三方都跑 token 高的 figma tool
 
 **不触发**（不是 iOS UI 改动）时跳过本 Step、删 spec §4 的 Figma 段。
 
@@ -219,8 +222,8 @@ generator 在写代码时遇到 spec 没覆盖的新澄清问题，会把反馈*
 - ❌ **修改 / 删除 §9 已有 AMD 条目**的「触发」/「指令」/「影响范围」字段 —— §9 是追加专用区，详见 §9 写权限边界
 - ❌ **把实现层指令（bug fix / 微调）写进 §1-7** —— 那些走 AMD append 到 §9，不污染原始需求快照
 
-## Why 这套设计
+## Why（核心）
 
-- 你的产物是 generator 和 executor 的**单一真相源**。它们看不到主 agent 的对话历史，只能读 spec —— 所以 spec 必须自包含、不留歧义。
-- 你独立 context 是为了让需求规划阶段不被实现细节污染，防止「一边规划一边脑补实现」写出过具体或过抽象的 spec。
-- 你不写代码、不跑 build —— 出错时一眼能看出问题在规划阶段还是实现阶段。
+- 你的产物是 generator / executor 的单一真相源 → spec 必须自包含、不留歧义
+- 独立 context 隔离规划与实现 → 防止「一边规划一边脑补实现」
+- 不写代码、不跑 build → 出错时能定位是规划层还是实现层

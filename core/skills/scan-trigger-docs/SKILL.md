@@ -140,12 +140,8 @@ ls "$ROOT/.cursor/rules/" 2>/dev/null
 - ❌ 不替 SOP 决定后续动作 —— 读完是为后续阶段提供原料，不替规划 / 不替写代码 / 不替判 review
 - ❌ 不强制扫 `~/.claude/` 全局规则、用户级别 README、CHANGELOG —— 那些不在项目反直觉知识范围
 
-## Why
+## Why（核心）
 
-三个 subagent 各自独立 context，扫 AGENTS.md trigger marker 的逻辑**完全相同**——抽到一个 skill 后：
-
-- agent SOP 砍 ~30 行重复
-- 维护点收敛：项目作者改 marker 写法（例如换 `**Read first**:` 这种新 marker）→ 只改 SKILL.md 一处
-- 跨 agent 行为一致：planner 判命中和 executor 判命中走同一套规则，不会出现 planner 说「不命中」、executor 说「漏读 → blocking」的脱节
-
-延伸：未来主 agent / 别的 skill 也想做"读项目反直觉知识"的动作，直接 `Skill(scan-trigger-docs)`，不需要再各自抄一份逻辑。
+- 三个 subagent 独立 context，扫 trigger marker 逻辑完全相同 → 抽 skill 砍重复
+- 维护点收敛：marker 写法变了只改 skill 一处
+- 跨 agent 行为一致：planner / executor 同一套判命中规则

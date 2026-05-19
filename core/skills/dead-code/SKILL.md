@@ -294,7 +294,7 @@ rg -n -w "<symbol>" --type swift
 用户选 A / B 后：
 
 1. 对每个要删的符号用 `Edit` 工具删除其声明（连带相邻的注释、空行清理）
-2. 删完每改 3-5 个就跑一次项目的 `<your build recipe>`（如 `swift build` / `xcodebuild ... build` / `just build-ios` / `cargo build` / `npm run build` 等），**早发现编译错** —— 别一次删 20 个再 build，错了不知道是哪个删错了
+2. 删完每改 3-5 个就跑一次项目的 build 命令（`just build-ios` / `xcodebuild` / `swift build` 等，按项目实际），**早发现编译错** —— 别一次删 20 个再 build，错了不知道是哪个删错了
 3. 编译过了再继续；编译错了把那条改动 revert（用 git 或重新写回去），降级到 low-confidence 列表
 4. 全部删完跑最终一次 build 确认整体绿
 5. **不要 commit**——把 diff 留给用户审，commit 是用户的事
@@ -323,14 +323,6 @@ rg -n -w "<symbol>" --type swift
 - **`dispatch-pipeline` rule**：`generator` Step 4.5 在 review 前自动调本 skill 做自检；主 agent 阶段 2.5 review-fix 循环里也可以让用户选「再跑一轮 dead-code 扫描」作为 review 的一种形式。
 - **`post-change-verify` rule**：本 skill 的删除阶段会跑 build —— 这是 post-change-verify 的一个具体应用（只跑编译、不主动跑 lint / test / format-fix）。
 
-## Why
+## Why（核心）
 
-Agent 频繁迭代时，最容易留三类垃圾：
-
-1. **方法被新方法替代了，旧方法没删** —— 比如改名后忘了删旧的
-2. **写到一半换思路，半成品没拆** —— extension 里加了几个 helper，最后没用上
-3. **整个文件孤立** —— 复制粘贴一份模板文件，最后没接进 target
-
-人眼审 PR 时这些都能看出来，但 agent 的 PR 通常一次改十几个文件，diff 太长容易漏。本 skill 把「找无人调用」自动化、剥离掉**非僵尸**的噪声（public API、@objc、测试）、把判定证据呈给人，**让人做最后决定**。
-
-定位是「轻量自动化 + 人审拍板」——比让 agent 自动删可靠（agent 看不到运行时反射），比纯人工 review 高效（人不会有耐心扫 50 个 file）。
+Agent 频繁迭代时容易留三类僵尸：旧方法没删 / 半成品没拆 / 整个文件孤立。定位是「轻量自动化 + 人审拍板」——agent 看不到运行时反射不能自动删；人不会有耐心扫 50 个 file，工具剥离 public API / @objc / 测试这些非僵尸噪声。

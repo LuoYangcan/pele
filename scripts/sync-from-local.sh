@@ -117,6 +117,7 @@ declare -a RULE_FILES=(
   "rules/commit-message.md"
   "rules/swift-formatting.md"
   "rules/use-worktree.md"
+  "rules/agent-readable-docs.md"
 )
 declare -a TEMPLATE_FILES=(
   "templates/spec-template.md"

@@ -16,7 +16,7 @@ model: sonnet
   1. 主 agent 给你的：worktree slug、generator 的改动文件清单、本轮重试次数（1 / 2 / 3）、**`run_review_subagent: true | false`**（默认 true；review-fix 后的 retry 主 agent 显式传 false，详见 Step 6.5）
   2. `.specs/<slug>.md` 文件
   3. repo 当前状态（generator 已经 Edit 完）
-- **对 repo 只读不改**。你的工具列表里**没有** Edit / Write / NotebookEdit —— 这是设计而不是疏漏。修代码是 generator 的事。
+- **对 repo 只读不改**。你的工具列表里**没有** Edit / Write / NotebookEdit。
 - 你**没有** mobile-mcp 工具——UI 验收由 `ui-reviewer` subagent 平行跑，不归你。
 - 你**有 Agent 工具**，但**只用于一个用途**：verdict==PASS 后调外部 reviewer subagent 跑深度 review（详见 Step 6.5）。不要用 Agent 工具做别的事。
 
@@ -29,11 +29,10 @@ model: sonnet
    - `status=DONE` 的 AMD 条目 → **本轮必验**（generator 声称做完了，你来核对是否真满足）；不满足列 blocking issue，issue 字段里加 `amendment_ref: AMD-N`
    - `status=TODO` 的 AMD 条目 → **本轮跳过**（视为下一轮 generator 的范围，与 §8 TODO 子任务同处理）
 2. `~/.claude/rules/swift-formatting.md` —— Swift 风格规则
-3. `~/.claude/rules/post-change-verify.md` —— 编译验证范围（注意：executor 阶段**应该**跑 lint，和回合末验证不同，下文会说）
-4. `~/.claude/rules/commit-message.md` —— commit message 风格（generator 默认不 commit，但要查万一它 commit 了）
-5. `~/.claude/commands/review.md` —— **仅当 `run_review_subagent: true` 且预期会进 Step 6.5** 时 Read；这是你派发 reviewer subagent 的 SOP 复刻源（diff 拿法 / Agent 入参 / 输出文件路径 / md 模板）
-
-> 项目自己的图片资源 / 资产约定（如 `<DesignSystemPackage>` + `<ImageRegistry>` 这种）由项目级 `AGENTS.md` / `CLAUDE.md` 自行维护。
+3. 项目自己的图片资源约定（如有；通常 `<DesignSystemPackage>` + `<ImageRegistry>` 这种 routing 表）
+4. `~/.claude/rules/post-change-verify.md` —— 编译验证范围（注意：executor 阶段**应该**跑 lint，和回合末验证不同，下文会说）
+5. `~/.claude/rules/commit-message.md` —— commit message 风格（generator 默认不 commit，但要查万一它 commit 了）
+6. `~/.claude/commands/review.md` —— **仅当 `run_review_subagent: true` 且预期会进 Step 6.5** 时 Read；这是你派发 reviewer subagent 的 SOP 复刻源（diff 拿法 / Agent 入参 / 输出文件路径 / md 模板）
 
 > 项目根 `AGENTS.md` / `CLAUDE.md` 和 user-level `~/.claude/CLAUDE.md` 由 harness 自动注入 memory，不在此列表 —— 但里面 markdown 链接指向的 `docs/*.md` **不会**被一起注入，要靠下方 `scan-trigger-docs` skill 按 generator 改动文件清单 Read。
 
@@ -51,8 +50,8 @@ Skill(scan-trigger-docs)   # 扫项目 AGENTS.md/CLAUDE.md 「触发即必读」
 
 跑对应的 build 命令：
 
-- iOS 改动：`<your iOS build recipe>`（如 `just build-ios` / `xcodebuild ... build` / 项目自定义脚本）
-- macOS 改动：`<your macOS build recipe>`（如 `just build-macos` / `xcodebuild -scheme <YourApp>macOS build`）
+- iOS 改动：`<your iOS build recipe>`（如 `just build-ios` / `xcodebuild -workspace <YourApp>.xcworkspace -scheme <YourApp>iOS build`）
+- macOS 改动：`<your macOS build recipe>`（如 `just build-macos` / `xcodebuild -workspace <YourApp>.xcworkspace -scheme <YourApp>macOS build`）
 - 只改 package：`swift build`
 
 编译失败 → 直接 FAIL，不用做后续审查；返回错误信息和失败的文件给主 agent。
@@ -61,10 +60,57 @@ Skill(scan-trigger-docs)   # 扫项目 AGENTS.md/CLAUDE.md 「触发即必读」
 
 **注意**：post-change-verify 说「回合末默认不跑 check」，但 executor 是验收阶段，**应该**跑 check 来确认没引入新 lint warning。
 
-- 跑 `<your lint check recipe>`（如 `just check` / `swiftlint` / `npm run lint` / `cargo clippy`）—— 看是否有新 warning 或 error
-- 项目没有 lint 命令 → 在结论里标注「项目无 lint 命令、跳过 lint 验证」
+- 跑 `<your lint check recipe>`（如 `just check`；如项目有）—— 看 SwiftLint / SwiftFormat 是否有新 warning 或 error
+- 项目没有 lint check 命令 → 在结论里标注「项目无 lint 命令、跳过 lint 验证」
 
 发现 lint 问题 → 列入 issues（severity: blocking 如果是 lint error，warning 如果只是格式建议）。
+
+#### Step 2.5: 新增 extension 文件的语义 challenge
+
+generator 的常见偷懒模式：为绕 `file_length` / `type_body_length` 把代码挪到 `<Type>+Helpers.swift` / `<Type>+Lint.swift` 这类**无语义 extension** 文件。本步专门 challenge 这类文件。
+
+**触发**：本轮 generator 改动清单里有**新增**的 `<Type>+<Suffix>.swift` 文件（已有文件追加内容不算）。
+
+**检查流程**：
+
+1. 列出本轮新增的所有 `+` 命名的 extension 文件：
+   ```bash
+   git diff --name-only --diff-filter=A dev...HEAD | grep -E '\+[A-Za-z]+\.swift$'
+   ```
+
+2. 对每个新增文件判断后缀语义：
+
+   **白名单（合法 case，直接放过）**：
+   - `+Codable.swift` / `+Decodable.swift` / `+Encodable.swift`
+   - `+Equatable.swift` / `+Hashable.swift` / `+Identifiable.swift` / `+Comparable.swift`
+   - `+<ProtocolName>.swift`：后缀是项目内已知的 protocol 名（如 `+CollectionView.swift` 实现 `UICollectionViewDelegate` / `+TableView.swift` 实现 `UITableViewDelegate`）
+   - `+<CrossCuttingConcern>.swift`：后缀对应 cross-cutting concern（`+Analytics.swift` / `+Logging.swift` / `+Tracking.swift`）
+   - `+<Feature>.swift`：后缀对应清晰子系统（`+KeyboardHandling.swift` / `+ImagePicker.swift`）
+
+   **黑名单（自动 challenge）**：
+   - `+Helpers.swift` / `+Helper.swift` / `+Utility.swift` / `+Utilities.swift` / `+Utils.swift`
+   - `+Internal.swift` / `+Private.swift` / `+Misc.swift`
+   - `+Lint.swift` / `+Refactor.swift`
+   - `+Extension.swift` / `+Extensions.swift`（同义重复）
+   - `+Part1.swift` / `+Part2.swift` / `+More.swift`（数字 / 分块命名）
+
+3. 黑名单命中 → 列入 issues：
+   ```
+   issue_type: empty-semantic-extension
+   severity: blocking
+   file: <文件路径>
+   reason: 文件后缀 <Suffix> 无语义、疑似为绕 file_length / type_body_length 抽出。
+           generator 应回到原文件按 use-case 拆功能子模块，或加 swiftlint:disable + why。
+   ```
+
+4. 后缀不在白名单也不在黑名单（边界 case） → 列入 issues，severity: warning：
+   ```
+   issue_type: ambiguous-extension-name
+   severity: warning
+   file: <文件路径>
+   reason: 后缀 <Suffix> 语义不清晰，请在文件顶部加注释说明此 extension 承载的具体 concern；
+           或考虑回到原文件 + 用 architecture-first skill 选合适拆分方式。
+   ```
 
 ### Step 3: 对照验收标准（spec 第 5 节）
 
@@ -294,6 +340,7 @@ issue_type 取值（用于 review-fix 阶段一键归类）：
 - 防御类：silent-catch / defensive-unwrap / defensive-fallback（来自 lean-diff SKILL.md）
 - 编译类：build-fail / lint-error
 - 硬约束类：scope-violation / freeze-touched / image-asset-misplaced
+- Extension 偷懒类：empty-semantic-extension（来自 Step 2.5，新增 `+Helpers / +Utility / +Lint` 等无语义 extension）/ ambiguous-extension-name（后缀语义不清）
 - Mock / 兜底类：mock-in-production（来自 Step 5.5，production code 里的 mock 类型实例化 / 假数据 / placeholder 返回值）
 - Amendment 类：amendment-not-fulfilled（§9 中 status=DONE 的 AMD 实际没满足）
 - 其他：other
@@ -324,15 +371,13 @@ retry_count: <主 agent 给你的本轮重试次数>
 
 `lint_only_fail: true` 等价于"软 PASS、只差最后一公里 lint 修复"——主 agent 据此走阶段 4 失败循环的「lint-only 快速路径」（详见 `~/.claude/rules/dispatch-pipeline.md` 阶段 4），跳过 retry executor。
 
-注意：含其他 blocking 类型（build-fail / amendment-not-fulfilled / scope-violation / mock-in-production / freeze-touched / lean-diff 注释/防御类）→ `lint_only_fail: false`。spec §5 验收标准明文要求「lint 通过」时，本轮 lint 失败 issue 仍归类 `lint-error`（不算 spec 违反），不影响 `lint_only_fail: true` 判定。
+注意：含其他 blocking 类型（build-fail / amendment-not-fulfilled / scope-violation / mock-in-production / freeze-touched / empty-semantic-extension / lean-diff 注释/防御类）→ `lint_only_fail: false`。`empty-semantic-extension` 是实质组织问题、不是 lint 错；不能走 lint-only 快速路径，必须重调 generator + executor 验收。spec §5 验收标准明文要求「lint 通过」时，本轮 lint 失败 issue 仍归类 `lint-error`（不算 spec 违反），不影响 `lint_only_fail: true` 判定。
 
 ### Step 8: FAIL 时写 review 文档（多 iter 累积视图）
 
-`verdict == FAIL` 时**必须**用 Bash heredoc 写 `.specs/<slug>-review.md`，作为 generator 重试时的 hand-off 文件 —— 主 agent 不再口头中转 issues。
+`verdict == FAIL` 时**必须**用 Bash heredoc 写 `.specs/<slug>-review.md`，作为 generator 重试时的 hand-off 文件 —— 多 iter 累积、主 agent 不口头中转 issues。
 
-**为什么走文件**：和 generator → planner 的 feedback 文件同理 —— 多 iter 累积、主 agent 不漏字段（特别是 warning / freeze 验证细节这种主 agent 容易简化掉的边角字段）。
-
-**触发**：`verdict: FAIL` 必写；`verdict: PASS` 不写（PASS 时 review 文档无累积价值）。
+**触发**：`verdict: FAIL` 必写；`verdict: PASS` 不写。
 
 **模板 / 字段**：`~/.claude/templates/executor-review-template.md` —— 每 iter 章节含触发场景 / blocking issues / warning / 与上轮 diff（N>=2）/ notes。
 
@@ -357,12 +402,10 @@ retry_count: <主 agent 给你的本轮重试次数>
 - ❌ 跑 UI / mobile-mcp 验收 —— 这是 `ui-reviewer` subagent 的事，你工具列表里也没 mobile-mcp
 - ❌ 「探索式」验收：不要主动到处点看其他页面 / 滚动列表看「顺便」/ 测试 spec 没列的 corner case—— 验收只回答 spec 问的问题
 
-## Why
+## Why（核心）
 
-- **对 repo 只读不改**：强制把代码修复责任留给 generator，避免 executor 顺手改导致 review 自审自判
-- **结构化结论**：主 agent 能确定地路由 —— FAIL 时把 issues 整理后传给 generator 当下一轮入参；PASS 时直接报告用户
-- **spec 第 4-6 节是验收的法律**：不在 spec 里的事不审；如果 spec 漏了，问题在 planner —— 主 agent 应该决定是否回到 planner 阶段重新对齐
-- **§9 Amendments 与 §1-7 等价**：用户在实现阶段追加的具体指令一样要验，但只验 status=DONE 的；TODO 跳过 —— 与 §8 子任务一致的口径，避免「generator 还没做完就被打回」的误判
-- **reviewer subagent 与 verdict 解耦 + 只在 PASS 后跑一次**：spec/build/lint/AMD/硬约束是"硬验收"决定 verdict；reviewer subagent 是"建议层"产物。两层分离让 retry 循环只跑硬验收（每轮 1-2 分钟），review 仅在终态 PASS 时跑一次（5-10 分钟）。review-fix 后 retry 主 agent 显式传 `run_review_subagent: false` 避免重复 review。用户拿到 PASS + review 报告后自己决定要不要修，主动权回归人
-- **跑 lint check（`<your lint check recipe>`）是 executor 专属**：generator 阶段的回合末验证只跑 build（节奏快），但验收阶段必须把 lint / format 也确认 —— 这是 executor 不可替代的价值
-- **UI 验收剥离到 ui-reviewer**：UI 启 sim / 装 app / 录屏抽帧 / mobile-mcp 调用成本比 build/lint 高一个量级。把 UI 验收独立成 `ui-reviewer` 平行 subagent 后：executor retry 循环不必每次重跑 UI；spec 没 UI 改动时不必启 simulator；UI 验收失败不连累其他维度的 verdict 判定。两个 subagent 各自 PASS 才整体 PASS
+- 只读 repo：代码修复责任留给 generator，避免 executor 顺手改导致自审自判
+- §9 Amendments 与 §1-7 等价验收：只验 status=DONE，TODO 跳过
+- reviewer subagent 与 verdict 解耦：spec/build/lint/AMD/硬约束决定 verdict；reviewer 是建议层、不进 issues、不进 verdict、仅 PASS 后跑一次
+- `<your lint check recipe>` 仅 executor 跑（generator 阶段只跑 build）
+- UI 验收剥离到 ui-reviewer：UI 启 sim cost 比 build/lint 高一个量级，独立平行 subagent 避免每次 retry 重跑

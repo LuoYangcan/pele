@@ -185,8 +185,6 @@ reality-check 通过后再走这一步。
 - ❌ 不替代 `/review` 的深度评审
 - ❌ 不强制套模式——简单 if-else / 简单 MVC 是允许的，要求是**显式给出"为什么这次不需要更复杂模式"的理由**
 
-## Why
+## Why（核心）
 
-junior 写代码靠**直觉 + 套模板**，senior 写代码靠**问题特征驱动选型**。模式 / 架构是工具，不是目的——硬塞 Clean Architecture 到一个 200 行的 hobby app 比直接写 MVC 更贵；该上 MVVM 的时候坚持 fat VC 也是一样的代价。
-
-这条 skill 把「停下来想清楚」物化成 §III 的症状-候选-references 决策表，让 agent 不再是"看到 if/else 多就建议拆 Strategy"的反射，而是先识别问题特征 → 找对应 references → 选合适候选 → 写出选这个不选那个的理由。
+模式 / 架构是工具不是目的——硬塞 Clean Architecture 到 200 行 app 比 MVC 更贵；坚持 fat VC 该上 MVVM 也是同样代价。本 skill 把「停下来想清楚」物化成 §III 决策表：识别问题特征 → 找对应 references → 选合适候选 → 写出选这个不选那个的理由。

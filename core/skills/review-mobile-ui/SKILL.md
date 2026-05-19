@@ -100,10 +100,10 @@ open -a Simulator
 ```bash
 TS=$(date -u +%Y%m%dT%H%M%SZ)
 SHOT_DIR=".reviews/ui-${WORKTREE_SLUG}-${TS}"
-mkdir -p "$SHOT_DIR"
+mkdir -p "$SHOT_DIR/refs"
 ```
 
-`WORKTREE_SLUG` 由 caller (ui-reviewer subagent) 在入参拿到。`.reviews/` 在 `.gitignore`、`/ship` 流程会清。
+`WORKTREE_SLUG` 由 caller (ui-reviewer subagent) 在入参拿到。`.reviews/` 在 `.gitignore`、`/ship` 流程会清。`refs/` 子目录存 figma node 对照图（视觉层用）。
 
 ### Step 5: 跑每条冒烟用例
 
@@ -127,18 +127,32 @@ mkdir -p "$SHOT_DIR"
 | 导航 `mobile_click_on_screen_at_coordinates` | spec 最短路径所需次数（通常 0-3） | 仅到达目标页面，不 explore |
 | 导航用 `mobile_list_elements_on_screen` | 配合 tap，最多 N 次 | 找 label / accessibility identifier 拿坐标；只用于导航 |
 | 等待 UI 稳定 | 1 次 `sleep 1` | 让 layout settle |
-| **核心采样 `mobile_list_elements_on_screen`** | **1 次** | 拿目标页面元素列表（坐标 / accessibility / label / frame）—— 间距判定的核心数据源 |
-| **`mobile_save_screenshot`** | **1 次** | 落 `<SHOT_DIR>/case-<N>-static.png`，fail 时的视觉证据 |
+| **核心采样 `mobile_list_elements_on_screen`** | **1 次** | 拿目标页面元素列表（坐标 / accessibility / label / frame）—— 文本层间距判定数据源 |
+| **`mobile_save_screenshot`** | **1 次** | 落 `<SHOT_DIR>/case-<N>-static.png`，文本层 + 视觉层共享 |
+| **`mcp__plugin_figma_figma__get_screenshot`** | **1 次**（仅 spec §4 参考稿列表命中本用例时） | 落 `<SHOT_DIR>/refs/case-<N>-figma.png`，视觉层对照图 |
 | `mobile_take_screenshot` | **0 次** | `save_screenshot` 已覆盖；`take_screenshot` 会把图返给 LLM 烧 token |
 | `mobile_type_keys` / `mobile_swipe_on_screen` / `mobile_double_tap_on_screen` / `mobile_long_press_*` | **0 次** | 改 app 状态，5.b 静态档位禁止 |
 
-**判定**：
+**判定**（文本层 + 视觉层并行；任一层产 issue 都进 issues 列表）：
+
+**文本层**（不依赖 figma，必跑）：
 
 - 元素 frame 字段（schema 因 mobile-mcp 版本而异，常见 `rect` / `frame` / `bounds` 含 x/y/width/height）算间距：`b.x - (a.x + a.width)` 之类
-- 容差 **±2pt**（SnapKit 浮点 / hairline 抖动）
-- 与 spec 描述一致 → 用例 PASS
-- 不一致 → blocking issue + `<SHOT_DIR>/case-<N>-static.png` + 测得 vs 期望差值
+- 容差 **±2pt**
+- 一致 → 文本层 PASS
+- 不一致 → blocking issue（`issue_type: ui-frame-mismatch`、`file: <SHOT_DIR>/case-<N>-static.png`、测得 vs 期望差值）
 - 元素列表返空 / 报错 → blocking issue（`issue_type: ui-crash`）
+
+**视觉层**（仅 spec §4「参考稿列表」表有行命中本用例时跑；命中规则：行的「对应用例」列 == `case-<N>` 或 `*`）：
+
+1. Read spec §4「对齐严格度」字段（`strict` / `loose`）
+2. 调 `mcp__plugin_figma_figma__get_screenshot { fileKey, nodeId }`，存 `<SHOT_DIR>/refs/case-<N>-figma.png`
+   - 拉图失败 → warning issue（`issue_type: ui-figma-mismatch`、`severity: warning`、`description: figma_screenshot_failed: <reason>`）；不 blocking、不影响本用例 verdict、跳过本用例视觉层
+3. 拉到 → Read `case-<N>-figma.png` 和 `case-<N>-static.png` 进 context，按 spec §4「设计稿覆盖范围」字段逐项对比
+   - `strict`：覆盖范围里任一项不符 → blocking issue（`issue_type: ui-figma-mismatch`、`severity: blocking`、`case_number: <N>`、`file: refs/case-<N>-figma.png vs case-<N>-static.png`、`description: <一句话差异点>`）
+   - `loose`：仅判版式骨架对齐 + 颜色 token；不符 → warning issue（不 blocking）
+
+**用例 verdict**：文本层 blocking ∪ 视觉层 blocking 任一 → 用例 FAIL；都无 blocking → 用例 PASS。
 
 #### 5.c 动态用例：invoke record-ui-animation skill
 
@@ -226,13 +240,16 @@ ui_dynamic_cases_verified:
 
 | 情况 | `ui_verified` | `ui_smoke_required` |
 |---|---|---|
-| 静态全 PASS + 动态 record skill 自验全 pass | `pass` | `false` |
-| 静态全 PASS + 动态部分 skill 自验 / 部分降级 | `pass` | **`true`**（让用户看降级那部分） |
-| 静态全 PASS + 没有动态用例 | `pass` | `false` |
-| 静态全 PASS + 动态全降级 | `pass` | **`true`** |
-| 任一静态 FAIL 或动态 skill 自验 verdict=fail | `fail` | `true` |
+| 所有静态用例（文本层 + 视觉层）全 PASS + 动态 record skill 自验全 pass | `pass` | `false` |
+| 所有静态用例全 PASS + 动态部分 skill 自验 / 部分降级 | `pass` | **`true`** |
+| 所有静态用例全 PASS + 没有动态用例 | `pass` | `false` |
+| 所有静态用例全 PASS + 动态全降级 | `pass` | **`true`** |
+| 任一静态用例 FAIL（文本层 frame 不符 / 视觉层 `strict` diff 不符 / `ui-crash`）或动态 skill 自验 verdict=fail | `fail` | `true` |
 | 全部用例都是动态 + skill 全部失败降级 | `degraded` | `true` |
+| 视觉层所有命中用例的 figma 拉图全部失败 | `degraded` | `true`（`ui_degradation_reason: figma_screenshot_all_failed`） |
 | environment 问题（build artifact / simulator / install/launch 失败） | `degraded` | `true` |
+
+**figma 拉图副作用**：视觉层 `get_screenshot` 单条失败（非全部）→ warning issue，不阻断 verdict，但 `ui_smoke_required` 升级为 `true`。
 
 输出字段：
 
@@ -240,7 +257,7 @@ ui_dynamic_cases_verified:
 - `ui_dynamic_cases_verified`: list of `{case_number, spec_description, frames_dir, verdict, observations}`
 - `ui_dynamic_cases_skipped`: list of `{case_number, spec_description, degradation_reason}`
 - `ui_screenshots_dir`: 仅 `ui_verified ∈ {pass, fail}` 时给（动态降级 / environment 降级时**没有**截图产出）
-- `ui_degradation_reason`: 仅 `ui_verified == degraded` 时给（`build_artifact_not_found` / `no_simulator_available` / `multiple_booted_simulators_mobile_mcp_cannot_target` / `install_or_launch_failed: <details>` / `target_not_supported` / `all_cases_dynamic` / `cross_flow_navigation_required`）
+- `ui_degradation_reason`: 仅 `ui_verified == degraded` 时给（`build_artifact_not_found` / `no_simulator_available` / `multiple_booted_simulators_mobile_mcp_cannot_target` / `install_or_launch_failed: <details>` / `target_not_supported` / `all_cases_dynamic` / `cross_flow_navigation_required` / `figma_screenshot_all_failed`）
 
 ## 禁止
 
@@ -252,11 +269,11 @@ ui_dynamic_cases_verified:
 - ❌ 「探索式」验收：不主动到处点 / 滚列表 / 测 spec 没列的 corner case——验收只回答 spec 问的问题
 - ❌ 用 mobile-mcp 改 simulator 上别的 app 的状态（删数据 / 改设置 / 关 app）
 
-## Why
+## Why（核心）
 
-- **静态 vs 动态分类**：mobile-mcp 的 `list_elements_on_screen` 返回是某一帧的快照；动态 UI 上一旦在过渡 / 动画中 sample，拿到的就是中间帧、间距 / frame 都不对。强制分流让验收方法和场景匹配
-- **5.b 1+1 预算**：核心采样 1 次足够（spec 间距用例本来就是「某个稳定状态下 A 元素和 B 元素的距离」），多次 sample 不增加准确性反而把 mcp 调用次数和 token 消耗推高
-- **5.c 走录屏**：动画的判定标准是「整段时序看起来对不对」，单帧 sample 失去时序信息。录屏抽帧让 agent 看 8 帧而不是猜某一帧
-- **降级路径而非硬失败**：build artifact / simulator / 多 booted / 跨流程导航 都是 environment 问题，不是 generator 的代码问题。降级到 `ui_smoke_required: true` 把验证责任交给用户，比让 generator 反复重写好得多
-- **不重跑动态用例**：record skill 失败两次以上的兜底在 skill 内部；本 SOP 单次失败立即降级，不在循环里耗时间
-- **截图存到 `.reviews/`**：spec 是规划文档不应被验收过程污染；`.reviews/` 已经在 `.gitignore` 里、`/ship` 流程会清
+- 静态 vs 动态分类：mobile-mcp 在动态 UI 上 sample 会抓到中间帧，间距 / frame 不对
+- 5.b 1+1 预算：核心采样 1 次足够；多次 sample 不增加准确性反而推高 mcp 调用 + token
+- 5.c 走录屏：动画看时序，单帧 sample 失去时序信息
+- 降级路径而非硬失败：environment 问题（build artifact / simulator / 多 booted / 跨流程导航）不是 generator 的代码问题
+- 不重跑动态用例：record skill 失败兜底在 skill 内；本 SOP 单次失败立即降级
+- 截图存到 `.reviews/`：spec 不被污染，`.gitignore` 已排除

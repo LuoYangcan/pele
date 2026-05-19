@@ -1,6 +1,6 @@
 ---
 name: find-ios-build-artifact
-description: Locate the just-built iOS Simulator `.app` bundle for a project — output `APP_PATH` (absolute) + `BUNDLE_ID` so callers can `simctl install` / `simctl launch` / mcp install_app+launch_app. Walks up from cwd to find a `.xcworkspace`, runs `xcodebuild -showBuildSettings` to read `BUILT_PRODUCTS_DIR / FULL_PRODUCT_NAME / PRODUCT_BUNDLE_IDENTIFIER`, then verifies the `.app` exists. Use when an executor / open-sim / similar caller has just built iOS with the project's `<your iOS build recipe>` (e.g. `just build-ios`, `xcodebuild ... build`, or a project-specific script) and now needs the build artifact paths. Skip when the caller already knows `APP_PATH` and `BUNDLE_ID`, when there's no `.xcworkspace` ancestor (project uses bare xcodeproj — caller must adapt), or when targeting macOS / device (this skill is iOS Simulator only).
+description: Locate the just-built iOS Simulator `.app` bundle for a project — output `APP_PATH` (absolute) + `BUNDLE_ID` so callers can `simctl install` / `simctl launch` / mcp install_app+launch_app. Walks up from cwd to find a `.xcworkspace`, runs `xcodebuild -showBuildSettings` to read `BUILT_PRODUCTS_DIR / FULL_PRODUCT_NAME / PRODUCT_BUNDLE_IDENTIFIER`, then verifies the `.app` exists. Use when an executor / open-sim / similar caller has just built iOS with `just build-ios` (or equivalent) and now needs the build artifact paths. Skip when the caller already knows `APP_PATH` and `BUNDLE_ID`, when there's no `.xcworkspace` ancestor (project uses bare xcodeproj — caller must adapt), or when targeting macOS / device (this skill is iOS Simulator only).
 ---
 
 # find-ios-build-artifact
@@ -77,7 +77,7 @@ APP_PATH="$BUILT_DIR/$APP_NAME"
 ### Step 4: 验证 `.app` 实际存在
 
 ```bash
-[[ -d "$APP_PATH" ]] || { echo "BUILD_ARTIFACT_NOT_FOUND: $APP_PATH 不存在 — 先跑 <your iOS build recipe>（如 just build-ios / Xcode build / xcodebuild build）"; exit 1; }
+[[ -d "$APP_PATH" ]] || { echo "BUILD_ARTIFACT_NOT_FOUND: $APP_PATH 不存在 — 先跑你的 iOS build（如 just build-ios / Xcode build / xcodebuild build）"; exit 1; }
 ```
 
 `-showBuildSettings` 会**返回路径**即使还没 build，`.app` 实际不存在。验证一下避免 caller 拿到不存在的路径继续 `simctl install` 报错。
@@ -119,7 +119,7 @@ Skill(find-ios-build-artifact)   # 入参：scheme = <YourApp>iOS
 
 ```
 Skill(find-ios-build-artifact)   # 入参：scheme = <YourApp>iOS
-# 失败 → 提示用户 "先跑 <your iOS build recipe>"
+# 失败 → 提示用户 "先跑 <your iOS build recipe>（如 just build-ios）"
 # 成功 → 进 Step 3 选模拟器、装启
 ```
 
@@ -131,15 +131,6 @@ Skill(find-ios-build-artifact)   # 入参：scheme = <YourApp>iOS
 - ❌ **不装 app / 不启 app** —— 那是 caller 的事（`simctl install/launch` 或 mcp tool）
 - ❌ **不挑 simulator UDID** —— 那也是 caller 的事
 
-## Why
+## Why（核心）
 
-`xcodebuild -showBuildSettings` 三字段提取这段 shell 同时存在于：
-
-1. `~/.claude/agents/executor.md` Step 4.5.1（24 行）
-2. `<project>/.claude/skills/open-sim/SKILL.md` Step 2（10 行）
-
-两处复制粘贴 = 同一段 shell 维护两份。某天 Apple 改了 setting 字段名（例：未来某个 Xcode 把 `FULL_PRODUCT_NAME` 改成别的），两份要同时改、否则 executor 跟 open-sim 一边能跑一边不行。抽出来一处维护：
-
-- 任何 caller `Skill(find-ios-build-artifact)` 拿一致输出
-- 错误码 / 报错信息一致 → caller 路由逻辑（degraded / 报用户 / 直接失败）也一致
-- 项目里**新加** caller（例：将来想从 macOS connector 装 iOS app 跑某个 e2e flow）可以直接 invoke，不必抄一遍 shell
+`xcodebuild -showBuildSettings` 三字段提取曾在 executor / open-sim 两处复制粘贴；抽到一个 skill 让 caller 输出一致、错误码一致、新 caller 直接 invoke 不必抄 shell。

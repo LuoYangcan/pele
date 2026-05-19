@@ -77,14 +77,18 @@
 
 **Figma 设计稿引用**（触发条件同上 iOS UI 专项；用户提供了 Figma URL 才填，没有写「无 Figma 设计稿，按 §1 用户原话和下面 mobile-mcp 冒烟条目实现」）：
 
-- **Figma 文件 URL**：`<https://figma.com/design/<fileKey>/<fileName>?node-id=<X-Y>>`
-- **节点 ID**：`<X:Y>`（URL 里 `node-id=X-Y` 把 `-` 替换成 `:`）
-- **页面 / 屏幕名**：<例如「Composer / Empty State / Dark」>
+**参考稿列表**（每行一个 figma node；冒烟用例 >1 条且各对应不同 node 时「对应用例」列填 `case-N` 绑定，只有 1 条用例或单 node 通用时填 `*`）：
+
+| 对应用例 | Figma URL | 节点 ID | 页面 / 屏幕名 |
+| --- | --- | --- | --- |
+| `*` | `<https://figma.com/design/<fileKey>/<fileName>?node-id=<X-Y>>` | `<X:Y>` | <例如「Composer / Empty State / Dark」> |
+
 - **设计稿覆盖范围**：<列出本次实现要对齐的关键面：**图标大小 / 间距 (padding, margin, gap) / 控件样式 (圆角, 描边, 阴影) / 颜色 / 字号 / 行高 / 字重 / 图层结构 / 对齐 (左/中/右/baseline)**；不在 scope 的视觉调整明确踢出>
 - **对齐严格度**（默认 `strict`，除非用户在 §6 硬约束里明确写降级）：
   - `strict`：图标大小、间距、控件样式、颜色、字号**全部 1:1 还原**，肉眼 diff 即视为不通过；generator 不允许凭感觉调一两个 pt，要改必须 §9 AMD 显式记下并附原因
   - `loose`：只对齐版式骨架（哪个元素在哪一行哪一列）+ 颜色 token，间距 / 字号允许 ±2pt 误差，需在本字段写明降级原因
 - **generator / executor 使用方式**：调 `mcp__plugin_figma_figma__get_design_context` 或 `get_screenshot` 拉设计图、与 mobile-mcp 实拍截图对比；调 `get_variable_defs` 拿设计 token 对照本仓库 <DesignSystemPackage>/Color/Spacing 常量是否一致
+- **ui-reviewer 视觉验收**：见 `~/.claude/skills/review-mobile-ui/SKILL.md` Step 5.b 视觉层 —— ui-reviewer 跑每条用例时按上表「对应用例」列拉对应 figma node screenshot 与 mobile-mcp 实拍图对比；按「对齐严格度」字段判定（`strict` 下视觉层不符 → blocking `ui-figma-mismatch`；`loose` 只看版式骨架 + 颜色 token）。`get_screenshot` 单条失败 → warning（不阻断整体 verdict），全部失败 → `ui_verified: degraded`
 
 **mobile-mcp 冒烟用例**：
 

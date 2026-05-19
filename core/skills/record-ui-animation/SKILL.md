@@ -249,12 +249,8 @@ Step C 完全一致（mp4 输入 ffmpeg 无差异）。
 - ❌ 不跨 device 并行录屏 —— 一个 caller 一段录屏（caller 想并行就用不同 CASE_SLUG 各跑一遍）
 - ❌ 不改 simulator 设置 / 不改 status bar —— 录屏前现状即是现状
 
-## Why
+## Why（核心）
 
-executor 现在对 iOS UI 改动有专项验收，但**动画 / 过渡 / 飞行**这类时间维度行为靠单帧截图判不出来 —— 现状是 `ui_dynamic_cases_skipped` 列出来让用户自己开 simulator 看效果，验收的"可执行性"在这块漏了一截。
-
-iOS Simulator 自带 `xcrun simctl io recordVideo`、mobile-mcp 也包了 `start/stop_screen_recording`、ffmpeg 抽帧成熟到不能再成熟 —— 三个零件凑齐就能让 agent 自己 Read 关键帧序列做动画走查，而不是降级让人肉看。
-
-skill 设计成「只采集证据」是关键 —— **触发动画**的逻辑（点哪 / 输入什么 / 等多久）是 spec-specific 的、要 caller 按 case 灵活组合；skill 抢这一段编排会把自己锁死成单一场景。同样，**判断动画对不对**是 agent 看完帧的事 —— skill 给固定 pass/fail 模板等同于把视觉判断硬编码，多动画场景维护成本爆炸。把 skill 缩到"prepare + extract"两段 + caller 自驱 record/act，每个 caller 写一份 30 行 mcp 调用就能复用。
-
-第二个 why：**默认 0.5x scale**。Simulator @3x 录屏文件大、每帧 PNG 2-3MB，10 帧塞进 agent context 会撑爆。0.5x 既保留肉眼可读、又把 10 帧总量压到 ~7MB —— 这是从「让 agent 真的能用 Read 工具看每一帧」反推出来的，不是凑参数。
+- 动画 / 过渡 / 飞行类时间维度行为单帧截图判不出，原方案降级让人肉看；`xcrun simctl io recordVideo` + ffmpeg 抽帧让 agent 自己 Read 关键帧序列判
+- skill 只采集证据，不编排触发动画（spec-specific）+ 不判 pass/fail（视觉判断硬编码维护成本爆炸）
+- 默认 0.5x scale：Simulator @3x 录屏每帧 2-3MB，10 帧塞进 context 撑爆；0.5x 既保留可读 + 把 10 帧总量压到 ~7MB

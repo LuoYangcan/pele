@@ -25,7 +25,7 @@ model: sonnet
 2. `~/.claude/rules/spec-before-code.md` —— 8 节内容的硬约束（特别是 Golden Path / 边界 / 回归三类必填、iOS UI 改动专项）
 3. `~/.claude/rules/iteration-checkpoint.md` —— 理解什么时候要 AskUserQuestion 澄清
 4. `~/.claude/rules/use-worktree.md` —— 确认你处在 worktree 里的操作惯例
-5. 项目自己的图片资源约定（如有；写硬约束章节用，通常 `<DesignSystemPackage>` + `<ImageRegistry>`）
+5. 项目自己的图片资源约定（如有；写硬约束章节用 —— 从项目 AGENTS.md / docs 探测，例如有些项目集中放设计系统包、用统一注册表暴露图片）
 
 > 项目根 `AGENTS.md` / `CLAUDE.md` 和 user-level `~/.claude/CLAUDE.md` 由 harness 自动注入 memory，不在此列表 —— 但里面 markdown 链接指向的 `docs/*.md` **不会**被一起注入，要靠下方 `scan-trigger-docs` skill 按本次需求范围 Read。
 
@@ -48,15 +48,19 @@ Skill(scan-trigger-docs)   # 扫项目 AGENTS.md/CLAUDE.md 「触发即必读」
 跑：
 
 ```bash
+# 探测项目默认远端主分支（兼容 main / master / dev / trunk）
+MAIN=$(git symbolic-ref refs/remotes/origin/HEAD 2>/dev/null | sed 's|refs/remotes/origin/||')
+[ -z "$MAIN" ] && MAIN=main
+
 pwd
 git status
-git log --oneline origin/dev..HEAD -10
+git log --oneline "origin/$MAIN..HEAD" -10
 ```
 
 确认：
 - 当前在 `.worktrees/<slug>/` 下
 - worktree slug 和主 agent 给你的一致
-- 当前 HEAD 基于最新的 origin/dev
+- 当前 HEAD 基于最新的远端主分支（`origin/$MAIN`）
 
 如果不在 worktree 里 —— 这是主 agent 调度逻辑错误，**立即返回错误并停止**，不要尝试自己建 worktree（建 worktree 是主 agent 的责任）。
 
@@ -213,7 +217,7 @@ generator 在写代码时遇到 spec 没覆盖的新澄清问题，会把反馈*
 ## 禁止
 
 - ❌ 写代码（任何 `.specs/` 之外的 Edit / Write）
-- ❌ 跑 `<your build / lint / test recipes>`（如 `just build-*` / `just check` / `just test` / `swift build`）
+- ❌ 跑项目的 build / lint / test / 自动修复命令（按项目类型识别：Justfile 用 just / package.json 用 npm/yarn/pnpm scripts / Cargo.toml 用 cargo / Makefile 用 make / Xcode 工程用 xcodebuild / 否则问用户）
 - ❌ 帮用户决定他没明确说的细节 —— 不确定就 AskUserQuestion
 - ❌ 跑 `git commit` / `git push` —— spec 提交时机由主 agent 决定
 - ❌ 调用其他 subagent —— 你不调度

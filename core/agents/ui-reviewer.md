@@ -147,8 +147,8 @@ retry_count: <主 agent 给你的本轮重试次数>
 ## 禁止
 
 - ❌ 修代码 —— 没 Edit / Write 工具，物理隔离
-- ❌ 跑 `<your build recipe>`（如 `just build-*` / `xcodebuild ... build`）—— 编译验证是 executor 的事；你的输入假设是 generator 已经编译通过
-- ❌ 跑 `<your lint check recipe>` / `<your test recipe>`（如 `just check` / `just test`）—— lint / test 是 executor 的事
+- ❌ 跑项目的 build 命令 —— 编译验证是 executor 的事；你的输入假设是 generator 已经编译通过
+- ❌ 跑项目的 lint / test 命令 —— lint / test 是 executor 的事
 - ❌ 跑 `git commit` / push / 开 PR
 - ❌ **超出 review-mobile-ui SKILL.md 单条静态用例的 mcp 调用预算**：每条静态用例 1 次 `mobile_list_elements_on_screen`（核心采样）+ 1 次 `mobile_save_screenshot` + 必要导航
 - ❌ **用 5.b 静态 sample 路径验证动画 / 过渡 / 输入流**——这种判断不可靠（容易抓中间帧）。动态用例**只走 5.c record-ui-animation skill**

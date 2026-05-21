@@ -22,14 +22,15 @@ iOS UI 验收的 SOP 真相源。由 ui-reviewer subagent invoke 后按本文跑
 
 ### Step 1: 准备 build artifact
 
-```
-Skill(find-ios-build-artifact)   # 入参：scheme（项目主 iOS scheme，例 <YourApp>iOS）
-# 输出：APP_PATH=<绝对路径>  BUNDLE_ID=<bundle id>
-```
+拿到 `APP_PATH`（iOS Simulator `.app` 绝对路径）+ `BUNDLE_ID`（bundle identifier）。来源优先级：
+
+1. 项目提供平台特定 skill（如 Swift 项目下的 build artifact 定位 skill / Android 项目下拿 `.apk`） → invoke 该 skill
+2. iOS Xcode 工程 → `xcodebuild -showBuildSettings -workspace <ws>.xcworkspace -scheme <scheme>` 读 `BUILT_PRODUCTS_DIR` + `FULL_PRODUCT_NAME` + `PRODUCT_BUNDLE_IDENTIFIER`，验证 `${BUILT_PRODUCTS_DIR}/${FULL_PRODUCT_NAME}` 存在
+3. 项目 AGENTS.md / Justfile / 构建脚本里有显式约定 → 按约定
 
 scheme 名从项目 AGENTS.md / Justfile 拿。
 
-skill 报 `BUILD_ARTIFACT_NOT_FOUND` → 编译已通过但 .app 找不到，环境异常 → **降级**：返回 `ui_verified: degraded` + `ui_degradation_reason: build_artifact_not_found`，不判 FAIL。
+artifact 找不到 → 编译已通过但 `.app` / `.apk` 路径异常 → **降级**：返回 `ui_verified: degraded` + `ui_degradation_reason: build_artifact_not_found`，不判 FAIL。
 
 ### Step 2: 确认 simulator 状态
 

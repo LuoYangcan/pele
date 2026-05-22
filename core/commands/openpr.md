@@ -87,8 +87,6 @@ rm -rf .specs/ .reviews/ 2>/dev/null || true
 - `.specs/` — `/spec-before-code` 流程产生的需求 spec 文档（`.specs/<slug>.md` / `.skip`）
 - `.reviews/` — `/review` 流程产生的 review 报告 + executor 阶段的 UI 截图目录（`.reviews/ui-<slug>-<ts>/`）
 
-> **不要**清理其他目录或临时文件。
-
 如果用户在 `/openpr` 前明确说"留着 review 报告 / UI 截图，我要看一下"，跳过这一步——但注意提醒用户后续自己删，否则下次 `/openpr` 会被自动清掉。
 
 ## push 与开 PR

@@ -123,7 +123,6 @@ Verdict: <pass / fail / pass-with-nits>
 
 ## 生命周期 / PR 前清理
 
-- **走 `/openpr` 推 PR 前会自动清理 `.reviews/` 和 `.specs/`**，这是 `/openpr` 的硬步骤，不依赖用户记得
 - 多次 `/review` 会留下多份报告（带不同 timestamp），不会互相覆盖；用户想保留可以单独移到别处，否则 `/openpr` 时会一并删
 
 ## 不做的事

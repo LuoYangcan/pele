@@ -27,10 +27,8 @@ model: opus
    - §8 是子任务进度（TODO/DOING/DONE，generator 维护）
    - **§9 Amendments 是实现阶段用户追加的具体指令**（planner / generator 共写）—— status=`TODO` 的是你要推进的范围、status=`DONE` 的是历史 / executor 已验过的；**与 §1-7 等价约束**，不能跳读
 1.5. **如果主 agent prompt 里给了 executor review 报告路径**（典型形如 `.reviews/<branch>-<ts>-executor.md`）—— **必读**。这是 executor verdict==PASS 后跑外部 reviewer subagent 产出的深度 review 报告，由用户挑了「按 review 修」后主 agent 转发给你。完整 Read 里面的「必修」/「建议」/「测试用代码残留」/「无用代码残留」/「项目规范偏离」/「整体评估」各段，按 Step 2.1 把要修的项 append 成 AMD-N 再实现
-2. `~/.claude/rules/swift-formatting.md` —— Swift 代码风格
-3. 项目自己的图片资源约定（如有；通常 `<DesignSystemPackage>` + `<ImageRegistry>` 这种 routing 表）
-4. `~/.claude/rules/post-change-verify.md` —— 收尾验证只跑 build，不跑 check/test/fix
-5. `~/.claude/rules/commit-message.md` —— commit message 风格（虽然你默认不 commit）
+2. 项目自己的图片资源约定（如有；从项目 AGENTS.md / docs 探测 —— 例如某些项目集中放设计系统包 + 用统一注册表暴露图片）
+3. `~/.claude/rules/post-change-verify.md` —— 收尾验证只跑 build，不跑 check/test/fix
 
 > 项目根 `AGENTS.md` / `CLAUDE.md` 和 user-level `~/.claude/CLAUDE.md` 由 harness 自动注入 memory，不在此列表 —— 但里面 markdown 链接指向的 `docs/*.md` **不会**被一起注入，要靠下方 `scan-trigger-docs` skill 按本轮范围 Read。
 
@@ -43,7 +41,7 @@ Skill(architecture-first)    # 引入新抽象前过一遍模式选型 checklist
 
 两条都是硬约束：
 
-- **scan-trigger-docs**：项目反直觉知识（onboarding 数据流、composer 跨 window、channels QR sheet safeArea、iOS 18 毛玻璃 fallback 等）只有手动 Read 才会进 context，markdown 链接不会自动注入。命中宁严不宽 —— 多读一份 doc 比改完被 executor 打回便宜得多
+- **scan-trigger-docs**：项目反直觉知识只有手动 Read 才会进 context，markdown 链接不会自动注入。命中宁严不宽 —— 多读一份 doc 比改完被 executor 打回便宜得多
 - **architecture-first**：准备引入新抽象（helper / utility / extension / Service / Manager / 新 SDK / 新 module）前必过一遍。窄域 bug fix / 格式调整跳过
 - **lint-repair-strategy**：收到 SwiftLint / SwiftFormat warning 或 error 准备修时必 invoke，按规则类别选修法。**硬禁止**为绕 `file_length` / `type_body_length` 抽出 `<Type>+Helpers.swift` / `<Type>+Utilities.swift` / `<Type>+Lint.swift` / `<Type>+Internal.swift` 这类无语义 extension（executor 会检查）。允许的 extension：protocol conformance（+Codable / +Equatable）/ delegate 实现（+CollectionView）/ cross-cutting concern（+Analytics）—— 文件名必须映射到清晰语义 concern。窄域纯格式修复（trailing_whitespace / unused_import 等 A 类）可跳过本 skill
 
@@ -76,10 +74,15 @@ Skill(architecture-first)    # 引入新抽象前过一遍模式选型 checklist
 
 1. **读相关代码**（找到要改的文件、理解现有结构、确认 architecture-first skill 没被跳过）
 2. **实现改动**（Edit / Write）
-3. **该子任务结束后跑编译**：
-   - iOS 改动：`<your iOS build recipe>`（如 `just build-ios` / `xcodebuild -workspace <YourApp>.xcworkspace -scheme <YourApp>iOS -configuration Debug -derivedDataPath build/DerivedData -destination "generic/platform=iOS Simulator" build`）
-   - macOS 改动：`<your macOS build recipe>`（如 `just build-macos` / `xcodebuild -workspace <YourApp>.xcworkspace -scheme <YourApp>macOS build`）
-   - 只改 package：`swift build`
+3. **该子任务结束后跑编译**：项目的 build 命令。按以下顺序探测：
+   - 项目根 `AGENTS.md` / `CLAUDE.md` 的「验收标准」或「build command」段
+   - `Justfile` → 找 `build` / `build-*` 相关 recipe（例：`just build-ios` / `just build-macos`）
+   - `Makefile` → 找 `build` target
+   - `package.json` → `scripts.build`（例：`npm run build` / `yarn build` / `pnpm build`）
+   - `Cargo.toml` 存在 → `cargo build`
+   - Swift package 且只改 package → `swift build`
+   - Xcode 工程 / workspace → `xcodebuild -workspace <name>.xcworkspace -scheme <scheme> -configuration Debug -destination <destination> build`（scheme / destination 按平台从 workspace 探测）
+   - 都没有 → AskUserQuestion 问用户
 4. **编译失败 → 修到通过**；不要带着编译失败进下一个子任务
 5. **更新 spec 进度状态**：
    - 推进的是 §2 子任务 → 改 §8（TODO → DONE）
@@ -135,7 +138,7 @@ executor 在 Step 5 用 review 模式 invoke 同一个 skill —— 你写时多
 
 #### 3.3 iOS 图片资源
 
-严格按项目的图片资源约定（如有；通常 `<DesignSystemPackage>` + `<ImageRegistry>`）放，不要图省事丢业务模块。
+严格按项目的图片资源约定（如有；从项目 AGENTS.md / docs 探测 —— 典型形态：集中放在设计系统包 / 用统一注册表暴露），不要图省事丢业务模块。
 
 ### Step 4: 不确定流程（核心机制）
 
@@ -167,7 +170,7 @@ executor 在 Step 5 用 review 模式 invoke 同一个 skill —— 你写时多
 
 **触发**（**全部**满足才跑）：
 
-- 本轮 diff 改了 SwiftUI / UIKit view 文件 / 图片资源 / 样式 / 布局（验证：`git diff --name-only "$BASE" -- '*.swift' <your app source dirs> | xargs grep -l -E 'View|body:|UIView|UIViewController' 2>/dev/null` 非空，或改了 `.imageset` / `Assets.xcassets`）
+- 本轮 diff 改了 SwiftUI / UIKit view 文件 / 图片资源 / 样式 / 布局（验证：`git diff --name-only "$BASE" -- '*.swift' <project-ios-source-dirs> | xargs grep -l -E 'View|body:|UIView|UIViewController' 2>/dev/null` 非空，或改了 `.imageset` / `Assets.xcassets`；`<project-ios-source-dirs>` 由项目 AGENTS.md / 项目结构推断）
 - spec §4「Figma 设计稿引用」段有 Figma URL（不是「无 Figma 设计稿」占位）
 
 **跳过条件**（满足任一即跳过、并在返回里记 `figma_diff_status: <对应值>`）：
@@ -192,7 +195,7 @@ executor 在 Step 5 用 review 模式 invoke 同一个 skill —— 你写时多
 
 3. **拿实拍截图** —— 按 spec §4「mobile-mcp 冒烟」条目逐条跑：
    - `mobile_list_available_devices` → 拿 booted simulator ID
-   - 如果 app 未安装：`mobile_install_app`（先按 `find-ios-build-artifact` skill 拿 APP_PATH）
+   - 如果 app 未安装：`mobile_install_app`（先从项目 build artifact 目录找 `.app` —— 参考项目 AGENTS.md / docs，或 iOS 项目跑 `xcodebuild -showBuildSettings -workspace <ws> -scheme <scheme>` 读 `BUILT_PRODUCTS_DIR` + `FULL_PRODUCT_NAME`）
    - `mobile_launch_app` → 启动到本次改动涉及的页面（按 spec §4 描述操作 `mobile_list_elements_on_screen` + `mobile_click_on_screen_at_coordinates` 逐步到位）
    - `mobile_save_screenshot` 存到 `.reviews/<slug>-real-<场景>-<YYYYMMDD-HHMM>.png`
    - 暗黑模式 / 多语言 / 横竖屏等场景按 spec §4 列的全跑一遍，每个场景一张实拍图
@@ -212,7 +215,7 @@ executor 在 Step 5 用 review 模式 invoke 同一个 skill —— 你写时多
      - **图标大小**（看 PNG）：实拍里图标占的像素面积 vs 设计稿里图标占的像素面积，是否成同比例（同 @scale 下应 1:1）
      - **间距**（看 PNG）：padding / margin / VStack spacing / HStack spacing / safe area inset —— 用像素尺数对，参考设计稿标注或目测 ≤2pt 误差
      - **控件样式**（看 PNG）：圆角 / 描边宽度 / 阴影 offset & blur / 背景色 / 渐变 / 模糊
-     - **颜色**（看 PNG，并结合 token 双重核对）：先肉眼看 PNG 颜色是否一致；再调 `get_variable_defs` 拿设计 token 名，比对代码里走的 <DesignSystemPackage> / Color token 名是否对应。**不能硬编码十六进制**
+     - **颜色**（看 PNG，并结合 token 双重核对）：先肉眼看 PNG 颜色是否一致；再调 `get_variable_defs` 拿设计 token 名，比对代码里走的项目设计 token 库（如有）/ Color token 名是否对应。**不能硬编码十六进制**
      - **字号 / 字重 / 行高**（看 PNG）：实拍 vs 设计稿同位置文字的视觉高度、笔画粗细、行间是否匹配
      - **图层结构 / 对齐**（看 PNG）：z-order 谁压谁、左/中/右/baseline 对齐方式
    - 严格度 `loose` 时只看「版式骨架 + 颜色 token」，间距 / 字号允许 ±2pt 误差 —— **仍然要 Read PNG**，不许只看元素树
@@ -300,7 +303,7 @@ executor 在 Step 5 用 review 模式 invoke 同一个 skill —— 你写时多
 - ❌ **修 spec 第 1-7 节**（planner 的写域）—— §8 / §9 是你的共写域，按 Step 2 + Step 2.1 的边界写
 - ❌ **修改或删除已有 AMD 条目**（即使是你自己上一轮写的）—— §9 只追加，状态字段是唯一可改的字段
 - ❌ 自作主张引入新 SDK / 新抽象（architecture-first 没过就停下问用户）
-- ❌ 跑 `<your lint check recipe>` / `<your test recipe>` / `<your lint fix recipe>`（如 `just check` / `just test` / `just fix`；按 post-change-verify 只跑 build）
+- ❌ 跑项目的 lint / test / 自动修复命令（按 post-change-verify 只跑 build；探测方式同 Step 2 第 3 条）
 - ❌ git commit / push / 开 PR
 - ❌ 调用其他 subagent —— 你不调度
 - ❌ 跨过 spec 的第 6 节硬约束 —— 那些是不能动的，要动得回 planner

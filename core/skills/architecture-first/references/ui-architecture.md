@@ -25,8 +25,6 @@
 - **View**：呈现
 - **Controller**：协调，处理 user input / 更新 view
 
-iOS 上 Apple 默认就是 MVC。`UIViewController` 既是 controller 也常常承担一部分 view 职责（"Massive ViewController"）。
-
 ### 何时用
 
 - App 规模小（≤5-10 个屏幕）
@@ -119,10 +117,6 @@ class FeedVC: UIViewController, FeedView {
 
 - iOS 团队（MVVM 在 iOS 更主流）
 - Presenter 持有 weak view 引用，多次 view 重建会 retain 周期混乱
-
-### 现状
-
-iOS 圈现在很少用 MVP，多数等价情况用 MVVM 替代。
 
 ---
 
@@ -271,10 +265,6 @@ DetailModule/
 
 实际上这个屏幕一共 80 行业务逻辑。MVVM 200 行一文件搞定。
 
-### 现状
-
-iOS 圈用 VIPER 的越来越少，多数转向 **MVVM + Coordinator** 或 **TCA**——VIPER 的 Router 和 Interactor 边界其实更适合用 Coordinator + Service / Repository 替代。
-
 ---
 
 ## 5. 单向数据流总览（Unidirectional Data Flow）
@@ -290,8 +280,6 @@ iOS 圈用 VIPER 的越来越少，多数转向 **MVVM + Coordinator** 或 **TCA
                 │                                    │
                 └─── new State ←──────────────────  ┘
 ```
-
-核心理念：**没有 setter 散落各处。要改 state 就 dispatch 一个 action，reducer 是唯一改 state 的地方**。
 
 变种（按发明顺序）：
 - **Elm**（2012, 函数式语言）—— 范式起点
@@ -339,8 +327,6 @@ final class Store {
 ---
 
 ## 5b. TCA（The Composable Architecture）
-
-iOS / SwiftUI 上的工业级实现。Pointfree 团队维护。
 
 **核心组件**：
 
@@ -566,9 +552,3 @@ project size?
 - **TCA 中混入命令式 mutation**：reducer 里写 `state.x = await api.fetch(...)` → reducer 必须 pure，把 await 移到 `Effect`
 - **Redux 但没 single source of truth**：还是 N 个 store / state 散落 → Redux 的核心就是 single source；做不到就用 MVVM
 - **VIPER 做小项目**：每个 screen 5-8 个文件，业务逻辑 80 行 → 用 MVC / MVVM
-
-## Why
-
-UI 架构的选择是**项目规模 + 团队 + 测试需求**的乘积。没有"最好的架构"——**MVC 在小项目上比 TCA 健康得多**，**TCA 在大型 SwiftUI 上比 MVC 健康得多**。
-
-听到「我们项目很大要用 VIPER」/「我们用 TCA 因为最先进」——都先问一句「你们的实际症状是什么？」**症状驱动选型**比信仰驱动更靠谱。

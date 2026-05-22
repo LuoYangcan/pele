@@ -6,4 +6,4 @@
 
 - **触发**：用户切到新话题（「新任务 / 另一个 / 接下来做 X / 开始搞 Y / 下一个需求 / 现在改 Z」等切话题信号）且本轮要写代码（会落地 Edit / Write / NotebookEdit），在第一次 Edit 前建 worktree
 - **不触发**：延续当前任务 / 纯问答 / 读代码 / 查状态 / 改 meta 配置（rule / memory / hook / settings）/ 已在 `.worktrees/` 里
-- **核心约束**：必须基于最新 `origin/dev`；不要用 `EnterWorktree(name=...)`（会继承当前 HEAD 的 WIP）
+- **核心约束**：必须基于最新远端主分支（用 `git symbolic-ref refs/remotes/origin/HEAD` 探测，兼容 main / master / dev / trunk）；不要用 `EnterWorktree(name=...)`（会继承当前 HEAD 的 WIP）

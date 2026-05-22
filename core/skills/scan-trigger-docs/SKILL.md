@@ -1,6 +1,6 @@
 ---
 name: scan-trigger-docs
-description: Scan project AGENTS.md / CLAUDE.md for "trigger-on-touch" doc markers (`**改动以下任一范围前先读该文档**`) and Read full content of any docs whose touch ranges intersect this round's scope. Project AGENTS.md authors maintain these lists with hard-won counter-intuitive knowledge (onboarding resume paths, composer cross-window plumbing, channels QR sheet safeArea, iOS 18 liquid-glass fallback, etc.) — markdown links like `[docs/x.md](docs/x.md)` are NOT auto-injected by Claude Code (only `@docs/x.md` syntax recurses), so manual Read is the only path. Use this skill from any subagent (planner / generator / executor) before deciding scope, writing code, or judging review issues. Skip when the project has no AGENTS.md / CLAUDE.md, or when the current round's touch range is provably outside every listed marker.
+description: Scan project AGENTS.md / CLAUDE.md for "trigger-on-touch" doc markers (`**改动以下任一范围前先读该文档**`) and Read full content of any docs whose touch ranges intersect this round's scope. Project AGENTS.md authors maintain these lists with hard-won counter-intuitive knowledge that doesn't surface from the codebase alone — markdown links like `[docs/x.md](docs/x.md)` are NOT auto-injected by Claude Code (only `@docs/x.md` syntax recurses), so manual Read is the only path. Use this skill from any subagent (planner / generator / executor) before deciding scope, writing code, or judging review issues. Skip when the project has no AGENTS.md / CLAUDE.md, or when the current round's touch range is provably outside every listed marker.
 ---
 
 # scan-trigger-docs
@@ -9,14 +9,7 @@ description: Scan project AGENTS.md / CLAUDE.md for "trigger-on-touch" doc marke
 
 ## 为什么需要这条 skill
 
-`AGENTS.md` 里关键架构注解（onboarding 数据流、composer 跨 window、channels QR sheet safeArea、iOS 18 毛玻璃 fallback、NSE 24MB 内存上限、依赖分层等）都伴随一段类似下面的 marker：
-
-```
-... 详见 [docs/composer.md](docs/composer.md)。**改动以下任一范围前先读该文档**：
-
-- `packages/ios/Business/<ChatModule>/Sources/<ChatModule>/Composer/`
-- ...（一串具体路径或描述）
-```
+`AGENTS.md` 里关键架构注解（核心数据流 / 跨模块通信 / 平台特殊适配 / 内存约束 / 依赖分层等不易从代码自然显现的知识）都伴随一段 marker，形如「... 详见 [<具体 doc>](<具体 doc 路径>)。**改动以下任一范围前先读该文档**：」后跟若干路径范围。
 
 这是项目作者把"踩过的坑"显式登记的位置，**不读基本写不对 / 审不出 / 规划不出隐性约束**。但是：
 
@@ -60,12 +53,24 @@ done
 不要用 grep 抽段落 —— 完整 Read 两份文件再判断。原因：
 
 - CLAUDE.md 可能是 `@AGENTS.md` stub，但也可能项目作者改过、有自己的额外段落
-- 触发 marker 的格式可能因项目而异（`**改动以下任一范围前先读该文档**` 是 某 iOS monorepo 的写法，但其他项目可能写成 `## 触发：` / `> 改这里前先读...` 等）
+- 触发 marker 的格式可能因项目而异（`**改动以下任一范围前先读该文档**` 是一种常见 marker 写法，其他项目可能写成 `## 触发：` / `> 改这里前先读...` 等）
 - 完整读才能判断每条 marker 的语义边界
 
 ### Step 3: 抽出所有「触发即必读」段落
 
-每个段落形如：
+**通用 marker 格式**（项目作者维护这套约定时的标准写法）：
+
+```
+... 详见 [docs/<feature>.md](docs/<feature>.md)。**改动以下任一范围前先读该文档**：
+
+- <具体路径范围 1>
+- <具体路径范围 2>
+- ...
+```
+
+关键字面要素：`**改动以下任一范围前先读该文档**：` 这串中文 marker（项目可能用其他语言 / 句式变体，见 Step 2 注解）+ 紧邻的 `docs/<feature>.md` 链接 + 后跟项目符号清单。
+
+每个实际段落形如：
 
 > ... 详见 `docs/<x>.md`。**改动以下任一范围前先读该文档**：
 >
@@ -92,8 +97,8 @@ done
 |---|---|
 | 子任务 / 改动文件路径**直接落在** marker 列出的目录 | 必命中 → Read |
 | 子任务**修改的类型 / 函数 / 模块名**出现在 marker 列表 | 必命中 → Read |
-| 子任务**功能描述**和 doc 主题语义相关（例：要改 composer，marker 是 docs/composer.md） | 命中 → Read |
-| 子任务和 marker 范围**完全不相关、跨平台 / 跨模块**（例：你在改 macOS-only，marker 是 iOS composer） | 不命中 → 跳过 |
+| 子任务**功能描述**和 doc 主题语义相关 | 命中 → Read |
+| 子任务和 marker 范围**完全不相关、跨平台 / 跨模块** | 不命中 → 跳过 |
 | 不确定 / 边界模糊 | **默认命中** → Read（多读一份 doc 比漏一份反直觉知识便宜得多） |
 
 **核心铁律**：判断错位的代价不对称 ——
@@ -111,7 +116,7 @@ done
 
 ### Step 6: 补扫其他 agent 工具的项目级指引（按需）
 
-`.cursor/rules/*.mdc` 是 Cursor IDE 的项目级规则文件，今 某 iOS monorepo 项目里也有几条：
+`.cursor/rules/*.mdc` 是 Cursor IDE 的项目级规则文件，如果项目里有这类文件也应当扫描：
 
 ```bash
 ls "$ROOT/.cursor/rules/" 2>/dev/null

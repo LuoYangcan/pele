@@ -527,7 +527,7 @@ while i <= 3:
           - 本轮是第 i 次重试 / 共 3 次
           - **显式说**「上轮 executor 仅 lint 失败、build / spec / AMD / 硬约束 / mock 等全过；
             本轮只修 review 文件里 issue_type=lint-error 的条目，不扩范围。
-            修完跑 `<your lint check recipe>`（如 `just check`）+ 项目 build 命令自验、把 build/lint 状态写进结构化结论；
+            修完跑项目的 lint 检查 + build 命令自验、把 build/lint 状态写进结构化结论；
             主 agent 本轮**不**再调 executor」
         generator 返回 → 主 agent **自己**做轻量验证（同 Step P3 review-fix）：
           - Read generator 结构化结论里 build / lint 状态字段

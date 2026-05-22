@@ -7,8 +7,6 @@ UI 层架构（MVVM 等）讲的是**单个 feature / 页面**怎么组织。系
 - **Hexagonal / Ports & Adapters**（Alistair Cockburn）
 - **Functional Core Imperative Shell**（Gary Bernhardt）
 
-> 某 iOS monorepo 项目的 `packages/common ↔ packages/ios/{Core,UI} ↔ packages/ios/Business` 单向分层就是 **Clean / Hexagonal 的工业级变体**——下面会专门对照。
-
 ---
 
 ## 速查决策表
@@ -320,7 +318,7 @@ let result = Pricing.calculateTotal(items: [...], coupons: [...], taxRate: 0.08)
 
 ---
 
-## 4. 项目对照：某 iOS monorepo 的分层
+## 4. 项目对照：典型 iOS monorepo 的分层
 
 项目实际架构是 **Clean + Hexagonal 的工业级简化版**：
 
@@ -334,7 +332,7 @@ packages/ios/{Core, UI, DebugPanelKit, ThirdPart}    ← 平台基础层
    • `<SystemToolsModule>` 是 HealthKit / Music / Calendar 这些 system port 的 adapter
         ↑
 packages/ios/Business/*                              ← Outer（业务功能 + 接口适配）
-   • <ChatModule> / <ProfileModule> / <DevicesModule> / <OnboardingModule>
+   • <Module-A> / <Module-B> / <Module-C> / <Module-D>
    • Use cases + ViewModel + UI
 ```
 

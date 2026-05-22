@@ -4,7 +4,6 @@
 >
 > 文件位置：`.specs/<slug>-review.md`（worktree 根、和 spec 同 slug）。
 >
-> 文件由 executor Bash heredoc 写、generator 只读、主 agent 只做路由。
 
 ---
 

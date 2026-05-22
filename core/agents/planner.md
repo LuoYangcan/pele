@@ -27,15 +27,11 @@ model: sonnet
 4. `~/.claude/rules/use-worktree.md` —— 确认你处在 worktree 里的操作惯例
 5. 项目自己的图片资源约定（如有；写硬约束章节用 —— 从项目 AGENTS.md / docs 探测，例如有些项目集中放设计系统包、用统一注册表暴露图片）
 
-> 项目根 `AGENTS.md` / `CLAUDE.md` 和 user-level `~/.claude/CLAUDE.md` 由 harness 自动注入 memory，不在此列表 —— 但里面 markdown 链接指向的 `docs/*.md` **不会**被一起注入，要靠下方 `scan-trigger-docs` skill 按本次需求范围 Read。
-
 然后**必须 invoke**：
 
 ```
 Skill(scan-trigger-docs)   # 扫项目 AGENTS.md/CLAUDE.md 「触发即必读」段落，按本次需求范围 Read 命中的 docs/*.md 全文
 ```
-
-这些 docs 是项目积累的反直觉知识，是写 spec 第 6 节「硬约束」和第 7 节「风险」的依据。判命中宁严不宽 —— 不读就写不出约束，generator 后续踩坑的成本远高于多读一份 doc。
 
 ## 工作流程
 
@@ -89,7 +85,7 @@ git log --oneline "origin/$MAIN..HEAD" -10
    - 多条冒烟用例 + 只有 1 个 figma node → 该行填 `*`（视为通用参考）
    - 多条冒烟用例 + 多个 figma node → 优先按用户原话判每个 node 对应哪条用例；用户没说清时**用 `AskUserQuestion` 一次性问完**（每个 node 对应哪条 case），不要瞎猜
 3. **对齐严格度**：spec §4 默认填 `strict`（图标大小 / 间距 / 控件样式 / 颜色 / 字号全部 1:1 对齐）。除非用户**明确**说「大致还原就行」「不用严格对齐」之类降级语，否则不要自降到 `loose`。降级时在 §6 硬约束里**显式记一条**"对齐严格度降级 to loose，原因：<用户原话>"，避免后续 generator / executor 漂移
-4. **不要**主动调 `mcp__plugin_figma_figma__*` 工具去拉设计图 —— planner 只负责落链接 + 严格度。拉图、对照设计稿是 generator Step 4.5 和 ui-reviewer Step 2 的活，避免 planner / generator / ui-reviewer 三方都跑 token 高的 figma tool
+4. **不要**主动调 `mcp__plugin_figma_figma__*` 工具去拉设计图 —— planner 只负责落链接 + 严格度。
 
 **不触发**（不是 iOS UI 改动）时跳过本 Step、删 spec §4 的 Figma 段。
 
@@ -127,8 +123,6 @@ git log --oneline "origin/$MAIN..HEAD" -10
 - 子任务总数 + 其中 iOS UI 改动相关的数量
 - 用户在澄清里给的关键决定（一句话总结）
 - 你自己识别的最大风险（一句话）
-
-不要长篇复述 spec 内容 —— spec 文件本身就是真相源。
 
 ## 二次调用：用户决策同步 / generator 反馈更新
 

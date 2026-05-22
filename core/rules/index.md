@@ -1,7 +1,5 @@
 # Pele 规则索引
 
-> 本文件由 `pele` 工作流套件在 project 模式安装时 symlink 进 `.claude/rules/index.md`。在你的项目根 `CLAUDE.md` 或 `AGENTS.md` 末尾加一行 `@.claude/rules/index.md`，Claude 会把本文件内容注入到 agent 的 context 里，agent 看到下面的触发条件后会按需 Read 对应 rule / skill / agent 文件。
-
 下列规则 / skill / agent 都是**按需加载**的指针，不预先注入正文。遇到匹配的触发信号时，用 Read 读取对应文件再应用；不匹配就不必读。
 
 ## Workflow 规则
@@ -33,5 +31,3 @@
 ## 项目特定接入
 
 - 项目根 `AGENTS.md` / `CLAUDE.md` 由 harness 自动注入 memory，但里面 `[docs/x.md](docs/x.md)` 这种 markdown 链接**不会**自动注入 —— 用 `Skill(scan-trigger-docs)` 扫一遍、按本轮范围 Read 命中的 doc。
-- `@.claude/rules/index.md` 语法**会**递归注入本文件 + 本文件里 `@` 引用的其他文件。
-- 项目可以在自己的 `CLAUDE.md` / `AGENTS.md` 里补充项目特定规则、与本 index 共存。

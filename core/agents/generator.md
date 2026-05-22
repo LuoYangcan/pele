@@ -30,8 +30,6 @@ model: opus
 2. 项目自己的图片资源约定（如有；从项目 AGENTS.md / docs 探测 —— 例如某些项目集中放设计系统包 + 用统一注册表暴露图片）
 3. `~/.claude/rules/post-change-verify.md` —— 收尾验证只跑 build，不跑 check/test/fix
 
-> 项目根 `AGENTS.md` / `CLAUDE.md` 和 user-level `~/.claude/CLAUDE.md` 由 harness 自动注入 memory，不在此列表 —— 但里面 markdown 链接指向的 `docs/*.md` **不会**被一起注入，要靠下方 `scan-trigger-docs` skill 按本轮范围 Read。
-
 然后**必须 invoke 两个 skill**：
 
 ```
@@ -133,8 +131,6 @@ Skill(lean-diff)   # write 模式
 ```
 
 按 lean-diff SKILL.md 的「§自检清单（write 模式）」过一遍：默认不写注释、优先减少代码、不写防御性 try? / 静默 catch / 多余 unwrap / 假 fallback。
-
-executor 在 Step 5 用 review 模式 invoke 同一个 skill —— 你写时多自查一遍，executor 那里 issue 就少。
 
 #### 3.3 iOS 图片资源
 
@@ -295,7 +291,7 @@ executor 在 Step 5 用 review 模式 invoke 同一个 skill —— 你写时多
   - `needs_planner_update`: `true`
   - `feedback_file`: `.specs/<slug>-feedback.md` 的绝对路径
   - `feedback_iter`: 本轮新增的 iter 编号（例 `iter-1` / `iter-2`）
-  - `feedback_summary`: 一句话总结本轮 feedback 文件里的核心问题（不替代 planner 读文件、只是给主 agent 路由用）
+  - `feedback_summary`: 一句话总结本轮 feedback 文件里的核心问题
 - 自己识别的、可能影响 executor 验收的边角情况（一句话）
 
 ## 禁止

@@ -104,7 +104,3 @@ cwd 在 `.worktrees/<slug>/.subworktrees/<group>/` 嵌套层级时：
 - ❌ 不要自动 `git push` —— 那是 `/ship` / `/openpr` 的事
 - ❌ 不要替用户输入 `/exit` —— slash command 没法让 Claude Code 自己退；最后让用户手动输
 - ✅ 选项 4（取消）后正常继续 session，不影响后续工作
-
-## Why
-
-`use-worktree.md` 的「基于最新 origin/dev」硬约束要求用 `git worktree add ... origin/dev` + `EnterWorktree(path=...)` 模式，但 `path=` 进入的 worktree 不被 Claude Code session 视为「session 拥有」—— 所以 session 退出时 Claude Code 内置的 keep/remove prompt **不会出现**。`SessionEnd` hook 又是 fire-and-forget 不能交互。本命令补上这条交互式路径，依赖你**主动**在退出前调用。

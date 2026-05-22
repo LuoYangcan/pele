@@ -2,11 +2,8 @@
 
 > executor 验收 FAIL 时把 issues 落到这里给 generator 重试时参考。多轮失败 → **追加** iter 章节（不覆盖旧的），保留累积视图。
 >
-> 文件位置：`.specs/<slug>-review.md`（worktree 根、和 spec 同 slug）。`.specs/` 在 `.gitignore` 里，本文件不会被 commit。
+> 文件位置：`.specs/<slug>-review.md`（worktree 根、和 spec 同 slug）。
 >
-> 文件由 executor Bash heredoc 写、generator 只读、主 agent 只做路由。
->
-> `verdict: PASS` 时**不写** —— review 文档是失败累积视图，PASS 无价值。
 
 ---
 

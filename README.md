@@ -232,6 +232,7 @@ pele/
 - **Hard constraints via hooks**: Things that *must* happen (no Edit on `main`/`dev`, spec must exist before Edit in worktrees) are enforced as `PreToolUse` hooks — not as rule text the model can talk itself out of.
 - **Independent contexts for subagents**: planner / generator / executor each run via the `Agent` tool with no shared memory. Spec files are the only handoff format.
 - **Project-neutral by construction**: pele ships with no real project names, no hardcoded build commands, no language-specific rules. When a rule needs to talk about "the project's build / lint / test command", it stays generic — agents discover the actual command from the project's `Justfile` / `package.json` / `Cargo.toml` / `Makefile` / `AGENTS.md`, or ask the user.
+- **Agent-readable docs**: Files under `core/` are written for the next agent that reads them, not for humans browsing the repo. Narrative examples, Why-essays, analogies, and historical context are stripped; trigger conditions, SOP steps, route tables, prompt templates, structured output schemas, and hard constraints are kept. See the `agent-readable-docs` rule for the keep/delete checklist.
 
 ## License
 

@@ -1,10 +1,8 @@
 # GoF 经典对象级模式速查
 
-SKILL.md §III 决策表的延伸资料。**不要为了用模式而用模式**——这份速查是帮你把"症状"对到"候选模式"，最后一步选不选还是看具体场景。
+SKILL.md §III 决策表的延伸资料。**不要为了用模式而用模式**——
 
 每个模式格式统一：触发信号 / 最简骨架（Swift） / iOS 项目落点 / 不该用场景。
-
-> Swift 是 protocol-oriented 语言，多数模式落地在 Swift 里都是「protocol + 多实现」，不需要把 Java GoF 那套完整搬进来。
 
 ---
 
@@ -554,7 +552,4 @@ try await HealthKitRouter.shared.requestAuthorization()
 
 ## 通用提醒
 
-- **模式不是目的**：可读性 / 可维护性 / 可测试性是目的。模式让代码更短、调用方更直白、扩展更便宜——用；否则别用。
-- **Swift 是 protocol-oriented**：多数模式落地都是「protocol + 多实现」，不需要 Java GoF 那套 abstract class 层级。
 - **过早抽象比补丁更糟**：只看到 1 个 case 时不要预先建 Strategy；看到 2-3 个 case 再考虑。
-- **模式经常组合**：Strategy + Factory（工厂返回不同策略）/ State + Observer（状态变化触发事件）/ Decorator + Strategy（不同策略上不同 decorator）—— 别拘泥单一模式。

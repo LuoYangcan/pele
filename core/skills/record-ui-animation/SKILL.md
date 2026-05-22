@@ -5,7 +5,7 @@ description: Record an iOS / Android Simulator screen, then extract evenly-space
 
 # record-ui-animation
 
-录一段 iOS / Android Simulator 屏幕 → ffmpeg 抽 N 帧 PNG → 让 agent 自己 Read 看动画对不对。**只采集证据**，不点击 / 不输入 / 不判断 —— 那是 caller (executor / generator) 的事。
+录一段 iOS / Android Simulator 屏幕 → ffmpeg 抽 N 帧 PNG → 让 agent 自己 Read 看动画对不对。**只采集证据**，不点击 / 不输入 / 不判断
 
 ## 触发
 
@@ -142,8 +142,6 @@ REC_PID=$REC_PID RECORDING_PATH=$RECORDING_PATH \
   bash ~/.claude/skills/record-ui-animation/scripts/stop-xcrun.sh
 ```
 
-为什么用 SIGINT 而不是 SIGTERM/KILL：simctl 收到 SIGINT 才会 finalize mp4 写 moov atom；其它信号产物会损坏。这层细节都封在 `stop-xcrun.sh` 里、caller 不用记。
-
 ### 不在本 skill scope
 
 - 怎么点 send / 走到聊天页 / 触发哪个手势 → caller 看 spec 自己决定
@@ -162,61 +160,7 @@ RECORDING_PATH=$RECORDING_PATH FRAMES_DIR=$FRAMES_DIR META_PATH=$META_PATH \
 
 输出 `FRAMES_DIR=` / `FRAMES=<实际数>` / `RECORDING_DURATION_SECONDS=` / `META_PATH=`。
 
-**为什么默认 scale 0.5**：Simulator @3x 录屏（iPhone 16 Pro 1206×2622），每帧 PNG 2-3MB。10 帧 = 20-30MB 进 agent context 会撑爆；0.5x 后 ≈600×1311、~700KB / 帧，10 张 ~7MB，agent 能全 Read。看像素级偏移传 `SCALE=1.0` 重跑。
-
-**抽帧策略**：用 `fps=FRAME_COUNT/DURATION` 滤镜，再 `-frames:v FRAME_COUNT` 限上限。fps 浮点 round 实际可能差 1-2 帧，`meta.json.frame_count_actual` 真实反映；不用 `select=eq(n,k)` 因为要枚举每帧序号、动画时长动态时算不准。
-
-## 完整调用示例
-
-### 例 1: executor 跑 chat-send-morph 动画验证（subagent + mobile-mcp）
-
-```bash
-# Step A: prepare
-UDID=$(xcrun simctl list devices booted -j | python3 -c "
-import json,sys
-d=json.load(sys.stdin)
-for _,ds in d['devices'].items():
-    for x in ds:
-        if x['state']=='Booted' and 'iPhone' in x['name']:
-            print(x['udid']); break")
-
-eval "$(WORKTREE_SLUG=chat-send-morph CASE_SLUG=chat-send-fly DEVICE_UDID=$UDID \
-  EXPECTED_DURATION_SECONDS=3 \
-  bash ~/.claude/skills/record-ui-animation/scripts/prepare.sh)"
-# → 现在 env 里有 RECORDING_PATH / FRAMES_DIR / META_PATH
-```
-
-Step B（caller 在 subagent prompt 内调 mcp 工具）：
-
-```
-1. mcp__mobile-mcp__mobile_start_screen_recording
-     device=$DEVICE_UDID, output=$RECORDING_PATH, timeLimit=5
-2. 走到 chat sheet（如不在）—— mobile_launch_app / mobile_click_...
-3. mcp__mobile-mcp__mobile_type_keys(device=$DEVICE_UDID, text="Hello", submit=false)
-4. 通过 mobile_list_elements_on_screen 拿 send 按钮坐标 → mobile_click_on_screen_at_coordinates
-5. Bash: sleep 3.3   ← 等动画 + buffer
-6. mcp__mobile-mcp__mobile_stop_screen_recording(device=$DEVICE_UDID)
-```
-
-Step C: extract
-
-```bash
-RECORDING_PATH=$RECORDING_PATH FRAMES_DIR=$FRAMES_DIR META_PATH=$META_PATH \
-  FRAME_COUNT=10 \
-  bash ~/.claude/skills/record-ui-animation/scripts/extract.sh
-# → FRAMES_DIR 里 frame-001.png ... frame-010.png
-# → caller 用 Read 工具逐帧看，对照 spec 写 pass/fail
-```
-
-### 例 2: 用户场景 — "我刚改了 sheet dismiss 动画，帮我看看走起来对不对"
-
-主 agent 自己拼：
-
-1. 判断 simulator booted（不在则先 `Skill(open-sim)`）
-2. `prepare.sh` 准备目录
-3. `record-xcrun.sh` 起录 → 跑 osascript / mcp tool 触发 dismiss → sleep 1.3 → `stop-xcrun.sh` 收尾
-4. `extract.sh` 抽 10 帧
-5. Read 10 张 PNG → 写一份观察「frame-001 sheet 满屏、frame-005 滑到一半、frame-010 完全消失，曲线看 ease-out」给用户
+**为什么默认 scale 0.5**：Simulator @3x 录屏（iPhone 16 Pro 1206×2622），每帧 PNG 2-3MB。10 帧 = 20-30MB 进 agent context 会撑爆；0.5x 后 ≈600×1311、~700KB / 帧，10 张 ~7MB，agent 能全 Read。
 
 ## Android 适配（简略）
 
@@ -248,9 +192,3 @@ Step C 完全一致（mp4 输入 ffmpeg 无差异）。
 - ❌ 不自动 boot simulator / 不装 app —— 走 `find-ios-build-artifact` + `open-sim` 配套
 - ❌ 不跨 device 并行录屏 —— 一个 caller 一段录屏（caller 想并行就用不同 CASE_SLUG 各跑一遍）
 - ❌ 不改 simulator 设置 / 不改 status bar —— 录屏前现状即是现状
-
-## Why（核心）
-
-- 动画 / 过渡 / 飞行类时间维度行为单帧截图判不出，原方案降级让人肉看；`xcrun simctl io recordVideo` + ffmpeg 抽帧让 agent 自己 Read 关键帧序列判
-- skill 只采集证据，不编排触发动画（spec-specific）+ 不判 pass/fail（视觉判断硬编码维护成本爆炸）
-- 默认 0.5x scale：Simulator @3x 录屏每帧 2-3MB，10 帧塞进 context 撑爆；0.5x 既保留可读 + 把 10 帧总量压到 ~7MB

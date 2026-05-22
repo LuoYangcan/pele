@@ -5,17 +5,7 @@ description: Scan project AGENTS.md / CLAUDE.md for "trigger-on-touch" doc marke
 
 # scan-trigger-docs
 
-把项目 `AGENTS.md` / `CLAUDE.md` 里所有「触发即必读」段落扫一遍，根据本轮**自己负责的范围**判断是否命中，命中就 Read 对应 doc 全文。这条 skill 是 planner / generator / executor 三个 subagent 共享的一段「读项目反直觉知识」的统一流程。
-
-## 为什么需要这条 skill
-
-`AGENTS.md` 里关键架构注解（核心数据流 / 跨模块通信 / 平台特殊适配 / 内存约束 / 依赖分层等不易从代码自然显现的知识）都伴随一段 marker，形如「... 详见 [<具体 doc>](<具体 doc 路径>)。**改动以下任一范围前先读该文档**：」后跟若干路径范围。
-
-这是项目作者把"踩过的坑"显式登记的位置，**不读基本写不对 / 审不出 / 规划不出隐性约束**。但是：
-
-- **markdown 链接 `[docs/x.md](docs/x.md)` 不会被 Claude Code 自动注入** —— 只有 `@docs/x.md` 语法才会递归把内容塞进 context
-- AGENTS.md 里出于篇幅考虑大量用普通链接而非 `@`
-- 三个 subagent 在独立 context 里运行，不能假设"主 agent 已经读过"——必须自己扫一遍
+把项目 `AGENTS.md` / `CLAUDE.md` 里所有「触发即必读」段落扫一遍，根据本轮**自己负责的范围**判断是否命中，命中就 Read 对应 doc 全文。
 
 ## 触发
 
@@ -70,14 +60,6 @@ done
 
 关键字面要素：`**改动以下任一范围前先读该文档**：` 这串中文 marker（项目可能用其他语言 / 句式变体，见 Step 2 注解）+ 紧邻的 `docs/<feature>.md` 链接 + 后跟项目符号清单。
 
-每个实际段落形如：
-
-> ... 详见 `docs/<x>.md`。**改动以下任一范围前先读该文档**：
->
-> - 范围 1（路径 / 类名 / 模块 / 概念）
-> - 范围 2
-> - ...
-
 抽出 4 类信息：
 
 1. **doc 路径**：紧邻 marker 的 `docs/*.md` 链接
@@ -100,13 +82,6 @@ done
 | 子任务**功能描述**和 doc 主题语义相关 | 命中 → Read |
 | 子任务和 marker 范围**完全不相关、跨平台 / 跨模块** | 不命中 → 跳过 |
 | 不确定 / 边界模糊 | **默认命中** → Read（多读一份 doc 比漏一份反直觉知识便宜得多） |
-
-**核心铁律**：判断错位的代价不对称 ——
-
-- 漏读 → spec 第 6 节硬约束不全 / generator 写错 / executor 漏审 → 后续打回 / 返工
-- 多读 → 多花 1-3 分钟 Read 一份 doc
-
-宁可多读。
 
 ### Step 5: 按命中清单 Read 对应 doc 全文
 
@@ -144,9 +119,3 @@ ls "$ROOT/.cursor/rules/" 2>/dev/null
 - ❌ 不缓存 / 不跳读 —— 每次 invoke 都重新扫一遍 AGENTS.md（项目 doc 会随 PR 演化，subagent 上轮读到的版本可能已过期）
 - ❌ 不替 SOP 决定后续动作 —— 读完是为后续阶段提供原料，不替规划 / 不替写代码 / 不替判 review
 - ❌ 不强制扫 `~/.claude/` 全局规则、用户级别 README、CHANGELOG —— 那些不在项目反直觉知识范围
-
-## Why（核心）
-
-- 三个 subagent 独立 context，扫 trigger marker 逻辑完全相同 → 抽 skill 砍重复
-- 维护点收敛：marker 写法变了只改 skill 一处
-- 跨 agent 行为一致：planner / executor 同一套判命中规则

@@ -5,8 +5,6 @@
 > 文件位置：`.specs/<slug>-review.md`（worktree 根、和 spec 同 slug）。
 >
 > 文件由 executor Bash heredoc 写、generator 只读、主 agent 只做路由。
->
-> `verdict: PASS` 时**不写** —— review 文档是失败累积视图，PASS 无价值。
 
 ---
 

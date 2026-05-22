@@ -5,8 +5,6 @@
 > 文件位置：`.specs/<slug>-feedback.md`（worktree 根，和 spec 同 slug）。
 >
 > 多轮反馈时**追加**新章节（不覆盖旧的），按 iter 编号往下加 —— 历史保留供 planner / 用户回溯。
->
-> 文件由 generator Write / Edit；planner 二次调用时只 Read，不修改本文件（planner 的回应写进 spec 主文件第 7 节或更新日志）。
 
 ---
 

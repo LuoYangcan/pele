@@ -2,8 +2,6 @@
 
 把"View Controller / Activity / Page 该长什么样、状态放哪、副作用怎么处理"展开。覆盖**经典层架构**（MVC / MVP / MVVM / VIPER）+ **单向数据流**（Redux / TCA / Elm / Reducer）。每个：核心思想 / 适用规模 / iOS 落地 / 何时不用 / 反例。
 
-> 某 iOS monorepo 项目的 ChatVC 范式（UIKit + extension 切片 + `FooState.swift` + `FooViewModel.swift`）是 **MVVM 的轻量变体**——下面会专门对照说。
-
 ---
 
 ## 速查决策表
@@ -138,7 +136,7 @@ iOS 圈现在很少用 MVP，多数等价情况用 MVVM 替代。
 
 view 通过 binding（Combine / Observable / 手动 callback）订阅 ViewModel state。
 
-### 骨架（某 iOS monorepo 的 ChatVC 范式）
+### 骨架（MVVM 典型范式）
 
 ```swift
 // FooState.swift —— 跨方法边界的可变状态
@@ -200,10 +198,10 @@ class FooVC: UIViewController {
 
 ### 项目对照
 
-某 iOS monorepo 的 ChatVC 范式（项目 `AGENTS.md` "ViewController 文件拆分约定"）就是 MVVM 的轻量变体：
+典型的 FooVC 范式（项目 `AGENTS.md` "ViewController 文件拆分约定"）就是 MVVM 的轻量变体：
 
 - `FooViewController.swift` — VC 主文件（lifecycle）
-- `FooViewController+<Aspect>.swift` — extension 切片（Layout / Backend / Composer / Delegate / Keyboard / LongPress）
+- `FooViewController+<Aspect>.swift` — extension 切片（典型 aspect 如 Layout / Delegate / Keyboard）
 - `FooState.swift` — UI / 行为状态（跨方法边界的 var）
 - `FooViewModel.swift` — 纯逻辑 / 可测的 derive
 - `FooViewModelTests.swift` — Swift Testing 单测
@@ -528,12 +526,12 @@ VC 不直接 `pushViewController`，让 Coordinator 决定下一步。
 ### 何时用
 
 - VC 之间有复杂导航（条件跳转 / 模态 / 多入口）
-- 一个流程涉及多个屏幕（onboarding 9 步 / 支付 5 步）
+- 一个流程涉及多个屏幕
 - 想单测导航逻辑
 
 ### 项目对照
 
-某 iOS monorepo 的 `<MyAppRouter>` + `Router.register` + deeplink 路由就是 **Coordinator 的工业级变体**——Router 模块化、跨业务包通信、deeplink 注册。比 hand-rolled Coordinator 更适合多模块项目。
+模块化 Router + 注册式 deeplink 路由就是 **Coordinator 的工业级变体**——Router 模块化、跨业务包通信、deeplink 注册。比 hand-rolled Coordinator 更适合多模块项目。
 
 ---
 
@@ -546,9 +544,9 @@ project size?
 └─ medium / large
     ├─ UIKit?
     │   ├─ small team / fast iteration
-    │   │   └─ MVVM (monorepo 案例：ChatVC 范式)
+    │   │   └─ MVVM
     │   ├─ large team / strict boundaries
-    │   │   └─ MVVM + Coordinator (monorepo 案例：&lt;MyAppRouter&gt;)
+    │   │   └─ MVVM + Coordinator
     │   └─ rigid module boundaries / 50+ screens / 10+ devs
     │       └─ VIPER (rare in modern iOS)
     └─ SwiftUI?

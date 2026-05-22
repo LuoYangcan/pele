@@ -165,6 +165,26 @@ cd .worktrees/sync-N
 
 Full SOP — what ships vs what stays personal, step-by-step, and why the script can't do everything — is in **[docs/sync-from-local.md](docs/sync-from-local.md)**.
 
+## Upgrade / Reinstall
+
+If you installed an earlier version of pele and are picking up changes (new rules, renamed skills, deleted files), reinstall in three steps from your existing `<pele-checkout>`:
+
+```bash
+cd <pele-checkout>
+git pull origin main          # pull the new pele
+./uninstall.sh                # global mode — also clears stale symlinks for deleted files
+./install.sh                  # rebuild symlinks against the new layout
+#  ./uninstall.sh --project /path/to/your-project && ./install.sh --project /path/to/your-project   (project mode equivalent)
+```
+
+`uninstall.sh` walks every symlink under the target `.claude/` and removes any that points into `<pele-checkout>` — including symlinks whose target file no longer exists (e.g. `~/.claude/rules/commit-message.md` → `<pele-checkout>/core/rules/commit-message.md` after that source file is deleted upstream). This is why running `uninstall.sh` before `install.sh` is recommended for upgrades, not just for full removal.
+
+If you hand-added pele-related lines into `~/.claude/CLAUDE.md` (or `<your-project>/CLAUDE.md` for project mode) — for instance an index entry like `[commit-message](rules/commit-message.md)` or `[swift-formatting](rules/swift-formatting.md)` for rules that have since been removed from pele — those lines were never managed by `install.sh` and won't be cleaned up automatically. Grep your `CLAUDE.md` for references to deleted files and remove them manually:
+
+```bash
+grep -nE 'commit-message|swift-formatting|find-ios-build-artifact' ~/.claude/CLAUDE.md
+```
+
 ## Uninstall
 
 ```bash

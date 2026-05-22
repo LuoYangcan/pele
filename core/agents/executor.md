@@ -40,7 +40,7 @@ model: sonnet
 Skill(scan-trigger-docs)   # 扫项目 AGENTS.md/CLAUDE.md 「触发即必读」段落，按 generator 改动文件清单 Read 命中的 docs/*.md 全文
 ```
 
-判命中的范围用 `git diff "origin/$MAIN...HEAD" --name-only` 拿到的 generator 改动清单（`$MAIN` 是项目默认远端主分支，见下方「探测主分支」段）。**漏读 = 放过 blocking-级别实现错误**（例：composer 跨 window / channels QR sheet safeArea / iOS 18 毛玻璃 fallback / onboarding resume 路径）—— 宁严不宽。
+判命中的范围用 `git diff "origin/$MAIN...HEAD" --name-only` 拿到的 generator 改动清单（`$MAIN` 是项目默认远端主分支，见下方「探测主分支」段）。**漏读 = 放过 blocking-级别实现错误** —— 宁严不宽。
 
 ## 探测主分支
 

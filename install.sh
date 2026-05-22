@@ -64,7 +64,25 @@ while [ $# -gt 0 ]; do
       shift
       ;;
     -h|--help)
-      sed -n '2,20p' "$0" | sed 's/^# \{0,1\}//'
+      cat <<'EOF'
+Pele installer — symlinks core/ into a .claude/ directory (global or per-project).
+
+Usage:
+  ./install.sh                          # global mode (default): install into ~/.claude/
+  ./install.sh --global                 # explicit global mode (same as default)
+  ./install.sh --project <path>         # project mode: install into <path>/.claude/
+  ./install.sh --figma                  # also install figma-extras hooks (global mode only)
+  ./install.sh --dry-run                # show what would be done, do not change anything
+  ./install.sh --force                  # skip confirmation prompts (still backs up)
+
+Modes (--global and --project are mutually exclusive):
+  global  — symlink core/{rules,agents,skills,commands,templates}/* into ~/.claude/,
+            merge hooks into ~/.claude/settings.json, install CLAUDE.md.
+  project — symlink the same dirs into <path>/.claude/.
+            Does NOT touch <path>/CLAUDE.md or <path>/AGENTS.md.
+            Does NOT merge hooks (hooks live in ~/.claude/settings.json globally).
+            Prints manual instruction to add `@.claude/rules/index.md` to <path>/CLAUDE.md.
+EOF
       exit 0
       ;;
     *)
@@ -309,7 +327,7 @@ ok "Pele installed to ${CLAUDE_DIR}/"
 # Check for unreplaced placeholders and warn (safety net — should be 0 after the decouple refactor)
 PLACEHOLDER_COUNT=0
 if command -v grep >/dev/null 2>&1; then
-  PLACEHOLDER_COUNT=$(grep -rEn '<(YourApp|your-monorepo|your build recipe|DesignSystemPackage|ImageRegistry)' "${PELE_ROOT}/core/" --include='*.md' 2>/dev/null | wc -l | tr -d ' ')
+  PLACEHOLDER_COUNT=$(grep -rEn '<(YourApp|your-monorepo|your (build|iOS build|macOS build|lint check|test|auto-fix) recipe|DesignSystemPackage|ImageRegistry)' "${PELE_ROOT}/core/" --include='*.md' 2>/dev/null | wc -l | tr -d ' ')
 fi
 if [ "${PLACEHOLDER_COUNT}" -gt 0 ]; then
   echo ""
@@ -317,7 +335,7 @@ if [ "${PLACEHOLDER_COUNT}" -gt 0 ]; then
   echo "  These are project-specific defaults you should review and replace."
   echo ""
   echo "  List them all:"
-  echo "    ${C_DIM}grep -rEn '<(YourApp|your-monorepo|your build recipe|DesignSystemPackage|ImageRegistry)' ${PELE_ROOT}/core/ --include='*.md'${C_RESET}"
+  echo "    ${C_DIM}grep -rEn '<(YourApp|your-monorepo|your (build|iOS build|macOS build|lint check|test|auto-fix) recipe|DesignSystemPackage|ImageRegistry)' ${PELE_ROOT}/core/ --include='*.md'${C_RESET}"
 fi
 
 # ----------------------- project mode: manual instruction -----------------------

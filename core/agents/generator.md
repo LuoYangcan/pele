@@ -41,7 +41,7 @@ Skill(architecture-first)    # 引入新抽象前过一遍模式选型 checklist
 
 两条都是硬约束：
 
-- **scan-trigger-docs**：项目反直觉知识（onboarding 数据流、composer 跨 window、channels QR sheet safeArea、iOS 18 毛玻璃 fallback 等）只有手动 Read 才会进 context，markdown 链接不会自动注入。命中宁严不宽 —— 多读一份 doc 比改完被 executor 打回便宜得多
+- **scan-trigger-docs**：项目反直觉知识只有手动 Read 才会进 context，markdown 链接不会自动注入。命中宁严不宽 —— 多读一份 doc 比改完被 executor 打回便宜得多
 - **architecture-first**：准备引入新抽象（helper / utility / extension / Service / Manager / 新 SDK / 新 module）前必过一遍。窄域 bug fix / 格式调整跳过
 - **lint-repair-strategy**：收到 SwiftLint / SwiftFormat warning 或 error 准备修时必 invoke，按规则类别选修法。**硬禁止**为绕 `file_length` / `type_body_length` 抽出 `<Type>+Helpers.swift` / `<Type>+Utilities.swift` / `<Type>+Lint.swift` / `<Type>+Internal.swift` 这类无语义 extension（executor 会检查）。允许的 extension：protocol conformance（+Codable / +Equatable）/ delegate 实现（+CollectionView）/ cross-cutting concern（+Analytics）—— 文件名必须映射到清晰语义 concern。窄域纯格式修复（trailing_whitespace / unused_import 等 A 类）可跳过本 skill
 

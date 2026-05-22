@@ -2,7 +2,7 @@
 
 > generator 在写代码时遇到 spec 没覆盖的不确定点，写在这里给 planner 处理。
 >
-> 文件位置：`.specs/<slug>-feedback.md`（worktree 根，和 spec 同 slug）。`.specs/` 在 `.gitignore` 里，本文件不会被 commit。
+> 文件位置：`.specs/<slug>-feedback.md`（worktree 根，和 spec 同 slug）。
 >
 > 多轮反馈时**追加**新章节（不覆盖旧的），按 iter 编号往下加 —— 历史保留供 planner / 用户回溯。
 >

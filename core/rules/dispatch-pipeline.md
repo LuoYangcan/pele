@@ -533,7 +533,6 @@ while i <= 3:
           - Read generator 结构化结论里 build / lint 状态字段
           - 改动文件清单合理（限于 review 列的 lint 修复范围）、没动 spec §1-7
           → build pass + lint pass + 改动范围合理 → 直接 break，进入 3A PASS 后流程
-            （视同 executor 上轮 PASS；
           → build fail / lint 仍 fail / 改动越界 → fast_path_used = true，i += 1，
             下一轮回到常规路径重调 executor 拿完整 issues（fast path 只用一次、失败退化）
     

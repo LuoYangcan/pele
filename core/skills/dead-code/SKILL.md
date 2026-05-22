@@ -5,8 +5,6 @@ description: Scan recent code changes for "zombie code" — newly-added or modif
 
 # dead-code
 
-Agent 反复迭代后，常常留下**僵尸代码**——存在于仓库里、却没有任何调用方的方法、类型、enum case、孤儿文件。这些代码编译能过、CI 也过，但是死的。本 skill 在用户显式调用时扫描**最近的改动**，把可疑的僵尸列出来让用户拍板，**绝不自动删除**。
-
 **通用路径**（默认走这条）：LSP `findReferences` + grep，所有语言适用（只要项目里有可用的 LSP server）。
 
 **Swift 增强路径**：Swift 项目 + Periphery 已安装时，优先用 Periphery（SourceKit 索引比 grep 更精确）。其他语言生态有各自的同类工具（见末尾「扩展到其他语言生态」），不属于本 skill 默认 SOP。
@@ -127,8 +125,6 @@ rg -n -w "<symbol>" --type swift
 
 命中数 == 1（只有声明本身）才保留为 high-confidence；否则降级到 low-confidence。
 
-> ⚠️ 通用路径覆盖度低于 Swift 增强路径（Periphery）—— LSP 不懂语言级特殊语义（Swift 重载 / 泛型派生 / protocol witness；TypeScript 类型推导链；Python descriptor / metaclass；Rust trait impl 派生）。一个 false positive 让用户删了真正在用的代码就出大事。**通用路径的所有结论都建议用户人工核实**，不要给「直接删」的强建议。
-
 ## Path B: Swift 增强路径（Periphery，仅 Swift + Periphery 已安装）
 
 [Periphery](https://github.com/peripheryapp/periphery) 用 SourceKit 索引，对 Swift 的语义识别比 grep / LSP 高一档。仅在以下条件全部满足时启用：
@@ -154,7 +150,7 @@ EOF
 
 > ⚠️ **3.x yml 字段重要变化**：`project:` 字段同时支持 `.xcworkspace` 和 `.xcodeproj`（不再有独立的 `workspace:` 字段）。`targets:` 字段已被移除，target 从 scheme 推导。如果你看到 `invalid key 'workspace'` 报错，就是版本对不上。
 
-`retain_public: true` 是**关键**——多包 SPM 项目（分层结构典型如 `packages/common/*` + `packages/<platform>/{Core,UI,...}` + `packages/<platform>/Business/*`）里大量 `public` 符号是给跨包用的，Periphery 在单 target 内当然找不到调用方，但它们不是僵尸。
+`retain_public: true` 是**关键**——
 
 如果项目是 SPM-only（没 xcworkspace），改成：
 
@@ -273,7 +269,7 @@ low-confidence 单独列出来，**不主动建议删**，仅供用户参考。
 | extension / impl 里实现了某 protocol / interface / trait 要求的方法（即使本类型没人调它） | protocol witness |
 | 标了 `@available(*, deprecated)` / `@Deprecated` / 等价的 deprecation 标记 | 已经在 deprecation 通道，本 skill 不重复 nag |
 
-豁免规则**显式列在报告里**——让用户知道哪些符号被本 skill 跳过了，避免「我以为它会扫」的盲点。
+豁免规则**显式列在报告里**——
 
 ## 输出报告（强制格式）
 
@@ -367,7 +363,3 @@ low-confidence 单独列出来，**不主动建议删**，仅供用户参考。
 - **内置 `simplify` skill**：`simplify`（Claude Code 内置）改完代码后跑 review subagent 自动 fix；本 skill 是单维度（unused），且**不自动 fix**（generator override 例外见上）。可以串行用：`simplify` 跑完后再跑本 skill 做最后一轮 cleanup。
 - **`dispatch-pipeline` rule**：`generator` Step 4.5 在 review 前自动调本 skill 做自检；主 agent 阶段 2.5 review-fix 循环里也可以让用户选「再跑一轮 dead-code 扫描」作为 review 的一种形式。
 - **`post-change-verify` rule**：本 skill 的删除阶段会跑 build —— 这是 post-change-verify 的一个具体应用（只跑编译、不主动跑 lint / test / format-fix）。
-
-## Why（核心）
-
-Agent 频繁迭代时容易留三类僵尸：旧方法没删 / 半成品没拆 / 整个文件孤立。定位是「轻量自动化 + 人审拍板」——agent 看不到运行时反射不能自动删；人不会有耐心扫 50 个 file，工具剥离 public API / 反射 / 测试这些非僵尸噪声。

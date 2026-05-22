@@ -176,8 +176,6 @@ final class CheckoutVC: UIViewController {
 - **Clean** 关注**层数 / 内外**（Entity → Use Case → Adapter → Framework）
 - **Hexagonal** 关注**入口 / 出口**对称（in port = 用户怎么进来；out port = 业务怎么找外部资源）
 
-实践上很多人混用："Ports & Adapters" 就是 Clean 的轻量化表达。
-
 ### Swift 骨架
 
 ```swift
@@ -343,10 +341,6 @@ packages/ios/Business/*                              ← Outer（业务功能 + 
 - 真实实现（在 app 层）= adapter
 - 调用方（业务层）= 通过 port 间接拿 adapter，不知道具体实现
 
-### 项目里你能说"我们用 Clean 吗"？
-
-可以。但要补一句"**模块级 Clean，不是文件级 Clean**"——项目没强制每个 feature 写 Entity + UseCase + Adapter 的全套 5 件套。VC + ViewModel + Service 仍是常见 shape，只是包之间走 Clean 单向依赖。
-
 ---
 
 ## 选型决策树（系统层面）
@@ -370,9 +364,3 @@ packages/ios/Business/*                              ← Outer（业务功能 + 
 - **Functional Core 但 core 内有 await / Date.now / random**：core 不允许这些；要么把这些数值通过参数传入，要么把它们移到 shell
 - **小 app 上 Clean**：3 屏幕的 hobby app 套全套 5 件套，开发速度直接砍半，没好处
 - **没有边界但喊"我们用 Clean"**：嘴上 Clean，代码上 VC 直接 import URLSession + import CoreData + import 第三方 SDK——这只是普通 MVC，不要装
-
-## Why
-
-系统架构的选择是**业务复杂度 + 测试需求 + 团队能力**的乘积。Clean / Hexagonal / Functional Core 都是给**业务复杂度 ≥ UI 复杂度**的项目用的——business heavy app（fintech / SaaS / 算法工具）才有真实回报。**UI heavy app**（chat / camera / 媒体）多数情况下分层简单的 MVVM 就够了。
-
-不是越多边界越好——**每多一层边界 = 每多一处需要序列化 / 反序列化 / 转换的成本**。该上才上。

@@ -34,8 +34,6 @@ model: sonnet
 Skill(review-mobile-ui)   # UI 验收 SOP 真相源
 ```
 
-skill 内部会再 invoke `find-ios-build-artifact`（拿 .app 路径）和 `record-ui-animation`（动态用例录屏抽帧）。
-
 ## 工作流程
 
 ### Step 1: 判断本轮要不要做

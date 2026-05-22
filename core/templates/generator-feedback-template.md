@@ -17,7 +17,7 @@
 ### 触发场景
 
 - **当前在做的子任务**：`task-X`（spec 第 2 节的 ID）
-- **进展到哪一步**：<例：刚改完 ChatSheetState.swift 准备改 ChatSheetViewController.swift 的 send 路径，发现 spec 没说 reply + attachment 共存时的 UI 优先级>
+- **进展到哪一步**：<例：刚改完某 State 类准备改对应 ViewController 的核心方法，发现 spec 没说某个并发条件下的优先级>
 - **触发时机**：<动手前 / 动手中 / 编译完准备进下一个子任务时>
 
 ### 不确定点
@@ -49,8 +49,8 @@
 
 > generator 在等 planner 回应期间已经做了什么、卡在哪。planner 拿到这个能判断要不要让 generator 回滚某些改动。
 
-- ✅ 已经做完且不会回滚的事：<例：已经在 ChatSheetState 加了 isReplyAndAttachmentCoexisting 字段，纯加法不破坏 spec>
-- ⏸️ 已停手、等回应的事：<例：还没改 ChatSheetViewController 的 send 路径，等 planner 拍板优先级>
+- ✅ 已经做完且不会回滚的事：<例：已经在某 State 类加了新字段/方法，纯加法不破坏 spec>
+- ⏸️ 已停手、等回应的事：<例：还没改对应 ViewController 的核心方法，等 planner 拍板设计细节>
 - 🤔 已经写了但可能回滚的事：<例：暂时按选项 A 写了 placeholder 实现 + 注释 `// PLANNER-FEEDBACK iter-N: 待澄清后回来改`，方便编译过；planner 选 B/C 就改回来>
 
 ---

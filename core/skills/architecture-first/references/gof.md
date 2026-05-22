@@ -56,7 +56,7 @@ struct RecorderViewModel {
 }
 ```
 
-**iOS 落点**：录音 / 上传等多阶段流程 / Onboarding 步骤推进 / ChatSheet composer 模式切换
+**iOS 落点**：多阶段表单 / 多步骤上传 / 模式切换
 
 **不该用**：只有两个状态且无迁移规则（bool 够用）/ 状态空间巨大且组合自由（用结构化状态多个独立字段，不要硬塞一个枚举）
 
@@ -79,7 +79,7 @@ enum SenderFactory {
 }
 ```
 
-**iOS 落点**：ViewController 装配 / API client 选择（不同 env / tenant）/ Composer 输入控件按 channel 类型切换
+**iOS 落点**：ViewController 装配 / API client 选择（不同 env / tenant）/ 输入控件按业务类型切换
 
 **不该用**：创建逻辑就是 `init` 一行（直接 `Foo()` 比 `FooFactory.make()` 短）/ 类型本身就一个
 
@@ -491,7 +491,7 @@ HealthKitRouter.shared = RealHealthKitService()
 try await HealthKitRouter.shared.requestAuthorization()
 ```
 
-**iOS 落点**：跨业务模块服务调用（项目级 Router + `Router.register(serviceType:)` 模式）/ View 能力混入（`Trackable` / `Themeable`）/ 测试替身（生产用真实，测试用 fake）
+**iOS 落点**：跨业务模块服务调用（项目级 Router / Service Locator 注册模式）/ View 能力混入（`Trackable` / `Themeable`）/ 测试替身（生产用真实，测试用 fake）
 
 **不该用**：真的是 is-a 关系且只有单一继承层级（`UIButton: UIControl` 是 OK 的）/ 没有多个实现 / 没有测试需求
 

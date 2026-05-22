@@ -211,7 +211,7 @@ ui_dynamic_cases_verified:
     spec_description: <用例原文>
     frames_dir: <绝对路径>
     verdict: pass | fail
-    observations: <一句话，例：「frame-001 send 按钮静止 → frame-004 文本气泡从 composer 起飞、缩放收缩 → frame-007 落到 chat 列表底部，曲线 ease-out 符合 spec」>
+    observations: <一句话>
 ```
 
 - `verdict: pass` → 不算 blocking

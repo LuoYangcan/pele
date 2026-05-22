@@ -69,8 +69,8 @@
 
 主流程从开始到完成的最小可验证路径——产品核心功能"在用对了"的判断依据。
 
-- [ ] <场景 1，例：在 onboarding 第一页点"继续" → 跳到第二页且进度条 50%>
-- [ ] <场景 2，例：完成 onboarding → 落到 Home tab 且看到欢迎卡片>
+- [ ] <场景 1>
+- [ ] <场景 2>
 - [ ] ...
 
 **iOS UI 改动专项**（触发信号：改了 SwiftUI/UIKit view、改了图片资源、改了样式/布局/颜色、需求里出现 UI 字眼。任一命中则**必填**至少 1 条；不触发则删掉本小节）：
@@ -81,7 +81,7 @@
 
 | 对应用例 | Figma URL | 节点 ID | 页面 / 屏幕名 |
 | --- | --- | --- | --- |
-| `*` | `<https://figma.com/design/<fileKey>/<fileName>?node-id=<X-Y>>` | `<X:Y>` | <例如「Composer / Empty State / Dark」> |
+| `*` | `<https://figma.com/design/<fileKey>/<fileName>?node-id=<X-Y>>` | `<X:Y>` | <...> |
 
 - **设计稿覆盖范围**：<列出本次实现要对齐的关键面：**图标大小 / 间距 (padding, margin, gap) / 控件样式 (圆角, 描边, 阴影) / 颜色 / 字号 / 行高 / 字重 / 图层结构 / 对齐 (左/中/右/baseline)**；不在 scope 的视觉调整明确踢出>
 - **对齐严格度**（默认 `strict`，除非用户在 §6 硬约束里明确写降级）：

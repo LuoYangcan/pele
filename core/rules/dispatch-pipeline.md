@@ -74,8 +74,13 @@ Agent({
 planner 返回后：
 
 1. Read 一下 `.specs/<slug>.md` 自己看一眼（确认 planner 没写空 / 没写错路径）
-2. 把 **spec 文件路径** + **planner 返回的关键摘要**展示给用户
-3. 用 AskUserQuestion 停下问，至少给这几个选项：
+2. **外部 URL 一致性 grep 自检**（防 planner 瞎填 file id 类错误）：扫主索引 §4 / §1 里出现的所有 `https://...` URL（重点：figma.com / notion.so / linear.app / docs.google.com 等用户参考资料）、对每条 URL 取**file id 段**（如 figma 的 `/design/<fileKey>/`、notion 的 `/page-<id>` 末段、linear 的 `<team>-<num>`），跑：
+   ```bash
+   for fid in $FILE_IDS; do grep -q "$fid" <用户原始 prompt 文本/对话日志>; done
+   ```
+   任何 file id 在用户原话中**不存在** → 立即报给用户「spec §4 出现了你没给过的 URL/ID `<X>`，可能是 planner 瞎填，要不要让 planner 修？」，给 AskUserQuestion 选项「调 planner 修 / 我自己 Edit 改 / 保留（确实是合理的衍生）」。这一步是 **B+C 防呆机制的 C 环节**（planner 端 figma get_metadata 验证是 B 环节）。**注意**：用户原话里只有 URL 时按 file id 段精确匹配；只有提到产品 / 项目名时不算（不要把 "某产品名" 当作 URL 验证依据）
+3. 把 **spec 文件路径** + **planner 返回的关键摘要** + **`.specs/<slug>/decisions.md` 路径**（提示用户：planner 在该文件 iter-1 节记了「自作主张 / 存疑 / 隐含偏差 / 借鉴 pattern」四类，可以一并审）展示给用户
+4. 用 AskUserQuestion 停下问，至少给这几个选项：
    - 开始实现（调 generator）
    - 我先看 spec，等我说开始
    - 改 spec / 改方向（重新调 planner）
@@ -294,6 +299,12 @@ generator 完成后**直接**进阶段 3（executor）。代码 review 由 execu
 
 ### 阶段 3: 调 executor（+ ui-reviewer，按用户触发）
 
+> **executor 续问场景由 executor 自己 Step 0 cache 命中处理**：主 agent 不必区分"续问 vs 真 retry"。executor 每轮 Step 9 把 verdict + repo 指纹（HEAD + porcelain hash）落盘 `.specs/<slug>-verdict.md`；下次 executor 启动时 Step 0 检测指纹一致即直接返回上轮 yaml（不重跑 Step 1-8）。
+>
+> 主 agent 想强制重跑（绕过 cache）→ 在 executor prompt 里显式传 `force_rerun: true`。典型场景：用户挑修 review 后回到 retry executor、主 agent 知道 generator 改了代码（其实 repo 指纹也会自动变、不必显式传，但显式传更安全）。
+>
+> 阶段 3A / 3B / 5 调 executor 时**不必**主动管 cache —— executor 自己处理。
+
 #### Step 0: 判断本轮是否触发 ui-reviewer
 
 UI 验收**默认不跑**。主 agent 在调 executor 前判断 `ui_review_requested`：
@@ -359,6 +370,7 @@ Agent({
 - 如果 `ui_review_requested == false` 但 spec §4 有「iOS UI 改动专项」用例：提示「spec §4 有 UI 用例但本轮没跑 ui-reviewer，需要 UI 验收请明说『跑下 UI 验收』」
 - `warning` 列表（如有）
 - `amendments_verified` 三个 list（done_verified / done_failed 应为空 / todo_skipped）
+- **decisions 审计总结**（必报）：Read `.specs/<slug>/decisions.md` 全文，把本需求从 planner iter-1 到 generator 最后一节里**所有**「自作主张 / 存疑 / 隐含偏差 / 借鉴 pattern」按四类聚合成一段 200-400 字的总结（按类合并、按时间顺序保留每条要点；不要漏 `- 无` 之外的任何条目），开头一句话点明「本需求共 N 节审计章节、由 planner / generator 在 X 轮 iter 中追加」；末尾附 `.specs/<slug>/decisions.md` 绝对路径，提示用户可 Read 全文核对
 
 **ui-reviewer 字段路由**（仅 `ui_review_requested == true` 时适用）：
 
@@ -426,7 +438,7 @@ AskUserQuestion 问「要不要现在总结这次工作 + 更新项目文档？�
 
 #### 3B: 并行模式（每组各自跑 executor，ui-reviewer 不进 3B）
 
-> 并行模式下 ui-reviewer **不进 3B** —— 每组 sub-worktree 各自跑 executor 时，UI 验收（如果用户触发了）留到 3C 合并后或阶段 5 最终验收时**在主 worktree 跑一次**。
+> 并行模式下 ui-reviewer **不进 3B** —— 每组 sub-worktree 各自跑 executor 时，UI 验收（如果用户触发了）留到 3C 合并后或阶段 5 最终验收时**在主 worktree 跑一次**。理由：mobile-mcp 不支持 UDID 透传，多 sub-worktree 同时跑会互相抢 simulator 交互；且 UI 用例本来就是看整体效果，分组分别跑 UI 反而拼不出全貌。
 
 ##### Step 1: 调 executor
 
@@ -527,12 +539,13 @@ while i <= 3:
           - 本轮是第 i 次重试 / 共 3 次
           - **显式说**「上轮 executor 仅 lint 失败、build / spec / AMD / 硬约束 / mock 等全过；
             本轮只修 review 文件里 issue_type=lint-error 的条目，不扩范围。
-            修完跑项目的 lint 检查 + build 命令自验、把 build/lint 状态写进结构化结论；
+            修完跑 `just check` + 项目 build 命令自验、把 build/lint 状态写进结构化结论；
             主 agent 本轮**不**再调 executor」
         generator 返回 → 主 agent **自己**做轻量验证（同 Step P3 review-fix）：
           - Read generator 结构化结论里 build / lint 状态字段
           - 改动文件清单合理（限于 review 列的 lint 修复范围）、没动 spec §1-7
           → build pass + lint pass + 改动范围合理 → 直接 break，进入 3A PASS 后流程
+            （视同 executor 上轮 PASS；lint-only fail 等价于"软 PASS、只差最后一公里"）
           → build fail / lint 仍 fail / 改动越界 → fast_path_used = true，i += 1，
             下一轮回到常规路径重调 executor 拿完整 issues（fast path 只用一次、失败退化）
     
@@ -563,6 +576,8 @@ if i > 3:
 ```
 
 **不要超过 3 次**自动重试 —— 一直失败说明问题不在代码、是规划或理解层面，需要人介入。
+
+> **lint-only fast path 注意**：`just fix` 极端边角可能改坏语义（SwiftFormat 换行连锁触发其他规则、误删 `unused_variable` 时删掉实际有副作用的代码）；fast path 漏一次的兜底是只用一次 + 失败退化到常规路径。
 
 #### `ui_review_requested == true` 时的双路径
 
@@ -630,10 +645,12 @@ Agent({
 
 ## 主 agent / planner / generator 在 §8 进度状态上的写权限边界
 
-§8（TODO/DOING/DONE）**默认**是 generator 的写权限：
+> **结构提醒**：spec 是**主索引 + 子目录**两层（`.specs/<slug>.md` + `.specs/<slug>/{tasks,risks,amendments}/`，详见 `~/.claude/templates/spec-template.md`）。§8 在主索引里是**索引行表**（status + 摘要 + 链接），每行对应一个 `tasks/task-N.md` 子文件。改 status 时必须**同时改两处**：主索引索引行的 status 列 + 子文件的 `**状态**` 字段。子文件是 status 真相源、主索引索引行是 status 快照。
 
-- ✅ generator: 每完成一个 task，把对应行从 TODO 移到 DONE。这是日常完成度迁移
-- ❌ planner: 默认不动 §8（避免 planner 与 generator 在同一节互相覆盖）
+§8（TODO/DOING/DONE 状态）**默认**是 generator 的写权限：
+
+- ✅ generator: 每完成一个 task，改子文件 `tasks/task-N.md` 的 `**状态**` 字段 + 同步主索引 §8 索引行。这是日常完成度迁移
+- ❌ planner: 默认不动 §8 状态（避免 planner 与 generator 在同一节互相覆盖）；初始 Write 子文件时填 TODO 是首次定义、不算 mutation
 - ❌ 主 agent: 默认不动 §8（按本 rule「主 agent 绝对不能做的事」第 2 条）
 
 但下面两种场景下，**planner 必须改 §8**（这是**计划性结构改动**、不是完成度迁移、不算抢 generator 写权限）：
@@ -644,9 +661,9 @@ Agent({
 
 planner 必须做：
 
-1. §2 把原 task 拆成 task-Na（已 DONE 子范围）+ task-Nb（待做新增子范围）
-2. §8 同步：task-N 行 → 删除；新增 task-Na 标 DONE、task-Nb 标 TODO
-3. 在 §8 段头加一行校准说明：`§8 校准说明（YYYY-MM-DD iter-N 处理）：本节由 planner 因 task 拆分破例修改一次。日常完成度迁移仍由 generator 自己写。`
+1. 主索引 §2 把原 task 拆成 task-Na（已 DONE 子范围）+ task-Nb（待做新增子范围）；同步 Write `tasks/task-Na.md`（status=DONE）+ `tasks/task-Nb.md`（status=TODO）
+2. 主索引 §8 同步：task-N 索引行 → 删除；新增 task-Na 行（status=DONE）+ task-Nb 行（status=TODO）
+3. 在主索引 §8 段头加一行校准说明：`§8 校准说明（YYYY-MM-DD iter-N 处理）：本节由 planner 因 task 拆分破例修改一次。日常完成度迁移仍由 generator 自己写。`
 
 ### 场景 B: 旧 task 被用户决策完全移出 scope（task 删除）
 
@@ -654,8 +671,9 @@ planner 必须做：
 
 planner 必须做：
 
-1. §2 给该 task 行加删除线 + 一句说明（保留审计痕迹）
-2. §8 同步：从 TODO/DOING/DONE 任一段把该 task 行**删掉**（不留删除线 —— §8 是状态视图、删除线行是噪声）
+1. 主索引 §2 给该 task 索引行加删除线 + 一句说明（保留审计痕迹）
+2. 主索引 §8 同步：从索引表把该 task 行**删掉**（不留删除线 —— §8 是状态视图、删除线行是噪声）
+3. 子文件 `tasks/task-N.md`：**保留**（审计痕迹），但可以在子文件顶部追加一行 `> 用户决策移出 scope（YYYY-MM-DD）`
 
 ### 主 agent 调 planner 时的 checklist
 
@@ -669,55 +687,59 @@ planner 必须做：
 
 ### Generator 启动前 §8 漂移自救（不停手等指令）
 
-generator 启动前发现 §8 ↔ §2 / §7 不一致时，**§2 是真相源**，按下面处理（详见 `~/.claude/agents/generator.md` Step 1.5）：
+generator 启动前发现 §8 ↔ §2 / §7 / 子文件 status 不一致时，**§2 是 task 定义真相源 + 子文件是 status 真相源**，按下面处理（详见 `~/.claude/agents/generator.md` Step 1.5）：
 
-- §2 列了 task 但 §8 缺 → 自己加进 §8 TODO 继续干
-- §8 标 DONE 但 §7 进度记录说"未完成" → 自己退回 DOING 继续干
-- §8 有 task 但 §2 没列 → 这是真冲突 → 跑 Step 4 不确定流程（让 planner 处理）
+- 主索引 §2 列了 task 但 §8 缺索引行 → 自己加进 §8 TODO + 确认 `tasks/task-N.md` 子文件存在；缺则 Write 一份骨架
+- 主索引 §8 标 DONE 但子文件 `tasks/task-N.md` 标 DOING / 进度注记说"未完成" → 信任子文件、Edit 主索引把该行 status 退回 DOING
+- 主索引 §8 标 DOING 但子文件标 DONE → 信任子文件、Edit 主索引把该行 status 改 DONE
+- 主索引 §9 索引行 status 与 `amendments/AMD-N.md` 子文件 status 不一致 → 信任子文件、Edit 主索引 §9 索引行
+- 主索引 §8 有 task 但 §2 没列 → 这是真冲突 → 跑 Step 4 不确定流程（让 planner 处理）
 
-前两种是漂移、自救即可，**不要**写 feedback 文件停手；第三种才是真不确定。
+前几种是漂移、自救即可，**不要**写 feedback 文件停手；最后一种才是真不确定。这条是为避免 planner / generator 双方退守 SOP 边界 → §8 漂移没人改 → 死锁。
 
-## §9 Amendments 写权限边界（与 §8 并列、与 §1-7 不同）
+## §9 Amendments 写权限边界（与 §8 并列、与 §1-6 不同）
 
-§9 收录**实现阶段用户追加的具体指令**（bug fix / 微调 / review-fix 修复项 / 临时新增的具体效果要求）。**追加专用，不动 §1-7**——原始需求快照（§1-7）保持纯净，方便回溯"最初想要什么"。
+§9 收录**实现阶段用户追加的具体指令**（bug fix / 微调 / review-fix 修复项 / 临时新增的具体效果要求）。**追加专用，不动 §1-6**——原始需求快照（§1-6）保持纯净，方便回溯"最初想要什么"。
+
+> **结构提醒**：§9 在主索引里是**索引行表**（status + 作者 + 时间 + 摘要 + 链接），每行对应一个 `amendments/AMD-N.md` 子文件。append AMD = Write 新子文件 + Edit 主索引加一行索引（**不**把指令正文写进主索引）。改 status 时同步改两处。
 
 ### 写权限
 
-- ✅ **planner**：场景 A 二次调用时，用户决策是实现层指令（不动硬约束 / scope 边界）→ append `### AMD-N [planner 写]` 到 §9（详见 `~/.claude/agents/planner.md`「场景 A 路由表」段）
-- ✅ **generator**：迭代中收到用户具体指令（主对话里口头说 / review-fix 采纳项）→ Step 2.1 自己 append `### AMD-N [generator 写]` 到 §9（详见 `~/.claude/agents/generator.md` Step 2.1）
-- ❌ **主 agent**：**绝不直接 Edit §9** —— append AMD 一律走 planner 或 generator
-- ❌ **任何 agent**：**不准修改 / 删除已有 AMD 条目**的「触发」/「指令」/「影响范围」字段（保留审计痕迹）；若用户撤销某条，把状态改 `~~CANCELLED~~` + 注明原因
+- ✅ **planner**：场景 A 二次调用时，用户决策是实现层指令（不动硬约束 / scope 边界）→ Write 新子文件 `amendments/AMD-N.md`（`[planner 写]`，status: TODO）+ Edit 主索引 §9 加索引行（详见 `~/.claude/agents/planner.md`「场景 A 路由表」段）
+- ✅ **generator**：迭代中收到用户具体指令（主对话里口头说 / review-fix 采纳项）→ Step 2.1 自己 Write 新子文件 `amendments/AMD-N.md`（`[generator 写]`，status: TODO）+ Edit 主索引 §9 加索引行（详见 `~/.claude/agents/generator.md` Step 2.1）
+- ❌ **主 agent**：**绝不直接 Edit §9 索引行或子文件** —— append AMD 一律走 planner 或 generator
+- ❌ **任何 agent**：**不准修改 / 删除已有 AMD 子文件**的「触发」/「指令」/「影响范围」字段（保留审计痕迹）；若用户撤销某条，把主索引 status 改 `~~CANCELLED~~` + 在子文件追加原因
 
 ### 状态字段（与 §8 同口径）
 
-每条 AMD 有 `**状态**: TODO | DONE` 字段。**推进该 AMD 的当事 agent 自己改**：
+每条 AMD 在子文件里有 `**状态**: TODO | DONE` 字段；主索引索引行的 status 列与之**同步**。**推进该 AMD 的当事 agent 自己改两处**：
 
-- planner append 的 AMD-N（[planner 写]）→ 通常 generator 后续推进时改 DONE
-- generator append 的 AMD-N（[generator 写]）→ generator 实现完自己改 DONE
-- executor 看到 `status=DONE` 的 AMD 才验收；`status=TODO` 跳过本轮（与 §8 TODO 子任务同处理）
+- planner append 的 AMD-N（`[planner 写]`）→ 通常 generator 后续推进时改两处 DONE
+- generator append 的 AMD-N（`[generator 写]`）→ generator 实现完自己改两处 DONE
+- executor 看到 `status=DONE` 的 AMD 才 Read 子文件 + 验收；`status=TODO` 跳过本轮 + 不 Read 子文件（与 §8 TODO 子任务同处理）
 
 ### 决策路由（主 agent 在阶段 1.5 / 2 / 2.5 / 3 收到用户反馈时）
 
 | 用户反馈类型 | 主 agent 走法 |
 | ---- | ---- |
-| 改硬约束 / 改 scope / 拆任务 / 改测试用例 | 调 planner → planner Edit §1-7 + 更新日志 |
-| **bug fix / 微调 / "这里加 loading" / 阶段 2.5 review-fix 挑的修复项** | 调 generator（在 prompt 里说「请按 Step 2.1 自己 append §9 AMD 再修」）—— planner 不参与 |
-| 用户决策同步阶段提的实现层指令（"开始实现之前先把 X bug 修掉"） | 调 planner → planner 走「场景 A 路由表」append AMD（[planner 写]） |
+| 改硬约束 / 改 scope / 拆任务 / 改测试用例 | 调 planner → planner Edit 主索引 §1-6（含 §2 索引表） + 必要时 Write/Edit `tasks/task-N.md` 子文件 + 更新日志 |
+| **bug fix / 微调 / "这里加 loading" / 阶段 2.5 review-fix 挑的修复项** | 调 generator（在 prompt 里说「请按 Step 2.1 Write `amendments/AMD-N.md` + 加主索引 §9 索引行再修」）—— planner 不参与 |
+| 用户决策同步阶段提的实现层指令（"开始实现之前先把 X bug 修掉"） | 调 planner → planner 走「场景 A 路由表」Write AMD 子文件 + 加索引行（[planner 写]） |
 
 ### Executor 验收 §9 的口径
 
-- `status=DONE` 的 AMD：**与 §1-7 等价的验收基线**，逐条核对实现是否真满足；不满足 → blocking issue（`issue_type: amendment-not-fulfilled`、`amendment_ref: AMD-N`、`spec_section: 9`）
-- `status=TODO` 的 AMD：跳过本轮（不影响 PASS/FAIL），在 notes 里提一句「§9 还有 N 条 amendment 处于 TODO」
+- `status=DONE` 的 AMD：**与 §1-6 等价的验收基线**，Read 主索引 §9 索引行 → Read 对应 `amendments/AMD-N.md` 子文件全文 → 逐条核对实现是否真满足；不满足 → blocking issue（`issue_type: amendment-not-fulfilled`、`amendment_ref: AMD-N`、`spec_section: 9`）
+- `status=TODO` 的 AMD：跳过本轮（不影响 PASS/FAIL）+ **不 Read 子文件**（节省 context），在 notes 里提一句「§9 还有 N 条 amendment 处于 TODO」
 - 结构化结论新增 `amendments_verified` 字段（`done_verified` / `done_failed` / `todo_skipped` 三个列表）；详见 `~/.claude/agents/executor.md` Step 7
 
 ### Amendments 在阶段 4 失败循环里的角色
 
-阶段 4 retry 时 generator 看 `.specs/<slug>-review.md` 拿 issues，**同时**仍要 Read 整个 spec（§1-7 + §8 + §9）—— §9 是与 §1-7 等价的约束。executor 上一轮判 FAIL 时如果有 `amendment_ref: AMD-N` 的 issue（DONE 但实际没修对），下一轮 generator 要继续把那条 AMD 修对、状态保持 DONE。
+阶段 4 retry 时 generator 看 `.specs/<slug>-review.md` 拿 issues，**同时**仍要 Read 主索引（§1-6 内联 + §7/§8/§9 索引）+ 按本轮 scope 按需 Read 子文件 —— §9 是与 §1-6 等价的约束。executor 上一轮判 FAIL 时如果有 `amendment_ref: AMD-N` 的 issue（DONE 但实际没修对），下一轮 generator 要继续把那条 AMD 修对、子文件 + 主索引 status 都保持 DONE。
 
 ## 主 agent **绝对不能**做的事
 
 - ❌ Edit / Write / NotebookEdit 任何代码文件 —— 一律走 generator
-- ❌ Edit / Write `.specs/<slug>.md` 的任何部分 —— §1-7 走 planner、§8 走 generator、§9 走 planner / generator（按上方「§9 写权限边界」决策路由）
+- ❌ Edit / Write `.specs/<slug>.md` 主索引或 `.specs/<slug>/` 子目录任何文件 —— §1-6 内联走 planner、§2/§7 索引行 + 对应子文件走 planner、§8 状态 + `tasks/` 子文件走 generator（planner 仅初始 Write 骨架）、§9 索引行 + `amendments/` 子文件走 planner / generator（按上方「§9 写权限边界」决策路由）
 - ❌ 跑项目的 build / lint / test 命令来「自己验证一下」—— 那是 generator / executor 的事
 - ❌ 跳过 planner 直接调 generator（除非用户**显式**说「跳过 planner」）
 - ❌ 跳过 executor 直接告诉用户「我做完了」（除非用户**显式**说「不用 executor」）

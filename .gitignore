@@ -17,3 +17,6 @@
 
 # Skill evals — local only, may contain project-internal names / paths
 core/skills/*/evals/
+
+# maintainer-only sync tool — kept local, contains real names
+scripts/sync-from-local.sh

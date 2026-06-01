@@ -1,11 +1,12 @@
 ---
 name: review-mobile-ui
-description: iOS / Android Simulator UI 验收 SOP 真相源。把 spec 第 4 节「iOS UI 改动专项」用例分静态 / 动态两档跑：静态用 mobile-mcp `list_elements_on_screen` + `save_screenshot` 单次采样判间距 / frame / 对齐；动态 invoke record-ui-animation skill 录屏抽帧 + Read 判动画。包含 build artifact 定位（invoke find-ios-build-artifact）、simulator 状态判断、mcp 调用预算、降级路径、结构化结论字段。由 ui-reviewer subagent 调用；generator 的 figma diff 自测不走本 skill（自检 vs 验收两条路径）。Skip when：spec §4 无 iOS UI 改动专项 / 非 iOS Simulator 目标（真机 / macOS / watchOS）/ caller 没拿到 build artifact 路径。
+description: >-
+  iOS / Android Simulator UI 验收 SOP 真相源。把 spec 第 4 节「iOS UI 改动专项」用例分静态 / 动态两档跑：静态用 mobile-mcp `list_elements_on_screen` + `save_screenshot` 单次采样判间距 / frame / 对齐；动态 invoke record-ui-animation skill 录屏抽帧 + Read 判动画。所有 mobile-mcp 工具调用显式传 `device: <SIMULATOR_UDID>`，UDID 由 `find-ios-build-artifact` skill 经 `worktree-sim.sh ensure` 拿到的 per-worktree `sim-<slug>` —— 并行 session 各自有 sim 不抢占。包含 build artifact 定位、mcp 调用预算、降级路径、结构化结论字段。由 ui-reviewer subagent 调用；generator 的 figma diff 自测不走本 skill（自检 vs 验收两条路径）。Skip when：spec §4 无 iOS UI 改动专项 / 非 iOS Simulator 目标（真机 / macOS / watchOS）/ caller 没拿到 build artifact 路径。
 ---
 
 # review-mobile-ui
 
-iOS UI 验收的 SOP 真相源。由 ui-reviewer subagent invoke 后按本文跑。
+iOS UI 验收的 SOP 真相源。由 ui-reviewer subagent invoke 后按本文跑。本 skill **不**包含 shell 脚本——shell 能力借用 `record-ui-animation` skill（动态用例）和 `find-ios-build-artifact` skill（拿 .app 路径）。
 
 ## 触发
 
@@ -20,73 +21,32 @@ iOS UI 验收的 SOP 真相源。由 ui-reviewer subagent invoke 后按本文跑
 
 ## 工作流程（caller 按顺序跑）
 
-### Step 1: 准备 build artifact
+### Step 1: 准备 build artifact + per-worktree simulator UDID
 
-拿到 `APP_PATH`（iOS Simulator `.app` 绝对路径）+ `BUNDLE_ID`（bundle identifier）。来源优先级：
-
-1. 项目提供平台特定 skill（如 Swift 项目下的 build artifact 定位 skill / Android 项目下拿 `.apk`） → invoke 该 skill
-2. iOS Xcode 工程 → `xcodebuild -showBuildSettings -workspace <ws>.xcworkspace -scheme <scheme>` 读 `BUILT_PRODUCTS_DIR` + `FULL_PRODUCT_NAME` + `PRODUCT_BUNDLE_IDENTIFIER`，验证 `${BUILT_PRODUCTS_DIR}/${FULL_PRODUCT_NAME}` 存在
-3. 项目 AGENTS.md / Justfile / 构建脚本里有显式约定 → 按约定
-
-scheme 名从项目 AGENTS.md / Justfile 拿。
-
-artifact 找不到 → 编译已通过但 `.app` / `.apk` 路径异常 → **降级**：返回 `ui_verified: degraded` + `ui_degradation_reason: build_artifact_not_found`，不判 FAIL。
-
-### Step 2: 确认 simulator 状态
-
-> ⚠️ **mobile-mcp 关键差异**：mobile-mcp **没有** `udid:` 参数路由到指定 sim — 它隐式用当前 booted device。多 booted 时不能保证选到目标 sim。
-
-用 Bash 检查 booted simulator 数量：
-
-```bash
-BOOTED=$(xcrun simctl list devices booted -j | python3 -c "
-import json,sys
-data=json.load(sys.stdin)
-booted=[]
-for runtime, devs in data['devices'].items():
-    if 'iOS' not in runtime: continue
-    for d in devs:
-        if d.get('state') == 'Booted' and 'iPhone' in d.get('name',''):
-            booted.append(d['udid'])
-print('\n'.join(booted))
-")
-COUNT=$(echo "$BOOTED" | grep -c .)
+```
+Skill(find-ios-build-artifact)   # 入参：scheme（项目主 iOS scheme，例 <YourApp>iOS）
+# 输出：APP_PATH=<绝对路径>  BUNDLE_ID=<bundle id>  SIMULATOR_UDID=<udid>
 ```
 
-按 `$COUNT` 分支：
+scheme 名从项目 AGENTS.md / Justfile 拿。**记下 `$SIMULATOR_UDID`** —— 后续每一次 mobile-mcp 工具调用都必须把它塞进 `device` 参数。
 
-- **`COUNT == 1`** → 直接用。后续 mobile-mcp 工具调用不需要传 device 参数
-- **`COUNT == 0`** → 起一台（iOS 版本最新、iPhone）：
-  ```bash
-  UDID=$(xcrun simctl list devices available -j | python3 -c "
-  import json,sys,re
-  data=json.load(sys.stdin)
-  def ver(rt):
-      m=re.search(r'iOS-(\d+)-(\d+)', rt)
-      return (int(m.group(1)), int(m.group(2))) if m else (0,0)
-  candidates=[]
-  for runtime, devs in data['devices'].items():
-      if 'iOS' not in runtime: continue
-      for d in devs:
-          if 'iPhone' in d.get('name',''):
-              candidates.append((ver(runtime), d['udid']))
-  candidates.sort(key=lambda x:(-x[0][0], -x[0][1]))
-  print(candidates[0][1] if candidates else '')
-  ")
-  [[ -n "$UDID" ]] || { echo "NO_SIMULATOR_AVAILABLE"; exit 1; }
-  xcrun simctl boot "$UDID"
-  ```
-  - `NO_SIMULATOR_AVAILABLE` → 降级：`ui_degradation_reason: no_simulator_available`
-- **`COUNT >= 2`** → 降级：`ui_degradation_reason: multiple_booted_simulators_mobile_mcp_cannot_target`，建议用户 shutdown 多余 sim 只留一台
+降级路径：
+
+- skill 报 `BUILD_ARTIFACT_NOT_FOUND` → 编译已通过但 .app 找不到 → `ui_verified: degraded` + `ui_degradation_reason: build_artifact_not_found`
+- `SIMULATOR_UDID` 为空（caller cwd 不在 worktree / `worktree-sim.sh` 报错）→ `ui_verified: degraded` + `ui_degradation_reason: simulator_provision_failed: <stderr 摘要>`
+
+### Step 2: 把 app 装到 per-worktree sim
+
+`worktree-sim.sh ensure` 已把 `$SIMULATOR_UDID` 这台 booted。无需再判断 booted 数量 —— mobile-mcp 工具靠 `device: <udid>` 精确路由，其他 booted sim 不会干扰。
 
 ### Step 3: 装 + 启动 app
 
 ```
-mcp__mobile-mcp__mobile_install_app   { appPath: <APP_PATH> }
-mcp__mobile-mcp__mobile_launch_app    { packageName: <BUNDLE_ID> }
+mcp__mobile-mcp__mobile_install_app   { device: <SIMULATOR_UDID>, appPath: <APP_PATH> }
+mcp__mobile-mcp__mobile_launch_app    { device: <SIMULATOR_UDID>, packageName: <BUNDLE_ID> }
 ```
 
-Bash 推 Simulator 窗口到前面：
+Bash 把 Simulator.app 推到前面（多 sim 时窗口会多个、不强行抢焦点到目标 sim）：
 
 ```bash
 open -a Simulator
@@ -94,7 +54,7 @@ open -a Simulator
 
 任一步失败 → 降级：`ui_degradation_reason: install_or_launch_failed: <错误摘要>`。
 
-> mobile-mcp 工具参数名（`appPath` / `packageName` / `bundleId` 等）按主流 mobile-mcp 接口习惯写，**实际以 MCP server 注入的工具 schema 为准**。第一次调用前 Read tool description 确认。
+> mobile-mcp 工具参数名（`device` / `appPath` / `packageName` / `bundleId` 等）以 MCP server 注入的工具 schema 为准；本 skill 写作时 main 分支所有 tool 都有 required `device` 参数（issue mobile-next/mobile-mcp#253 是 iOS 物理设备 bug，Simulator 不受影响）。第一次调用前 Read tool description 确认。
 
 ### Step 4: 准备截图目录
 
@@ -112,6 +72,8 @@ mkdir -p "$SHOT_DIR/refs"
 >
 > - **静态类**（间距 / frame / 布局）→ 5.b 路径，`mobile_list_elements_on_screen` + `mobile_save_screenshot` **单次采样**判断。**禁用**任何改 app 状态的工具（`type_keys` / `swipe` / `double_tap` / `long_press`）。mcp 在动态 UI 上 sample 不可靠。
 > - **动态类**（动画 / 过渡 / 输入流 / 手势引起的状态变化）→ 5.c 路径，invoke `record-ui-animation` skill 录屏 + 自己 Read 帧序列判断。**仅在录屏窗口期间**允许 `type_keys` / `swipe` 触发动画——这是 5.c 的指定路径。
+>
+> ⚠️ **device 参数硬约束**：本 Step 全部 mobile-mcp 工具调用都必须传 `device: <SIMULATOR_UDID>`（Step 1 拿到的）。漏传会让 mobile-mcp 抓另一个 booted sim、并行 session 间互相打架。
 
 #### 5.a 用例分类（每条用例先判类型）
 
@@ -162,30 +124,23 @@ mkdir -p "$SHOT_DIR/refs"
 ##### 5.c.1 调用
 
 ```bash
-# A. 拿 booted sim UDID（Step 2 应该已经只剩一台 booted；这里再读一遍以防漂移）
-UDID=$(xcrun simctl list devices booted -j | python3 -c "
-import json,sys
-d=json.load(sys.stdin)
-for _,ds in d['devices'].items():
-    for x in ds:
-        if x['state']=='Booted' and 'iPhone' in x['name']:
-            print(x['udid']); break")
+# A. UDID 直接复用 Step 1 拿到的 $SIMULATOR_UDID（worktree-bound 唯一值，不再二次探测）
 
 # B. prepare
-eval "$(WORKTREE_SLUG=$WORKTREE_SLUG CASE_SLUG=case-<N> DEVICE_UDID=$UDID \
+eval "$(WORKTREE_SLUG=$WORKTREE_SLUG CASE_SLUG=case-<N> DEVICE_UDID=$SIMULATOR_UDID \
   EXPECTED_DURATION_SECONDS=3 FRAME_COUNT=8 \
-  bash ~/.claude/skills/record-ui-animation/scripts/prepare.sh)"
+  bash ~/.Codex/skills/record-ui-animation/scripts/prepare.sh)"
 
 # C. 起录
-eval "$(DEVICE_UDID=$UDID RECORDING_PATH=$RECORDING_PATH \
-  bash ~/.claude/skills/record-ui-animation/scripts/record-xcrun.sh)"
+eval "$(DEVICE_UDID=$SIMULATOR_UDID RECORDING_PATH=$RECORDING_PATH \
+  bash ~/.Codex/skills/record-ui-animation/scripts/record-xcrun.sh)"
 ```
 
-**D. 触发动画**（按 spec 描述，仅本步允许 5.b 禁用工具）：
+**D. 触发动画**（按 spec 描述，仅本步允许 5.b 禁用工具；所有 mobile-mcp 调用照样带 `device: <SIMULATOR_UDID>`）：
 
-- spec 说「点 send 看 morph 飞向 chat」→ `mobile_list_elements_on_screen` 拿 send 坐标 → `mobile_click_on_screen_at_coordinates` 点
-- spec 说「输入文本后输入框抖动」→ `mobile_type_keys`
-- spec 说「上滑 sheet 看 dismiss」→ `mobile_swipe_on_screen`
+- spec 说「点 send 看 morph 飞向 chat」→ `mobile_list_elements_on_screen { device: <UDID> }` 拿 send 坐标 → `mobile_click_on_screen_at_coordinates { device: <UDID>, x, y }`
+- spec 说「输入文本后输入框抖动」→ `mobile_type_keys { device: <UDID>, text, submit }`
+- spec 说「上滑 sheet 看 dismiss」→ `mobile_swipe_on_screen { device: <UDID>, direction }`
 - 仅触发**一次**——不要"多录几遍取平均"
 
 **E.** `sleep <EXPECTED_DURATION_SECONDS + 0.5>` 等动画 + buffer。
@@ -194,11 +149,11 @@ eval "$(DEVICE_UDID=$UDID RECORDING_PATH=$RECORDING_PATH \
 
 ```bash
 REC_PID=$REC_PID RECORDING_PATH=$RECORDING_PATH \
-  bash ~/.claude/skills/record-ui-animation/scripts/stop-xcrun.sh
+  bash ~/.Codex/skills/record-ui-animation/scripts/stop-xcrun.sh
 
 RECORDING_PATH=$RECORDING_PATH FRAMES_DIR=$FRAMES_DIR META_PATH=$META_PATH \
   FRAME_COUNT=8 \
-  bash ~/.claude/skills/record-ui-animation/scripts/extract.sh
+  bash ~/.Codex/skills/record-ui-animation/scripts/extract.sh
 ```
 
 **G. Read 每一帧 PNG**（`$FRAMES_DIR/frame-001.png` ... `frame-008.png`），对照 spec：起手帧 / 中段帧 / 收尾帧的视觉是否符合预期、动画曲线是否合理、有无穿帮 / 错位 / 闪烁。
@@ -211,7 +166,7 @@ ui_dynamic_cases_verified:
     spec_description: <用例原文>
     frames_dir: <绝对路径>
     verdict: pass | fail
-    observations: <一句话>
+    observations: <一句话，例：「frame-001 send 按钮静止 → frame-004 文本气泡从 composer 起飞、缩放收缩 → frame-007 落到 chat 列表底部，曲线 ease-out 符合 spec」>
 ```
 
 - `verdict: pass` → 不算 blocking
@@ -258,7 +213,7 @@ ui_dynamic_cases_verified:
 - `ui_dynamic_cases_verified`: list of `{case_number, spec_description, frames_dir, verdict, observations}`
 - `ui_dynamic_cases_skipped`: list of `{case_number, spec_description, degradation_reason}`
 - `ui_screenshots_dir`: 仅 `ui_verified ∈ {pass, fail}` 时给（动态降级 / environment 降级时**没有**截图产出）
-- `ui_degradation_reason`: 仅 `ui_verified == degraded` 时给（`build_artifact_not_found` / `no_simulator_available` / `multiple_booted_simulators_mobile_mcp_cannot_target` / `install_or_launch_failed: <details>` / `target_not_supported` / `all_cases_dynamic` / `cross_flow_navigation_required` / `figma_screenshot_all_failed`）
+- `ui_degradation_reason`: 仅 `ui_verified == degraded` 时给（`build_artifact_not_found` / `simulator_provision_failed: <details>` / `install_or_launch_failed: <details>` / `target_not_supported` / `all_cases_dynamic` / `cross_flow_navigation_required` / `figma_screenshot_all_failed`）
 
 ## 禁止
 
@@ -269,3 +224,13 @@ ui_dynamic_cases_verified:
 - ❌ 同一条静态用例多次 `mobile_list_elements_on_screen` / `mobile_save_screenshot`：1+1 已经够判间距；觉得不够说明 spec 用例本身该拆或本来就不该归静态
 - ❌ 「探索式」验收：不主动到处点 / 滚列表 / 测 spec 没列的 corner case——验收只回答 spec 问的问题
 - ❌ 用 mobile-mcp 改 simulator 上别的 app 的状态（删数据 / 改设置 / 关 app）
+
+## Why（核心）
+
+- 静态 vs 动态分类：mobile-mcp 在动态 UI 上 sample 会抓到中间帧，间距 / frame 不对
+- 5.b 1+1 预算：核心采样 1 次足够；多次 sample 不增加准确性反而推高 mcp 调用 + token
+- 5.c 走录屏：动画看时序，单帧 sample 失去时序信息
+- 降级路径而非硬失败：environment 问题（build artifact / simulator provision / install/launch / 跨流程导航）不是 generator 的代码问题
+- per-worktree `sim-<slug>` + mobile-mcp `device` 参数：并行 session 各自有 sim，不需要"只能 1 台 booted"约束
+- 不重跑动态用例：record skill 失败兜底在 skill 内；本 SOP 单次失败立即降级
+- 截图存到 `.reviews/`：spec 不被污染，`.gitignore` 已排除

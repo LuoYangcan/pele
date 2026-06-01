@@ -232,7 +232,7 @@
 
 > 本节是给用户 / generator / executor / 主 agent 看的元说明，**spec 编写者不用填**任何内容。完整定义见 `~/.claude/agents/executor.md` Step 6.5 + `~/.claude/rules/dispatch-pipeline.md` 阶段 3A PASS 后流程。
 >
-> **时机**：executor verdict==PASS 后**自动**跑一次外部 reviewer subagent（Opus 4.7 extended thinking，~5-10 分钟）。review 与 verdict 解耦——report 中的 findings **不影响** PASS/FAIL、**不进** executor 的 issues list、**不进** retry 循环。
+> **时机**：executor verdict==PASS 后**自动**跑一次外部 reviewer subagent（Opus 4.8 extended thinking，~5-10 分钟）。review 与 verdict 解耦——report 中的 findings **不影响** PASS/FAIL、**不进** executor 的 issues list、**不进** retry 循环。
 >
 > **报告位置**：`.reviews/<branch>-<ts>-executor.md`（gitignored；`/openpr` 推 PR 前会自动清理）。后缀 `-executor` 与主动 `/review` 跑的报告区分。
 >
@@ -342,7 +342,7 @@ YYYY-MM-DD —— <用户/讨论后的拍板内容；保留原话或一句话总
 
 ### 自作主张
 
-<没问用户但做出的实现细节判断；例「按 UIKit extension 切片拆 5 个文件」/「task 拆成 3 个因为 X」/「按钮颜色用 design token X 而不是 hex」。无 → 写 `- 无`>
+<没问用户但做出的实现细节判断；例「按 ChatSheetViewController extension 拆 5 个文件」/「task 拆成 3 个因为 X」/「按钮颜色用 .td.primary」。无 → 写 `- 无`>
 
 ### 存疑（想问但没问）
 

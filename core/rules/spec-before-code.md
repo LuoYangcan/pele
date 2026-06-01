@@ -27,20 +27,35 @@
 - 硬约束（落地位置 / 栈 / 不能动的东西）
 - 自己没理解或存疑的部分
 
-### 第 2 步：写 spec 到 `.specs/<slug>.md`
+### 第 2 步：写 spec：主索引 + 子目录两层结构
 
-`<slug>` 用 worktree 目录名。模板见 `~/.claude/templates/spec-template.md`，**8 个字段必含**：
+`<slug>` 用 worktree 目录名。模板见 `~/.claude/templates/spec-template.md`。spec 不是单文件，是**主索引 + 子目录**两层（渐进式披露 —— 完成态项目的详情不必每轮 hot-load）：
 
-1. 用户原始需求（原话保留）
-2. 需求拆分（子任务清单）
-3. 分工角色（主 agent / subagent / 用户确认）
-4. 测试用例（Golden Path / 边界 / 回归 三类，每类至少 1 条具体场景；禁止 "TBD" / 占位符）
-5. 验收标准（明确的 done definition + 具体跑哪些命令）
-6. 硬约束（落地位置 / 栈 / 不能动的接口或文件）
-7. 风险 / 边界 / 存疑点
-8. 进度状态（TODO / DOING / DONE 子任务清单）
+```
+.specs/<slug>.md                  ← 主索引
+├── §1-6 内联（每轮 hot-load 的 permanent reference）
+└── §7/§8/§9 索引行表（链接到子文件）
 
-写完一次性 Write 落地，不要分多次 Edit 拼出来。
+.specs/<slug>/
+├── tasks/task-N.md       ← 每个 task 一个：详情 + status + scratchpad
+├── risks/risk-N.md       ← 每个 risk 一个：详情 + status (OPEN/RESOLVED)
+└── amendments/AMD-N.md   ← 每条 AMD 一个：详情 + status + 作者标记
+```
+
+**主索引 10 节必含**（参见模板）：
+
+1. 用户原始需求（原话保留，**内联**）
+2. 需求拆分索引表 + 并行分组（task 标题 / 文件范围内联，详情拆 `tasks/task-N.md`）
+3. 分工角色（**内联**）
+4. 测试用例（Golden Path / 边界 / 回归 三类，每类至少 1 条；禁止 TBD / 占位符；**内联**）
+5. 验收标准（done definition + 跑哪些命令；**内联**）
+6. 硬约束（落地位置 / 栈 / freeze 的接口或文件；**内联**）
+7. 风险 / 边界 / 存疑点 **索引表**（详情拆 `risks/risk-N.md`）
+8. 进度状态 **索引表**（status 视图，详情拆 `tasks/task-N.md`）
+9. Amendments **索引表**（实现阶段追加指令，详情拆 `amendments/AMD-N.md`）
+10. Review 流程（元说明，不填）
+
+**写法**：先一次性 Write 主索引，再依次 Write 每个 `tasks/task-N.md` + `risks/risk-N.md` 骨架。amendments/ 初始为空目录（用户在实现阶段追加时 planner/generator 现造）。
 
 #### iOS UI 改动专项要求
 

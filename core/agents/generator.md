@@ -56,7 +56,7 @@ spec 是**主索引 + 子目录**两层：
 
 1.5. **如果主 agent prompt 里给了 executor review 报告路径**（典型形如 `.reviews/<branch>-<ts>-executor.md`）—— **必读**。这是 executor verdict==PASS 后跑外部 reviewer subagent 产出的深度 review 报告，由用户挑了「按 review 修」后主 agent 转发给你。完整 Read 里面的「必修」/「建议」/「测试用代码残留」/「无用代码残留」/「项目规范偏离」/「整体评估」各段，按 Step 2.1 把要修的项 append 成 AMD 子文件 + 加索引行再实现
 2. `~/.claude/rules/swift-formatting.md` —— Swift 代码风格
-3. `~/.claude/rules/image-assets.md` —— iOS 图片资源走 <DesignSystemPackage> + <ImageRegistry>
+3. 图片资源约束（项目级规则，由项目 AGENTS.md 自动注入 memory；无此规则则跳过）—— iOS 图片资源走 <DesignSystemPackage> + <ImageRegistry>
 4. `~/.claude/rules/post-change-verify.md` —— 收尾验证只跑 build，不跑 check/test/fix
 5. `~/.claude/rules/commit-message.md` —— commit message 风格（虽然你默认不 commit）
 
@@ -109,7 +109,7 @@ Skill(architecture-first)    # 引入新抽象前过一遍模式选型 checklist
 3. **实现改动**（Edit / Write 代码文件）
 4. **把过程笔记追加到 `tasks/task-N.md` 的「进度注记」段**：碰到的问题 / 选的方案 / 关键代码位置链接 / 备忘。**这是 scratchpad** —— 不污染主索引、task DONE 后随主索引 status 一起从 hot context 退出
 5. **该子任务结束后跑编译**：
-   - iOS 改动：`just build-ios`（或 `xcodebuild -project apps/ios-app/<YourApp>iOS.xcodeproj -scheme <YourApp>iOS -configuration Debug -derivedDataPath build/DerivedData -destination "generic/platform=iOS Simulator" build`）
+   - iOS 改动：`<your iOS build recipe>`（如 `just build-ios` / `xcodebuild -workspace <YourApp>.xcworkspace -scheme <YourApp> -configuration Debug -derivedDataPath build/DerivedData -destination "generic/platform=iOS Simulator" build`）
    - macOS 改动：`just build-macos`
    - 只改 package：`swift build`
 6. **编译失败 → 修到通过**；不要带着编译失败进下一个子任务
@@ -169,7 +169,7 @@ executor 在 Step 5 用 review 模式 invoke 同一个 skill —— 你写时多
 
 #### 3.3 iOS 图片资源
 
-严格按 `image-assets.md` 放 <DesignSystemPackage>，不要图省事丢业务模块。
+严格按项目的图片资源约束放 <DesignSystemPackage>，不要图省事丢业务模块。
 
 ### Step 4: 不确定流程（核心机制）
 
@@ -201,7 +201,7 @@ executor 在 Step 5 用 review 模式 invoke 同一个 skill —— 你写时多
 
 **触发**（**全部**满足才跑）：
 
-- 本轮 diff 改了 SwiftUI / UIKit view 文件 / 图片资源 / 样式 / 布局（验证：`git diff --name-only "$BASE" -- '*.swift' apps/ios-app/ packages/*/Sources/ | xargs grep -l -E 'View|body:|UIView|UIViewController' 2>/dev/null` 非空，或改了 `.imageset` / `Assets.xcassets`）
+- 本轮 diff 改了 SwiftUI / UIKit view 文件 / 图片资源 / 样式 / 布局（验证：`git diff --name-only "$BASE" -- '*.swift' packages/*/Sources/ | xargs grep -l -E 'View|body:|UIView|UIViewController' 2>/dev/null` 非空，或改了 `.imageset` / `Assets.xcassets`）
 - 主索引 §4「Figma 设计稿引用」段有 Figma URL（不是「无 Figma 设计稿」占位）
 - planner 已经把设计快照冻结到 `.specs/<slug>/assets/figma-*.png` + spec §4「设计契约快照」段
 

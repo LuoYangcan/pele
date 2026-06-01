@@ -1,6 +1,10 @@
 ---
 name: lean-diff
-description: Single source of truth for the "don't be verbose / don't pile patches / don't write defensive crap" judgment, applied at two moments — write mode (generator self-checks before each Edit / Write) and review mode (executor / /review tags issues). Catalogs three families: comments (verbose-comment / task-bound-comment / removal-marker / stale-todo), patchwork bloat (patchwork-bloat / over-abstraction), and defensive code (silent-catch / defensive-unwrap / defensive-fallback). Skip for typo / format / rename diffs, comment-only doc edits, and lint-only fixes — those don't carry these failure modes.
+description: >
+  Single source of truth for lean-diff write and review judgment.
+  Covers comment noise, patchwork bloat, over-abstraction, and defensive code patterns.
+  Applies in write mode before edits and in review mode when tagging issues.
+  Skip typo, format, rename, comment-only doc, and lint-only diffs.
 ---
 
 # lean-diff
@@ -10,6 +14,8 @@ description: Single source of truth for the "don't be verbose / don't pile patch
 1. 注释啰嗦
 2. 堆 patch 不删旧 / 不复用现有
 3. 过度防御性代码（吞错 / 多余 unwrap / 假 fallback）
+
+generator 在写代码前用 **write 模式**自检；executor / `/review` 在审代码时用 **review 模式**列 issue。两边走同一份判断标准、同一套 issue_type 命名 —— 单一真相源避免漂移。
 
 ## 使用方式
 
@@ -52,7 +58,7 @@ description: Single source of truth for the "don't be verbose / don't pile patch
 | issue_type | 触发 | 例子 |
 |---|---|---|
 | `verbose-comment` | 解释 what（紧邻代码做的事） | `// 把 user 加进 list` 紧跟 `users.append(user)` |
-| `task-bound-comment` | 引用当前任务 / fix 编号 / caller | `// 用于 X 流程`、`// 为修 #123` |
+| `task-bound-comment` | 引用当前任务 / spec 章节 / AMD / fix 编号 / caller | `// 用于 X 流程`、`// 为修 #123`、`// spec §4 要求...`、`// 按 AMD-3 实现`、`// task-7` |
 | `removal-marker` | 删除残留 | `// removed`、`// renamed from X` |
 | `stale-todo` | 没截止 / 没责任人的 TODO | `// TODO: 之后优化` |
 
@@ -61,6 +67,22 @@ description: Single source of truth for the "don't be verbose / don't pile patch
 - `// MARK: -`（Swift 章节切片，IDE 友好）
 - `// PLANNER-FEEDBACK iter-N: 待澄清`（generator 留给 planner 的占位标记）
 - 引用项目 doc / 引用第三方 issue 链接的 `// see docs/x.md` 类指针注释
+
+#### 对照：写 why、不写 trace
+
+`task-bound-comment` 禁的是「**trace**：当时为什么动这行代码」—— spec / AMD / task / PR / fix 编号都是过程引用，spec 提交后被删、PR 编号将来没人查、注释就是死链。
+
+但**why 注释是鼓励的**，前提是写**不随时间漂移的因果**：业务约束 / 系统行为 / 历史 bug / 性能取舍。判别：把这条注释拿给 1 年后、不知道当前任务存在的人看 —— 还能看懂吗？
+
+| 禁止（trace，会死链） | 鼓励（why，长效） |
+|---|---|
+| `// spec §4 要求 UTC` | `// server 端按 UTC 存储，本地转换在 presenter 层做` |
+| `// 按 AMD-3 加的 retry` | `// iOS 17.4 NWConnection 首次握手有概率 ECONNRESET，retry 一次` |
+| `// 为修 #1234 加的 guard` | `// pendingAttachments 在 dismiss 动画中可能被外部清空，nil check 不可省` |
+| `// task-7 要求隐藏` | `// composer 在 picker 之上视觉错位，hide 由 caller-side scope 控制` |
+| `// 用户在 review 里要求` | `// 主线程 layout 重入会触发 SnapKit 重算 → 必须 async` |
+
+规则不是"少写注释"，是"删掉会死链的那部分、留住会长期帮人的那部分"。
 
 #### Severity 规则
 
@@ -109,6 +131,10 @@ description: Single source of truth for the "don't be verbose / don't pile patch
 | `defensive-unwrap` | 验证不可能发生的情况（framework 保证 non-optional 还 `guard let` 早 return） | warning |
 | `defensive-fallback` | 加 fallback / default 值掩盖错误根因（例：网络失败默默返回空数组而不是向上抛） | warning |
 
+#### `silent-catch` 为何 blocking
+
+吞错让 bug 隐身 —— 下次同一个根因以另一种症状出现，调试成本指数上升。如果 spec 明确要求「失败时静默 / 失败时降级」（例：埋点上报失败不影响主流程），generator 必须在代码处加注释说明出处（`// silent by spec §X`），否则 review 标 blocking。
+
 #### 例外
 
 - spec 第 6 节硬约束 / 第 4 节测试用例**显式要求**容错路径
@@ -119,7 +145,7 @@ description: Single source of truth for the "don't be verbose / don't pile patch
 
 generator 在 Edit / Write 前过一遍：
 
-- [ ] 我加的注释属于「why 非显然」吗？还是在解释 what / 引用任务编号 / 留 stale TODO？
+- [ ] 我加的注释属于「why 非显然」吗？还是在解释 what / 引用 spec 章节 / AMD / task / fix 编号 / 留 stale TODO？（1 年后没 spec 时还能看懂吗？）
 - [ ] 这段新代码对应的功能，能否扩 / 改已有方法 / 类型 / helper 达成？
 - [ ] 我引入的抽象（protocol / Manager / Service / 配置参数 / flag）当前真有 ≥3 处调用方吗？还是为「未来扩展」准备？
 - [ ] 我写的 `try?` / `catch { }` 是否吞错？spec 真要求静默吗？
@@ -146,3 +172,10 @@ executor / `/review` 把命中条目放进 `issues` 数组，每条按上方 §�
 - ❌ 不替代 architecture-first 的模式选型决策
 - ❌ 不在 spec 第 6 节硬约束有冲突时硬扛 —— spec 是法律，spec 显式要求的容错 / 防御 / 多余抽象不算 issue
 - ❌ 不替主 agent 决定 review-fix 是否采纳 —— 那是用户挑
+
+## Why（核心）
+
+- 单一真相源：generator 写 + executor 审用同一份 issue_type 表
+- 新增 issue type 改 1 处：本 skill 加一条，generator / executor SOP 不动
+- 跨 agent / `/review` 复用：未来别的 review 工具直接 invoke
+- issue_type 命名一致：主 agent review-fix 按 type 归类操作可行

@@ -7,6 +7,8 @@ description: Decision framework for picking the right design pattern, UI archite
 
 写新代码 / review 代码前**先选对模式**：现在这块逻辑该用哪一类设计模式（GoF）？UI 层用什么架构（MVC / MVP / MVVM / VIPER / 单向数据流）？这块代码该放在系统架构的哪个边界（Clean / Hexagonal / Functional Core）？
 
+skill 的核心姿态：**问题特征驱动选型**——看你正在踩什么坑（if/else 累积 / 状态难追踪 / VC 1500 行 / 跨模块复用 / 难单测），从对应 references 拿候选模式，结合项目约束选一个，**显式给出选这个不选那个的理由**。
+
 延伸资料按需 Read（看到主表格指引再去读）：
 
 - `references/gof.md` — GoF 经典对象级模式（Strategy / State / Factory / Builder / Observer / Decorator / Adapter / Facade / Composite / Command / Chain of Responsibility / Visitor + Singleton 警告）
@@ -42,6 +44,8 @@ description: Decision framework for picking the right design pattern, UI archite
 > 3. **再判断是否真需要架构变更**——很多时候 user 描述的"架构问题"在 reality-check 后退化成具体 bug / 异步竞态 / 缺测试，根本不需要重构
 > 4. 用户确认你的现状描述后，再回到 §I 走全局思维
 
+**为什么这条是 §0 而不是 §I 的子项**：架构决策的 ROI 极高（影响代码图）也代价极高（改一片）。基于错误前提给出的"激进重构方案"= 最贵的反模式。skill 引导的是**模式选择**，不替你做**前提验证**——这条强制门禁就是把验证显式纳入 skill 流程。
+
 ### I. 全局思维（看清问题再选模式）
 
 reality-check 通过后，问三件事：
@@ -49,6 +53,8 @@ reality-check 通过后，问三件事：
 - 这个改动会影响**哪些调用方 / 跨哪些模块**？grep 一下被改的函数 / 类型，看上下游
 - 同样的问题**别的模块怎么解决**的？先看现状、再选模式
 - 这个改动在**更大的代码图**里是什么角色：UI 层重构 / 业务层重构 / 跨层边界重新切？
+
+**只看当前文件 / 当前函数就动手** = 局部最优、全局崩坏的高发区。Junior 套模式因为「看起来该用」，senior 选模式因为「问题就在这」。
 
 ### II. 反补丁（在选模式之前先识别坏味道）
 
@@ -58,6 +64,8 @@ reality-check 通过后，问三件事：
 2. **复制粘贴改变量名 / 不看调用链只改当前文件** —— 缺全局视野；类似逻辑出现 ≥3 处 = 抽公共。
 3. **看现象不查根因（顶 try/catch / default 值完事）** —— 让问题隐身不是修复；下次以另一种症状出现成本更高。先 5-Why 找根因。
 4. **TODO / 「以后再优化」类遗留账** —— 明知反设计但不修。要么当下就修；要么**显式登记技术债**（commit 关联 ticket / 进 docs/tech-debt.md），不是埋在注释里。
+
+> 关键：补丁式写法的危险不是它「现在不工作」，而是它**累积**。三五次同类补丁后，原模块的设计意图已经死了，重构成本指数上升。
 
 ### III. 模式选型（根据问题特征找候选）
 
@@ -96,6 +104,8 @@ reality-check 通过后，问三件事：
 
 ## Checklist（动手 / review 时按顺序勾）
 
+> **快路径警告**：第 2 步 grep 直接命中现成实现且语义吻合 → 给一行结论收尾。但**不要**因为答案"看起来明显"就跳过深挖。Senior code review 的工作姿态是 grep 出 `file:line` 引用，不是套模板。
+
 ### 0) Reality-check（**强制门禁，不过禁止往下**）
 
 - [ ] user 点名的**每个文件 / 类 / 函数**都已经 `grep -rln` / `find` 验证存在
@@ -127,7 +137,7 @@ reality-check 通过后再走这一步。
 ### 2) 搜过现有实现了吗
 
 - [ ] grep 函数名 / 类名 / 关键词的多个变体
-- [ ] 翻过相关 package 的公开 API + 项目说明（`AGENTS.md` / `CLAUDE.md` / `docs/*.md`）
+- [ ] 翻过相关 package 的公开 API + 项目说明（`AGENTS.md` / `AGENTS.md` / `docs/*.md`）
 - [ ] 翻过 `Package.swift` / `Package.resolved` 看已有依赖能不能直接用
 - [ ] **第三方 SDK 尤其谨慎**：引一个 = 永久维护 + 升级 + 体积成本
 
@@ -174,3 +184,7 @@ reality-check 通过后再走这一步。
 - ❌ 不替代项目自己的 `AGENTS.md` / 架构文档（那是项目特定规范，本 skill 是通用框架）
 - ❌ 不替代 `/review` 的深度评审
 - ❌ 不强制套模式——简单 if-else / 简单 MVC 是允许的，要求是**显式给出"为什么这次不需要更复杂模式"的理由**
+
+## Why（核心）
+
+模式 / 架构是工具不是目的——硬塞 Clean Architecture 到 200 行 app 比 MVC 更贵；坚持 fat VC 该上 MVVM 也是同样代价。本 skill 把「停下来想清楚」物化成 §III 决策表：识别问题特征 → 找对应 references → 选合适候选 → 写出选这个不选那个的理由。

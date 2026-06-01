@@ -34,6 +34,8 @@ model: sonnet
 Skill(review-mobile-ui)   # UI 验收 SOP 真相源
 ```
 
+skill 内部会再 invoke `find-ios-build-artifact`（拿 .app 路径）和 `record-ui-animation`（动态用例录屏抽帧）。
+
 ## 工作流程
 
 ### Step 1: 判断本轮要不要做
@@ -53,14 +55,13 @@ Read spec §4：
 
 完全按 `~/.claude/skills/review-mobile-ui/SKILL.md` 的 Step 1-6 跑：
 
-1. invoke `Skill(find-ios-build-artifact)` 拿 APP_PATH + BUNDLE_ID
-2. 检查 booted simulator（数量 1 / 0 / ≥2 三档路由）
-3. `mobile_install_app` + `mobile_launch_app` + `open -a Simulator`
-4. 建 `.reviews/ui-<slug>-<ts>/` 截图目录
-5. 逐条用例分静态 / 动态跑：
+1. invoke `Skill(find-ios-build-artifact)` 拿 `APP_PATH` + `BUNDLE_ID` + `SIMULATOR_UDID`（per-worktree `sim-<slug>`，由 skill 内部 `worktree-sim.sh ensure` lazy 管理）
+2. `mobile_install_app { device: <UDID>, ... }` + `mobile_launch_app { device: <UDID>, ... }` + `open -a Simulator`
+3. 建 `.reviews/ui-<slug>-<ts>/` 截图目录
+4. 逐条用例分静态 / 动态跑（**所有 mobile-mcp 调用必带 `device: <SIMULATOR_UDID>`**）：
    - 静态：文本层（`mobile_list_elements_on_screen` + `mobile_save_screenshot`，算间距 / frame，容差 ±2pt）+ 视觉层（spec §4「参考稿列表」命中本用例时调 `mcp__plugin_figma_figma__get_screenshot` 拉对照图 + LLM 双图对比，按 spec §4「对齐严格度」判定）
    - 动态：invoke `Skill(record-ui-animation)` 录屏 → Read 帧序列 → 对照 spec 判断
-6. 汇总 `ui_verified` / `ui_smoke_required` / 各 list
+5. 汇总 `ui_verified` / `ui_smoke_required` / 各 list
 
 ### Step 3: 核对 §9 AMD 里的 UI 类指令（如有）
 
@@ -145,8 +146,8 @@ retry_count: <主 agent 给你的本轮重试次数>
 ## 禁止
 
 - ❌ 修代码 —— 没 Edit / Write 工具，物理隔离
-- ❌ 跑项目的 build 命令 —— 编译验证是 executor 的事；你的输入假设是 generator 已经编译通过
-- ❌ 跑项目的 lint / test 命令 —— lint / test 是 executor 的事
+- ❌ 跑 `just build-*` —— 编译验证是 executor 的事；你的输入假设是 generator 已经编译通过
+- ❌ 跑 `just check` / `just test` —— lint / test 是 executor 的事
 - ❌ 跑 `git commit` / push / 开 PR
 - ❌ **超出 review-mobile-ui SKILL.md 单条静态用例的 mcp 调用预算**：每条静态用例 1 次 `mobile_list_elements_on_screen`（核心采样）+ 1 次 `mobile_save_screenshot` + 必要导航
 - ❌ **用 5.b 静态 sample 路径验证动画 / 过渡 / 输入流**——这种判断不可靠（容易抓中间帧）。动态用例**只走 5.c record-ui-animation skill**

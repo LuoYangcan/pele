@@ -13,9 +13,11 @@
   ↓ 用户拍板「开始」
 [generator subagent] —— 独立 context、按 spec 写代码 + 跑编译
   ↓
+主 agent: 报告 generator 结果 + AskUserQuestion 问「下一步」
+  ↓ 用户拍板「进 executor」（或先「起模拟器看一下」→ 主 agent simctl install/launch → 再 AskUserQuestion）
 [executor subagent] —— 独立 context、跑硬验收（spec/build/lint/AMD/UI/硬约束）
   ↓ verdict==PASS
-[executor 内嵌 Step 6.5] —— PASS 后跑一次外部 reviewer subagent（Opus 4.7 extended thinking，~5-10 分钟）
+[executor 内嵌 Step 6.5] —— PASS 后跑一次外部 reviewer subagent（Opus 4.8 extended thinking，~5-10 分钟）
   ↓
 主 agent: 报告 verdict==PASS + 展示 review 报告摘要 + AskUserQuestion 问「review 怎么处理」
   ↓
@@ -138,14 +140,15 @@ Agent({
 })
 ```
 
-**模型选择**（`model` 参数 override planner.md frontmatter 默认 sonnet）：
+**模型选择**（`model` 参数 override planner.md frontmatter 默认 opus）：
 
 | 用户回复类型 | model |
 | --- | --- |
 | 简单确认词（「开始 / 开 / ok 开始 / 干 / go / 实现吧 / 没问题开始 / 没问题 / 没意见」） | `haiku` |
-| 实质决策（改硬约束 / 改 scope / 拆任务 / 改测试用例 / append AMD / 「跳过 generator」/ 带具体内容的指令） | 不传（默认 sonnet） |
+| append AMD（机械转写指令成 §9 子文件 + 轻量判断是否撞 §1-6） | `sonnet` |
+| 真·实质决策（改硬约束 / 改 scope / 拆任务 / 改测试用例 / 「跳过 generator」/ 带具体内容的指令） | 不传（默认 opus） |
 
-拿不准 → sonnet。
+拿不准 → 不传（走 opus）。
 
 planner 同步完返回后，主 agent 再次 Read 一遍 `.specs/<slug>.md` 确认改动落地，**然后**才进入下一步（阶段 2 调 generator / 等用户进一步指令 / 其他分支）。
 
@@ -188,7 +191,7 @@ Agent({
 
 generator 返回有两种情况：
 
-- **正常完成** → **进入阶段 2.5（review-fix 循环）**，不要直接进入阶段 3。
+- **正常完成** → **进入阶段 2.5（用户拍板 checkpoint）**，不要直接进入阶段 3。
 - **带「需要 planner 更新 spec」标注** → generator 返回的结构化结论里会有 `needs_planner_update: true` + `feedback_file`（指向 `.specs/<slug>-feedback.md`）+ `feedback_iter`（本轮 iter 编号）+ `feedback_summary`。主 agent：
   1. 用 `Read` 看一眼 `feedback_file` 自检（确认 generator 真的写了文件、文件里有对应 iter 章节、不是空 placeholder）
   2. 把 `feedback_summary` + feedback 文件路径展示给用户，让用户先有上下文（不要贴整份 feedback）
@@ -260,19 +263,83 @@ Agent({...serial...}, run_in_background: true)
    - 该组单独重做（其他组结果保留；重做时 generator 在 sub-worktree 内继续读主 worktree 的 spec）
    - 整组重新分组（如果 planner 重划了）→ 清理所有 sub-worktree 重来
 
-### 阶段 2.5: review-fix 循环（并入 executor Step 6.5）
+### 阶段 2.5: generator 完成后的用户拍板 checkpoint
 
-generator 完成后**直接**进阶段 3（executor）。代码 review 由 executor 在 verdict==PASS 后内嵌跑一次（详见 `~/.claude/agents/executor.md` Step 6.5）；review 与 verdict 解耦，retry 期间不重复 review。bypass：用户主动跑 `/review` 或 `/codex:review` slash command 任何时候都可以，不是默认流程的一部分。
+generator 完成后**不**自动进 executor。主 agent 必须停下来 AskUserQuestion 问用户下一步——给 generator 改动一个"先让用户看"的机会、避免用户没确认就闯进硬验收。
 
-**generator 完成后主 agent 进阶段 3 入口前要做的事**：
+代码 review 由 executor 在 verdict==PASS 后内嵌跑一次（详见 `~/.claude/agents/executor.md` Step 6.5）；review 与 verdict 解耦，retry 期间不重复 review。bypass：用户主动跑 `/review` 或 `/codex:review` slash command 任何时候都可以，不是默认流程的一部分。
 
-1. 把 generator 改动文件清单 + 编译结果 + spec §8 DONE 列表 + `dead_code_status` 字段展示给用户：
-   - `clean` → 一句话过
-   - `auto_cleaned` → 列出 generator 顺手删了哪些
-   - `needs_user_review` → **高亮**列出待用户判断的 dead-code 候选；用户可在阶段 3 PASS 后的 review-fix 子循环里挑修
-   - `skipped:<reason>` → 一句话说明
-2. 不 AskUserQuestion 问「要不要 review」 → 直接进阶段 3 调 executor
-3. 用户**显式说**「先 /review 再 executor」 → 跑 /review 后再进阶段 3；用户**显式说**「不用 executor」 → bypass executor
+#### Step 0: 触发条件
+
+闸口**只在主路径** generator 第一次返回 success 时触发：
+
+- ✅ 触发：阶段 2A 串行模式的 generator 返回 success；阶段 2B 并行模式所有组 generator 都返回 success 时一次（不是每组一次）
+- ❌ 不触发：阶段 4 失败循环里的 generator retry 返回（直接回到 executor 重验）
+- ❌ 不触发：阶段 3A/5 PASS 后 review-fix 子循环里的 generator 返回（直接进 P4）
+- ❌ 不触发：阶段 4 lint-only fast path 里的 generator 返回（主 agent 自己轻量验证后进 P4）
+- ❌ 不触发：generator 返回 needs_planner_update（走 planner 同步路径，不在这一档）
+
+#### Step 1: 报告 status
+
+按当前流程展示：
+
+- generator 改动文件清单 + 编译结果 + spec §8 DONE 列表
+- `dead_code_status` 字段：
+  - `clean` → 一句话过
+  - `auto_cleaned` → 列出 generator 顺手删了哪些
+  - `needs_user_review` → **高亮**列出待用户判断的 dead-code 候选；用户可在阶段 3 PASS 后的 review-fix 子循环里挑修
+  - `skipped:<reason>` → 一句话说明
+
+#### Step 2: AskUserQuestion 问下一步
+
+至少给这些选项（按推荐顺序排）：
+
+- **进 executor 验收**（Recommended，默认）—— 走阶段 3
+- **起模拟器跑起来给我看一下**（仅 iOS 项目可点）—— 进 Step 3 起 simulator
+- **让 generator 接着改 X**（用户在 Other 里填具体调整指令）—— 调 generator 走 Step 2.1 AMD 路径，prompt 用本节末尾「按用户口头指令修」模板；修完**回到本闸口 Step 1**
+- **跳过 executor 直接进 ship 流程**（用户显式 bypass）—— 跳到 3A PASS 后流程的 Step P4 文档同步问询
+
+#### Step 3: 起模拟器（仅当用户挑「起模拟器」时）
+
+主 agent 自己跑，不派 subagent：
+
+1. `Skill(find-ios-build-artifact)` 拿 `APP_PATH` / `BUNDLE_ID` / `SIMULATOR_UDID`
+2. `xcrun simctl install <UDID> <APP_PATH>` + `xcrun simctl launch <UDID> <BUNDLE_ID>`
+3. 把 `BUNDLE_ID` / `SIMULATOR_UDID` / 模拟器名一并报给用户
+4. **再次** AskUserQuestion 问下一步（这次**不含**「起模拟器」选项，包含「进 executor」/「让 generator 改 X」/「跳过 executor」/「暂停我自己看」）
+5. 用户**显式说**「真机 / 装我手机上」时才切真机路径（按用户具体说法走 `idb` / `ios-deploy` 等，不在 SOP 强制）
+
+模拟器起不来（build 没产物 / sim boot 失败 / install 失败）：报错给用户、AskUserQuestion 问「修 build 让 generator 再来一遍 / 直接进 executor 看 executor 能不能给出更具体的报错」。
+
+#### 硬约束
+
+- ❌ 不许在 Step 2 跳过 AskUserQuestion、直接调 executor（哪怕看起来 generator 的 status 完美）
+- ❌ 不许在 Step 3 起模拟器后直接调 executor、不等用户回复（必须再问一次）
+- ✅ 用户在 Step 2 / Step 3 的 AskUserQuestion 里直接说「进 executor」或「OK 验收」就算明确同意
+- ✅ 用户从一开始就在原始需求里说过「不用 executor」/「跳过验收」 → 整个闸口跳过，generator 完成后直接进 Step P4 文档同步
+
+> **「按用户口头指令修」prompt 模板**（用户在闸口 Step 2 挑「让 generator 改 X」时使用）：
+>
+> ```
+> Agent({
+>   description: "<需求一句话> — 按用户调整指令修",
+>   subagent_type: "generator",
+>   prompt: """
+>     Worktree slug: <slug>
+>     Worktree 绝对路径: <pwd>
+>     本轮任务: 按用户口头追加的调整指令修复，不扩范围、不修 §1-7
+>
+>     用户的具体调整指令（原话）：
+>     <贴用户原话>
+>
+>     按 ~/.claude/agents/generator.md 的 SOP 工作，本轮重点：
+>     - Step 2.1 把用户指令 append 成 §9 AMD（[generator 写]）再实现、改 DONE
+>     - 只改用户指令对应范围
+>     - 不修 spec §1-7、不扩任务范围
+>     - 修完跑编译确认没引入新错
+>   """
+> })
+> ```
 
 > **「按 review 修」prompt 模板**（阶段 3A PASS 后的 review-fix 子循环复用此模板）：
 >
@@ -742,6 +809,7 @@ generator 启动前发现 §8 ↔ §2 / §7 / 子文件 status 不一致时，**
 - ❌ Edit / Write `.specs/<slug>.md` 主索引或 `.specs/<slug>/` 子目录任何文件 —— §1-6 内联走 planner、§2/§7 索引行 + 对应子文件走 planner、§8 状态 + `tasks/` 子文件走 generator（planner 仅初始 Write 骨架）、§9 索引行 + `amendments/` 子文件走 planner / generator（按上方「§9 写权限边界」决策路由）
 - ❌ 跑项目的 build / lint / test 命令来「自己验证一下」—— 那是 generator / executor 的事
 - ❌ 跳过 planner 直接调 generator（除非用户**显式**说「跳过 planner」）
+- ❌ 跳过 generator 完成后的阶段 2.5 用户拍板 checkpoint、自动调 executor（除非用户**显式**说「不用 executor」/「直接验收」）
 - ❌ 跳过 executor 直接告诉用户「我做完了」（除非用户**显式**说「不用 executor」）
 - ❌ 在 generator 失败时自己出手改代码 —— 走重试循环；3 次后交给用户
 - ❌ 自己脑补「这个简单不用走流程」—— 只有用户显式 bypass 才跳
@@ -751,6 +819,7 @@ generator 启动前发现 §8 ↔ §2 / §7 / 子文件 status 不一致时，**
 - ✅ 用 Bash 跑 `git status` / `git log` / `pwd` / `ls` 等只读命令了解状态
 - ✅ Read 任何文件来回答用户的问答类问题
 - ✅ AskUserQuestion 澄清需求 / 让用户在 planner 后拍板 / 报告 executor 失败
+- ✅ 用户在阶段 2.5 闸口挑「起模拟器」时跑 `Skill(find-ios-build-artifact)` + `xcrun simctl install/launch` 起 app —— 这是给用户看效果用、不算「自己验证」
 - ✅ 建 worktree、改全局 rule / settings / memory（meta 配置类操作不在本 rule 约束内）
 - ✅ 调 `/openpr` / `/review` / `/pr-review` 等 slash command（这些 command 内部的流程不受本 rule 约束）
 
@@ -759,7 +828,7 @@ generator 启动前发现 §8 ↔ §2 / §7 / 子文件 status 不一致时，**
 用户**明确**说以下任一种话时，本轮跳过对应阶段：
 
 - 「你直接改」「不用 planner」「跳过 spec」 → 跳 planner，主 agent 直接调 generator（generator 仍要遵守自己的 SOP）
-- 「不用 executor」「我自己 review」 → 跳 executor，generator 完成后直接报用户
+- 「不用 executor」「我自己 review」 → 跳 executor + **跳过阶段 2.5 闸口**，generator 完成后直接进 P4 文档同步问询
 - 「全部你自己来」「这一行你直接改」 → 三段式整体 bypass，主 agent 回到默认行为可以自己 Edit
 
 bypass 必须**用户主动说**。主 agent **不能**自己判断「这个简单不用走流程」。

@@ -2,7 +2,7 @@
 name: planner
 description: 把用户的代码需求规划成完整的 .specs/<slug>.md 主索引 + .specs/<slug>/{tasks,risks,amendments}/ 子文件（用户原话 / 子任务拆分 / 测试用例三类必填 / 验收标准 / 硬约束 / 风险 / 进度）。不写代码、不跑 build / lint / test。在 dispatch-pipeline 三段式流程里这是第 1 阶段。
 tools: Bash, Read, Write, Edit, Glob, Grep, AskUserQuestion, mcp__plugin_figma_figma__get_metadata, mcp__plugin_figma_figma__get_screenshot, mcp__plugin_figma_figma__get_design_context, mcp__plugin_figma_figma__get_variable_defs
-model: sonnet
+model: opus
 ---
 
 # Planner Subagent
@@ -51,7 +51,7 @@ spec 不是单文件，是**主索引 + 子目录**两层：
 2. `~/.claude/rules/spec-before-code.md` —— spec 必含字段硬约束（特别是 Golden Path / 边界 / 回归三类必填、iOS UI 改动专项、子目录结构）
 3. `~/.claude/rules/iteration-checkpoint.md` —— 理解什么时候要 AskUserQuestion 澄清
 4. `~/.claude/rules/use-worktree.md` —— 确认你处在 worktree 里的操作惯例
-5. `~/.claude/rules/image-assets.md` —— iOS 图片资源约束（写硬约束章节用）
+5. 图片资源约束（项目级规则，由项目 AGENTS.md 自动注入 memory；无此规则则跳过）—— iOS 图片资源约束（写硬约束章节用）
 
 > 项目根 `AGENTS.md` / `CLAUDE.md` 和 user-level `~/.claude/CLAUDE.md` 由 harness 自动注入 memory，不在此列表 —— 但里面 markdown 链接指向的 `docs/*.md` **不会**被一起注入，要靠下方 `scan-trigger-docs` skill 按本次需求范围 Read。
 

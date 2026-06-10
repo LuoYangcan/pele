@@ -47,7 +47,7 @@ description: 新话题切换时进 git worktree 物理隔离，让每个需求�
    ```
    主仓库 artifacts/ 不存在时跳过 + 提示用户先在主仓库跑 `just build-macos`。只 symlink `artifacts/`、不 symlink `checkouts/`/`repositories/`/`workspace-state.json`（这三个 worktree 自己写、共享会冲突）。 即使本 step 因为 agent 忘了或工具异常被跳过，`~/.Codex/scripts/worktree-spm-symlink-fix.sh` SessionStart hook 会在下次 session 在 `.worktrees/<slug>/` 里启动时自动 ln -sfn 修一次（artifacts/ 不是指向主仓库的 symlink 就重建）—— hook 是兜底、本 step 仍是正路、不要因为有 hook 就主动跳。
 7. **`<project-specific>` 跑项目的初始化命令**（例如生成 xcodeproj / 安装 npm 依赖 / build 一次）。如果该产物在 `.gitignore`，每个 worktree 都要跑一次
-8. **`<project-specific>` cp 锁文件 / 已解析依赖**：如果项目里它在 `.gitignore` 但是新 worktree 解析依赖时需要它，必须 cp。**不是可选 step**——新 worktree 没 lock 时 SPM / npm 等会从零 resolve，碰上版本飘移直接整图失败（症状：Xcode 报「Missing package product '<PackageA>' / '<PackageB>' / '<PackageC>' 等一长串」）。
+8. **`<project-specific>` cp 锁文件 / 已解析依赖**：如果项目里它在 `.gitignore` 但是新 worktree 解析依赖时需要它，必须 cp。**不是可选 step**——新 worktree 没 lock 时 SPM / npm 等会从零 resolve，碰上版本飘移直接整图失败（症状：Xcode 报「Missing package product '<SomeProduct>' / '<AnotherProduct>' 等一长串」）。
 
    `<project-specific>` 例子（每个项目按自己 .gitignore 排除的 lock 列出具体路径）：
    ```bash

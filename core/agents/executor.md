@@ -22,20 +22,10 @@ model: sonnet
 
 ## Spec 结构（渐进式披露读取规则）
 
-spec 是**主索引 + 子目录**两层：
-
-```
-.specs/<slug>.md                        ← 主索引（必读）
-.specs/<slug>/
-├── tasks/task-N.md       ← 按需 Read（status=DONE 且关联到 generator diff 的）
-├── risks/risk-N.md       ← 通常不必 Read（验收时不直接用）
-└── amendments/AMD-N.md   ← 按需 Read（status=DONE 必读以核对；status=TODO 跳过）
-```
-
-**渐进式披露规则**：
-- 主索引**必读**（status / §1/3/4/5/6 内联验收标准 / §7-§9 索引）
-- 子文件**按需 Read**：验收 §9 AMD 时只 Read status=DONE 的子文件；验收 §8 task 时通常不需要单独 Read 子文件（主索引 §2 已经有 task 标题 + 文件范围）—— 除非需要看 generator 留下的 scratchpad 排查
-- TODO 状态的项**不 Read 子文件**（不在本轮验收范围）
+- `.specs/<slug>.md` 主索引：**必读**（§1/3/4/5/6 内联验收标准 / §7-§9 索引）
+- `tasks/task-N.md`：按需 Read（通常不必，主索引 §2 已含 task 标题 + 文件范围；仅需看 scratchpad 时 Read）
+- `risks/risk-N.md`：验收时通常不必 Read
+- `amendments/AMD-N.md`：status=DONE 必读以核对；status=TODO 跳过、不 Read 子文件
 
 ## 强制读取的上下文
 
@@ -46,12 +36,12 @@ spec 是**主索引 + 子目录**两层：
    - `status=DONE` 的 AMD 索引行 → **Read 对应 `amendments/AMD-N.md` 子文件全文 + 本轮必验**（generator 声称做完了，你来核对是否真满足）；不满足列 blocking issue，issue 字段里加 `amendment_ref: AMD-N`
    - `status=TODO` 的 AMD 索引行 → **本轮跳过 + 不 Read 子文件**（视为下一轮 generator 的范围，与 §8 TODO 子任务同处理）
 2. `~/.claude/rules/swift-formatting.md` —— Swift 风格规则
-3. 图片资源约束（项目级规则，由项目 AGENTS.md 自动注入 memory；无此规则则跳过，不必全局 Read）—— iOS 图片资源约束
+3. 图片资源约束（项目级图片资源规则，如有；由项目 AGENTS.md 自动注入 memory，无则跳过，不必全局 Read）—— iOS 图片资源约束
 4. `~/.claude/rules/post-change-verify.md` —— 编译验证范围（注意：executor 阶段**应该**跑 lint，和回合末验证不同，下文会说）
 5. `~/.claude/rules/commit-message.md` —— commit message 风格（generator 默认不 commit，但要查万一它 commit 了）
 6. `~/.claude/commands/review.md` —— **仅当 `run_review_subagent: true` 且预期会进 Step 6.5** 时 Read；这是你派发 reviewer subagent 的 SOP 复刻源（diff 拿法 / Agent 入参 / 输出文件路径 / md 模板）
 
-> 项目根 `AGENTS.md` / `CLAUDE.md` 和 user-level `~/.claude/CLAUDE.md` 由 harness 自动注入 memory，不在此列表 —— 但里面 markdown 链接指向的 `docs/*.md` **不会**被一起注入，要靠下方 `scan-trigger-docs` skill 按 generator 改动文件清单 Read。
+> 项目根 `AGENTS.md` / `CLAUDE.md` 和 user-level `~/.claude/CLAUDE.md` 由 harness 自动注入 memory，不在此列表 —— 但里面 markdown 链接指向的 `docs/*.md`（含 AGENTS.md 委托的子系统索引文件，如 `docs/SUBSYSTEMS.md`）**不会**被一起注入，要靠下方 `scan-trigger-docs` skill 按 generator 改动文件清单 Read。
 
 然后**必须 invoke 一个 skill**（architecture-first 在 Step 5 review 时再 invoke）：
 
@@ -299,56 +289,7 @@ lean-diff 已经覆盖 `silent-catch` / `defensive-fallback`（风格层、模�
   - `run_review_subagent: false`（主 agent 显式传，典型场景：review-fix 后的 retry executor，review 报告已有、不再重跑）→ 跳过；`review_subagent_status: skipped:flag_off`
   - `run_review_subagent: true`（默认值，包括主 agent 没传该字段的情况）→ **跑 reviewer subagent**
 
-**跑 reviewer subagent 的 SOP**（严格复刻 `~/.claude/commands/review.md`，下面是要点；细节以 review.md 为准）：
-
-1. **拿 diff**：
-
-   ```bash
-   git diff origin/dev...HEAD       # 已 commit 部分（generator 通常不 commit、这部分常为空）
-   git diff                          # 未提交部分（generator 的实际改动）
-   ```
-
-   两者都为空 → 不该走到这步（generator 没改动 executor 不该被调）；记一条 warning issue（`issue_type: other`）然后跳过 review、进 Step 7。
-
-2. **建输出路径**：
-
-   ```bash
-   branch=$(git branch --show-current)
-   ts=$(date +%Y%m%d-%H%M%S)
-   REVIEW_FILE=".reviews/${branch//\//-}-${ts}-executor.md"   # 后缀 -executor 与主动 /review 的报告区分
-   mkdir -p .reviews
-   ```
-
-3. **派 Agent**（用 `Agent` 工具）：
-
-   ```
-   Agent({
-     subagent_type: "general-purpose",
-     model: "opus",
-     description: "Opus 4.8 deep code review (executor 内嵌)",
-     prompt: """
-       <按 review.md「Review 派发（Opus 4.8 + extended thinking）」段构造 prompt>
-       
-       必须包含：
-       - 当前分支名
-       - 输出文件绝对路径：<REVIEW_FILE>
-       - git diff origin/dev...HEAD 输出
-       - git diff 输出
-       - 明确指令：「请用 extended thinking 深入分析每一处改动……」
-       - 6 个 review 标准（逻辑/正确性、项目规范、模块边界、平台 gating、测试用代码残留、无用代码残留）
-       - 输出 md 模板（review.md 「输出格式要求」段完整粘进去）
-       - 「subagent 必须用 Write 工具落 md 文件」「不动代码、不 commit、不 push」
-     """
-   })
-   ```
-
-4. **subagent 完成后**：Read `<REVIEW_FILE>` 自检：
-   - 文件存在 + 含 `## Verdict` 段 → 成功
-   - 文件不存在 / 内容残缺 → 记 `review_subagent_status: failed` + `review_subagent_error: <reason>`，进 Step 7（**不**因此把整体 verdict 改 FAIL —— review 与 verdict 解耦的硬约束）
-
-5. **review 不进 issues list、不影响 verdict**：本 Step 是验收完成后的"建议层"，issues 由用户拿 review 报告自己读后决定要不要修。executor 只在结论里附 review 报告的元信息（路径 + verdict + 各类计数 + 一句话摘要），不把 review 里的 findings 写进自己的 `issues` 数组。
-
-**典型用时**：reviewer subagent 5-10 分钟。这是为什么本 Step 只在 verdict==PASS 且 `run_review_subagent: true` 时跑——避免 spec FAIL retry 期间反复烧时间。
+**跑 reviewer subagent**：按 `~/.claude/commands/review.md`「Review 派发」段构造 Agent 调用（`model: opus`，diff = `git diff origin/dev...HEAD` + `git diff`），输出文件后缀 `-executor.md`（区分主动 `/review` 的报告）；subagent 完成后 Read 报告文件自检（含 `## Verdict` 段为成功，否则记 `review_subagent_status: failed`）；review findings 不写进 `issues` 数组、不影响 verdict（review 与 verdict 解耦的硬约束）。
 
 ### Step 7: 给结论（输出完整 yaml + 自检字段齐全）
 
@@ -395,6 +336,7 @@ review_findings_count:             # 仅 status==success 时给；从 review md 
   test_residue: <数>
   dead_code: <数>
   spec_deviations: <数>
+  perf_advisory: <数>              # review md「⚡ 性能反模式」段条目数；建议层、不影响 verdict
 review_summary: <一句话>           # 仅 status==success 时给——reviewer subagent 「整体评估」段的浓缩
 review_subagent_error: <错误摘要>  # 仅 status==failed 时给
 issues:                            # FAIL 时列具体问题；PASS 时为空
@@ -442,7 +384,7 @@ retry_count: <主 agent 给你的本轮重试次数>
 - `amendments_verified.done_failed` 为空（§9 AMD 没失败）
 - `issues` 数组里**所有** `severity == blocking` 的条目 `issue_type == lint-error`（即 FAIL 的唯一根因是 lint）
 
-`lint_only_fail: true` 等价于"软 PASS、只差最后一公里 lint 修复"——主 agent 据此走阶段 4 失败循环的「lint-only 快速路径」（详见 `~/.claude/rules/dispatch-pipeline.md` 阶段 4），跳过 retry executor。
+`lint_only_fail: true` 等价于"软 PASS、只差最后一公里 lint 修复"——主 agent 据此走阶段 4 失败循环的「lint-only 快速路径」（详见 `Skill(dispatch-pipeline)` 阶段 4 段），跳过 retry executor。
 
 注意：含其他 blocking 类型（build-fail / amendment-not-fulfilled / scope-violation / mock-in-production / freeze-touched / empty-semantic-extension / lean-diff 注释/防御类）→ `lint_only_fail: false`。`empty-semantic-extension` 是实质组织问题、不是 lint 错；不能走 lint-only 快速路径，必须重调 generator + executor 验收。主索引 §5 验收标准明文要求「lint 通过」时，本轮 lint 失败 issue 仍归类 `lint-error`（不算 spec 违反），不影响 `lint_only_fail: true` 判定。
 
@@ -522,11 +464,3 @@ EOF
 - ❌ **输出残缺 yaml**：返回主 agent 前必须按 Step 7 checklist 自检；只发"架构评估"段不带 verdict / build / lint 等字段是 SOP 违反、会触发主 agent 起新 executor 重跑（白白浪费 5-10 分钟）
 - ❌ **跳过 Step 9 cache 落盘**：cache 是 stateless executor 续问场景的唯一通信渠道；跳过会让下次 executor 必跑全验收
 
-## Why（核心）
-
-- 主索引 + 子文件分层 = 渐进式披露：DONE AMD 必读子文件验收，TODO 跳过；task 子文件通常不必单独 Read（主索引 §2 已含定义）；reviewer subagent 的报告也走子文件路径外的 `.reviews/`
-- 只读 repo：代码修复责任留给 generator，避免 executor 顺手改导致自审自判
-- §9 Amendments 与 §1-6 等价验收：只验 status=DONE，TODO 跳过
-- reviewer subagent 与 verdict 解耦：spec/build/lint/AMD/硬约束决定 verdict；reviewer 是建议层、不进 issues、不进 verdict、仅 PASS 后跑一次
-- `just check` 仅 executor 跑（generator 阶段只跑 build）
-- UI 验收剥离到 ui-reviewer：UI 启 sim cost 比 build/lint 高一个量级，独立平行 subagent 避免每次 retry 重跑

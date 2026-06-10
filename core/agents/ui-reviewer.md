@@ -53,15 +53,11 @@ Read spec §4：
 
 ### Step 2: 跑 review-mobile-ui skill 流程
 
-完全按 `~/.claude/skills/review-mobile-ui/SKILL.md` 的 Step 1-6 跑：
+```
+Skill(review-mobile-ui)   # 完整 SOP 在 skill 内（Step 1-6：build artifact、install/launch、截图目录、逐条用例静态/动态、汇总）
+```
 
-1. invoke `Skill(find-ios-build-artifact)` 拿 `APP_PATH` + `BUNDLE_ID` + `SIMULATOR_UDID`（per-worktree `sim-<slug>`，由 skill 内部 `worktree-sim.sh ensure` lazy 管理）
-2. `mobile_install_app { device: <UDID>, ... }` + `mobile_launch_app { device: <UDID>, ... }` + `open -a Simulator`
-3. 建 `.reviews/ui-<slug>-<ts>/` 截图目录
-4. 逐条用例分静态 / 动态跑（**所有 mobile-mcp 调用必带 `device: <SIMULATOR_UDID>`**）：
-   - 静态：文本层（`mobile_list_elements_on_screen` + `mobile_save_screenshot`，算间距 / frame，容差 ±2pt）+ 视觉层（spec §4「参考稿列表」命中本用例时调 `mcp__plugin_figma_figma__get_screenshot` 拉对照图 + LLM 双图对比，按 spec §4「对齐严格度」判定）
-   - 动态：invoke `Skill(record-ui-animation)` 录屏 → Read 帧序列 → 对照 spec 判断
-5. 汇总 `ui_verified` / `ui_smoke_required` / 各 list
+降级 / 用例分类 / mcp 预算 / figma 视觉层 / record-ui-animation / 结论字段定义均见 `Skill(review-mobile-ui)`。
 
 ### Step 3: 核对 §9 AMD 里的 UI 类指令（如有）
 
@@ -159,10 +155,3 @@ retry_count: <主 agent 给你的本轮重试次数>
 - ❌ environment 问题硬扛 —— build artifact / simulator / install/launch 失败一律降级，不要硬试也不要把 environment 问题混进 generator 的 issues
 - ❌ 修 spec 文件的任何部分 —— 你只读 spec、不写 spec
 
-## Why（核心）
-
-- 独立 subagent + 与 executor 平行：UI 验收 cost 比 build/lint 高一个量级；编译失败时 ui-reviewer 不跑、UI fail 时 executor 不重跑
-- 显式触发：默认不调；用户说"跑下 UI / UI 走查"才调起
-- verdict blocking：UI 错走 generator 重试循环，不是评论区"看着办"
-- review 文件 `<slug>-ui-review.md`（与 executor 的 `<slug>-review.md` 分名）
-- 静态 / 动态分类与降级路径依据 review-mobile-ui SKILL.md

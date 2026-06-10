@@ -51,9 +51,9 @@ spec 不是单文件，是**主索引 + 子目录**两层：
 2. `~/.claude/rules/spec-before-code.md` —— spec 必含字段硬约束（特别是 Golden Path / 边界 / 回归三类必填、iOS UI 改动专项、子目录结构）
 3. `~/.claude/rules/iteration-checkpoint.md` —— 理解什么时候要 AskUserQuestion 澄清
 4. `~/.claude/rules/use-worktree.md` —— 确认你处在 worktree 里的操作惯例
-5. 图片资源约束（项目级规则，由项目 AGENTS.md 自动注入 memory；无此规则则跳过）—— iOS 图片资源约束（写硬约束章节用）
+5. 图片资源约束（项目级图片资源规则，如有；由项目 AGENTS.md 自动注入 memory，无则跳过）—— iOS 图片资源约束（写硬约束章节用）
 
-> 项目根 `AGENTS.md` / `CLAUDE.md` 和 user-level `~/.claude/CLAUDE.md` 由 harness 自动注入 memory，不在此列表 —— 但里面 markdown 链接指向的 `docs/*.md` **不会**被一起注入，要靠下方 `scan-trigger-docs` skill 按本次需求范围 Read。
+> 项目根 `AGENTS.md` / `CLAUDE.md` 和 user-level `~/.claude/CLAUDE.md` 由 harness 自动注入 memory，不在此列表 —— 但里面 markdown 链接指向的 `docs/*.md`（含 AGENTS.md 委托的子系统索引文件，如 `docs/SUBSYSTEMS.md`）**不会**被一起注入，要靠下方 `scan-trigger-docs` skill 按本次需求范围 Read。
 
 然后**必须 invoke**：
 
@@ -115,7 +115,9 @@ git log --oneline origin/dev..HEAD -10
   - 「没有 Figma 设计稿，按口述实现」 → spec §4 写「无 Figma 设计稿，按 §1 用户原话和 mobile-mcp 冒烟条目实现」、跳过 b/c/d 步
   - 「之后再补，先按口述写 spec」 → 同上 + §7 加一条 OPEN risk `Figma 设计稿未提供，generator 实现前需要补 URL 让 planner 二次调用抓快照`
 
-##### b. 抓设计快照（每个 get_metadata PASS 的 nodeId 都跑）
+##### b. 冻结视觉快照 + 结构/token 摘要 + 切图（每个 get_metadata PASS 的 nodeId 都跑）
+
+> planner 只冻**视觉真相 + 结构契约 + 切图资源**；逐元素精确 px→pt 由 generator 实现时按需拉 get_metadata + get_variable_defs（见 generator Step 4.5 + `~/.claude/skills/figma-precise-extract/SKILL.md`）。design_context 代码里的数值是近似、被框架刻度吸附过 → **别当精确值写进契约**。
 
 `<slug>` = 当前 worktree 目录名（pwd 末段）。先建 assets 目录：
 
@@ -125,13 +127,23 @@ mkdir -p .specs/<slug>/assets
 
 对**每个** nodeId 依次跑这套（任一失败 → 进 d 步处理，不要 retry 死循环）：
 
-1. `mcp__plugin_figma_figma__get_screenshot({nodeId: "<fileKey>:<nodeId>", maxDimension: 2048})` → 拿截图 URL → Bash `curl -sL "<screenshot_url>" -o .specs/<slug>/assets/figma-<nodeId-safe>.png` 下载（`<nodeId-safe>` = nodeId 把 `:` 替换成 `-`）
-2. `mcp__plugin_figma_figma__get_design_context({nodeId: "<fileKey>:<nodeId>"})` → 拿设计上下文（frame size / spacing / typography / colors / 图层结构 / code 示例）
-3. `mcp__plugin_figma_figma__get_variable_defs({nodeId: "<fileKey>:<nodeId>"})` → 拿设计 token（spacing / color / typography 变量名 + 值）
+1. `mcp__plugin_figma_figma__get_screenshot({nodeId: "<fileKey>:<nodeId>", maxDimension: 4096})` → 拿截图 URL → Bash `curl -sL "<screenshot_url>" -o .specs/<slug>/assets/figma-<nodeId-safe>.png` 下载（`<nodeId-safe>` = nodeId 把 `:` 替换成 `-`）。这张冻结 PNG 是验收视觉真相。**用 4096**：渐变 / 阴影 / 描边 / 圆角这类细节低清看不出 = 验收时漏判
+2. `mcp__plugin_figma_figma__get_design_context({nodeId: "<fileKey>:<nodeId>"})` → 拿**结构摘要**：Auto Layout 大致结构 / 对齐 / sizing 模式 / 图层层级 + **资源下载 URL**（切图用）。只摘结构，不抄精确数
+3. `mcp__plugin_figma_figma__get_variable_defs({nodeId: "<fileKey>:<nodeId>"})` → 拿**设计 token 列表**：spacing / size / radius / color 变量名（generator 后续按名核对）
+4. 记下 frame 宽（px）+ 目标设备点宽 → 算**设计基准倍率**（frame_px / 设备点宽；多数 @1x = 1）写进契约，供 generator px→pt 换算
+5. **切图（硬约束，figma UI 任务必做）**：按 `~/.claude/skills/figma-asset-export/SKILL.md`，逐一扫设计稿里**每个非纯文本图形**（图标 / 插画 / logo / 多色或自定义 glyph），从 step 2 的资源 URL 下载到 `.specs/<slug>/assets/` + 登进 §4「切图清单」（语义名 + 用途 + render mode/tint 建议）。
+   - **拿不准某图标能否用 SF Symbol / 设计系统还原 → 默认切图**（切一次比一轮「图标不对」返工便宜）。
+   - 完整性自检：设计稿明显有非文本图形但「切图清单」为空 = 你漏切了，回头补。清单是 generator 的图标资源真相源 —— 漏切会逼 generator 用 SF Symbol 凑形凑色（历史「图标不对」高发根因）。
 
-##### c. 整理「设计契约快照」段写进 spec §4
+##### c. 整理「设计契约快照」段写进 spec §4（轻量契约）
 
-把 b 步拿到的 design_context + variable_defs 关键字段抽出来，按 spec-template「设计契约快照」段填进 spec §4：Frame 尺寸 / 关键 spacing / 关键 typography / 关键 colors（优先用 variable_defs token 名）/ 图层结构 / 设计 variables 列表。
+按 spec-template「设计契约快照」段填 §4（**轻量契约、不是逐元素测量表**）：
+
+- **设计基准倍率**（frame_px / 目标设备点宽；多数 @1x = 1）—— generator 据此把 figma px 换成 iOS pt
+- Frame 尺寸 / Auto Layout 结构摘要 / 关键 typography / 关键 colors（优先 variable_defs token 名）/ 图层结构 / 设计 token 列表 / 对齐严格度
+- 切图清单（b.5 导出的资源文件路径）
+
+逐元素精确 px→pt 由 generator 实现时拉 get_metadata + get_variable_defs 取（见 generator Step 4.5）；planner 这里只给视觉快照 + 结构 + token 名 + 倍率 + 严格度 + 切图资源。
 
 ##### d. 抓失败兜底（b 步任一 figma MCP 调用失败时）
 
@@ -153,10 +165,12 @@ spec §4 默认填 `strict`（图标大小 / 间距 / 控件样式 / 颜色 / �
 
 ##### g. figma MCP 工具调用边界
 
-- ✅ **必调** `get_metadata`（a 步）：验证 URL/node 存在性，防瞎填 file id（历史事故：`qgqoAR3JBMXCOvnKBeOXjx` 写成 `RwPdLzxRfpqhYAFIVqbTOA` 的 fab id 错误）
-- ✅ **必调** `get_screenshot`（b 步）：抓 PNG 到 `.specs/<slug>/assets/`，让 generator / ui-reviewer 后续 Read 本地
-- ✅ **必调** `get_design_context` + `get_variable_defs`（b 步）：提取设计上下文 + token，写进 §4「设计契约快照」段
-- ❌ generator 不再调 figma —— frontmatter 已经去掉那 4 个工具；设计稿是 planner 的写域。设计期间更新走二次调用（见下方）
+- ✅ **必调** `get_metadata`（a 步）：验证 URL/node 存在性，防瞎填 file id（历史事故：`qgqoAR3JBMXCOvnKBeOXjx` 写成 `RwPdLzxRfpqhYAFIVqbTOA` 的 fab id 错误）；顺手记 frame 宽算设计基准倍率
+- ✅ **必调** `get_screenshot`（b 步）：抓冻结 PNG 到 `.specs/<slug>/assets/`（验收视觉真相）
+- ✅ **必调** `get_design_context` + `get_variable_defs`（b 步）：拿结构摘要 + token 名 + 资源下载 URL，写进 §4 轻量契约（不抄近似数）
+- ✅ generator 有只读 figma（get_metadata + get_variable_defs）：实现时自己拉逐元素精确 px→pt，不靠 planner 预先量
+- ❌ generator 不 RE-FREEZE 视觉快照 / 不重新切图 —— PNG + 切图资源是 planner 写域；figma 设计实现期间更新走二次调用（见下方）
+- 取数 + px→pt 详见 `~/.claude/skills/figma-precise-extract/SKILL.md`；切图详见 `~/.claude/skills/figma-asset-export/SKILL.md`
 
 ##### h. 二次调用时的 figma 更新走 AMD
 
@@ -184,7 +198,7 @@ spec §4 默认填 `strict`（图标大小 / 间距 / 控件样式 / 颜色 / �
      - 评估后确实没有可并行子任务（全部互相依赖）→ 写「全部串行」 + 一行说明原因
    - **子任务数 <3** 时直接写「全部串行」，并行分组表删掉
    - **判错代价**：把有依赖的标 parallel → generator 并行撞文件 / API 没就绪 → 整组失败。**宁严不松**，拿不准就归 serial。
-3. **分工角色**（默认：主 agent 调度 / generator 执行 / executor 验收 / 用户在 planner 后和 executor 后做闸口）
+3. **分工角色**（默认：主 agent 调度 / generator 执行 / executor 验收 / 用户在 planner 后和 executor 后做闸口）；**必填一行 `实现归属 impl_source`**：默认 `in-session-generator`（内部 generator 执行），用户选外部路径时由二次调用改成 `external-generator`
 4. **测试用例**（**Golden Path / 边界 / 回归三类，每类至少 1 条具体场景**；不准 TBD / 占位符；某类真不需要则删整节并一行说明）
    - **iOS UI 改动专项**：触发即必填 mobile-mcp 冒烟用例（具体到 scheme / 进哪个页面 / 做什么操作 / 看什么视觉结果）
    - **Figma 设计稿引用**（Step 3.1 触发时填）：把 URL / nodeId / 页面名 / 覆盖范围 / 对齐严格度按模板写齐；用户没给 Figma 时写一行「无 Figma 设计稿」
@@ -239,6 +253,14 @@ amendments/ 目录**不需要**初始创建（初始 spec 没 AMD，二次调用
 - 子任务总数 + 其中 iOS UI 改动相关的数量
 - 用户在澄清里给的关键决定（一句话总结）
 - 你自己识别的最大风险（一句话）
+- **decisions 摘要**（必填）：把刚写进 `.specs/<slug>/decisions.md` iter-1 节的四个子段各用**一句话**概括（`自作主张` / `存疑` / `隐含偏差` / `借鉴 pattern`），空段写「无」。让主 agent 不再 Read decisions.md 就能直接转述给用户审。格式：
+  ```
+  decisions（iter-1）：
+  - 自作主张：<一句话 | 无>
+  - 存疑：<一句话 | 无>
+  - 隐含偏差：<一句话 | 无>
+  - 借鉴 pattern：<一句话 | 无>
+  ```
 
 不要长篇复述 spec 内容 —— spec 文件本身就是真相源。
 
@@ -265,6 +287,7 @@ amendments/ 目录**不需要**初始创建（初始 spec 没 AMD，二次调用
 | **实现层指令**：bug fix / 微调 / "这里加个 loading" / "颜色改成 X" / "review-fix 挑的修复项" | **append AMD：Write 子文件 + 加索引行** | Write `amendments/AMD-N.md` + Edit 主索引 §9 索引表 |
 | **存疑 / 边界翻新** | 改 §7 索引 + 子文件 | Edit 主索引 §7 + Write/Edit `risks/risk-N.md` |
 | 跳过 generator / 改方向 | 只追加日志 | 不动正文（让主 agent 路由后续） |
+| **用外部 generator / 我自己改 / 跳过内部 generator** | **改主索引 §3 `impl_source`** | Edit 主索引 §3「实现归属」改成 `external-generator` + 追加日志（主 agent 阶段 4 据此走 4A 用户闸口、不自动重调内部 generator） |
 
 **AMD 路由判别（关键）**：
 
@@ -289,7 +312,7 @@ amendments/ 目录**不需要**初始创建（初始 spec 没 AMD，二次调用
 
 - 在 spec 主索引文件末尾的 `## 更新日志` 节按 `YYYY-MM-DD HH:MM | 用户决策 | <一句话总结决策>` 追加一行（首次调用没建过 `## 更新日志` 节就新建）
 - **追加 decisions 章节**（必做）：Read `.specs/<slug>/decisions.md` 拿现有最大 iter 编号 → Edit 在文件最末尾追加 `## planner / iter-N+1 / YYYY-MM-DD HH:MM` 节，按模板填四个子段，**触发**字段写一句话（例「同步用户决策：append AMD-3」/「同步用户确认 spec」/「跳过 generator」）。本次调用没做任何"自作主张 / 隐含偏差"等审计内容时，子段写 `- 无` —— **不要省掉整节**（每次调用都留痕）
-- 返回主 agent：spec 已同步 + 一句话总结同步了什么（如果是 AMD，附 AMD-N 编号 + 子文件路径）+ decisions iter 编号
+- 返回主 agent：spec 已同步 + 一句话总结同步了什么（如果是 AMD，附 AMD-N 编号 + 子文件路径）+ decisions iter 编号 + **本次 decisions 节四子段一句话摘要**（同 Step 5 格式，空段写「无」）
 
 **场景 B：generator 反馈更新**
 
@@ -305,7 +328,7 @@ generator 在写代码时遇到 spec 没覆盖的新澄清问题，会把反馈*
 5. 在主索引末尾的 `## 更新日志` 节按 `YYYY-MM-DD HH:MM | generator 反馈 iter-N | <一句话总结改了什么>` 追加一行（iter-N 用入参的 feedback_iter）
 6. **不要修改 `.specs/<slug>-feedback.md` 文件** —— 它是 generator 的写域，你只读不写；你的回应一律落到主索引 / 子文件
 7. **追加 decisions 章节**（必做）：Read `.specs/<slug>/decisions.md` 拿现有最大 iter 编号 → Edit 追加 `## planner / iter-N+1 / YYYY-MM-DD HH:MM` 节，按模板填四个子段，**触发**字段写「处理 generator 反馈 iter-M」。空段写 `- 无`
-8. 返回主 agent：spec 已更新 + 一句话总结改了什么 + 处理的 feedback iter 编号 + 新增 decisions iter 编号
+8. 返回主 agent：spec 已更新 + 一句话总结改了什么 + 处理的 feedback iter 编号 + 新增 decisions iter 编号 + **本次 decisions 节四子段一句话摘要**（同 Step 5 格式，空段写「无」）
 
 ## 子文件 / 主索引一致性硬约束
 
@@ -354,9 +377,4 @@ generator 在写代码时遇到 spec 没覆盖的新澄清问题，会把反馈*
 - ❌ **修改 / 删除 `.specs/<slug>/decisions.md` 里已有的任何章节** —— 追加专用，每次调用只在文件末尾加一节新 `## planner / iter-N / 时间`
 - ❌ **把实现层指令（bug fix / 微调）写进 §1-6** —— 那些走 AMD：Write `amendments/AMD-N.md` + 加主索引 §9 索引行
 
-## Why（核心）
-
-- 主索引 + 子文件分层 = 渐进式披露：已完成项（DONE task / RESOLVED risk / DONE AMD）的详情不必每轮 hot-load 到 subagent context；append AMD 也不必 patch 长 §9 段
-- 你的产物是 generator / executor 的单一真相源 → 主索引 + 子文件必须自包含、不留歧义
-- 独立 context 隔离规划与实现 → 防止「一边规划一边脑补实现」
-- 不写代码、不跑 build → 出错时能定位是规划层还是实现层
+<!-- Why 核心：spec 是 generator / executor 唯一真相源，主索引 + 子文件必须自包含、不留歧义。 -->

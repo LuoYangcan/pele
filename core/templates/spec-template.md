@@ -61,6 +61,11 @@
 
 如果整个需求都主 agent 自己做，写一行"全部主 agent 做"即可，不用画表。
 
+**实现归属 `impl_source`**（必填一行；主 agent 阶段 4 失败循环据此决定 FAIL 后自动重试还是停下问用户）：
+
+- `in-session-generator`（默认）—— 本 pipeline 内部 generator subagent 执行
+- `external-generator` —— 外部 generator 执行（Codex / 用户手改 / 其他工具）；用户在阶段 1 末尾 / 2.5 选「我自己改 / 用外部 generator」时由 planner 二次调用改成此值
+
 ## 4. 测试用例
 
 **这一节不能含糊带过**——三类（Golden Path / 边界 / 回归）每类**至少列 1 条具体场景**。**禁止**写 "TBD" / "待补" / "看情况" / 占位符不删；如果某一类真的不需要，**删掉那一小节并写一行说明原因**。
@@ -87,16 +92,18 @@
 | --- | --- | --- | --- | --- |
 | `*` | `<https://figma.com/design/<fileKey>/<fileName>?node-id=<X-Y>>` | `<X:Y>` | <例如「Composer / Empty State / Dark」> | `.specs/<slug>/assets/figma-<nodeId-safe>.png` |
 
-**设计契约快照**（planner 抓 figma 后填，generator / ui-reviewer 视觉对照的真相源）：
+**设计契约快照**（planner 抓 figma 后填的**轻量契约**，generator / ui-reviewer 的视觉真相 + 结构基线）：
 
-> planner 调用 figma MCP `get_design_context` + `get_variable_defs` 后整理；generator Step 4.5 / ui-reviewer 不再调 figma MCP，直接 Read 本节 + 上面「本地设计快照」列下的 PNG 视觉对照 mobile-mcp 实拍图。
+> planner 冻结 PNG + 写本段轻量契约（结构摘要 / token 名 / 设计基准倍率 / 严格度 / 切图清单），**不预先量逐元素测量表**。逐元素精确 px→pt 由 generator 实现时按 `~/.claude/skills/figma-precise-extract/SKILL.md` 拉 get_metadata + get_variable_defs、对着冻结 PNG 核对（冲突以 PNG 为准）。切图见 `~/.claude/skills/figma-asset-export/SKILL.md`。
 
+- **设计基准倍率**：<**必算别默认 1** = frame_px / 目标设备点宽；=1 才 px==pt（frame 宽正好等设备点宽），@2x/@3x 或非整设备宽度稿（1440 web 稿 / 414 稿放 393 设备）则布局数除以倍率>
 - **Frame 尺寸**：<例 375 × 200 pt>
 - **关键 spacing**：<例 外 padding 16pt / VStack spacing 12pt / icon-text gap 8pt>
 - **关键 typography**：<例 标题 SF Pro Display semibold 17pt / 正文 SF Pro Text regular 14pt 行高 20pt>
 - **关键 colors（设计 token 名优先）**：<例 background → `<DesignSystemPackage>.Color.surface` / accent → `<DesignSystemPackage>.Color.primary`>
 - **图层结构**：<一段简短描述 z-order 与对齐：例「VStack { HStack { 24×24 icon + 17pt title }, 14pt body text, 44pt height button }；全部左对齐、外层 16pt padding」>
 - **设计 variables**（`get_variable_defs` 拿到的关键 token 列表）：<例 `spacing/sm = 8 / spacing/md = 16 / color/primary` 等>
+- **切图清单**（planner 按 `~/.claude/skills/figma-asset-export/SKILL.md` 导出的自定义图标 / 插画 / logo 资源；无则写「无切图，图标走设计系统 / SF Symbol」）：<例 `.specs/<slug>/assets/icon-custom-badge.svg`（template 渲染、tint `color/primary`）>
 
 抓 figma 失败时本段写：`figma 抓取失败：<原因>；generator 实现前需 planner 重抓 / 用户手动补 .specs/<slug>/assets/figma-*.png`，并在 §7 加 OPEN risk。
 
@@ -104,7 +111,7 @@
 - **对齐严格度**（默认 `strict`，除非用户在 §6 硬约束里明确写降级）：
   - `strict`：图标大小、间距、控件样式、颜色、字号**全部 1:1 还原**，肉眼 diff 即视为不通过；generator 不允许凭感觉调一两个 pt，要改必须 §9 AMD 显式记下并附原因
   - `loose`：只对齐版式骨架（哪个元素在哪一行哪一列）+ 颜色 token，间距 / 字号允许 ±2pt 误差，需在本字段写明降级原因
-- **generator 使用方式**：Read `.specs/<slug>/assets/figma-*.png` 设计快照（planner 已冻结）+ 上方「设计契约快照」段 → 用 mobile-mcp 拉实拍截图视觉对照；token 名核对走「设计 variables」字段。generator 不调 figma MCP —— 设计更新走 planner 重抓快照 + AMD
+- **generator 使用方式**：Read `.specs/<slug>/assets/figma-*.png` 冻结快照（视觉真相）+ 本段轻量契约 → 用只读 figma（get_metadata + get_variable_defs）拉逐元素精确 px→pt（按设计基准倍率换算）+ 用切图清单的资源 → mobile-mcp 拉实拍截图视觉对照。generator **不 RE-FREEZE 快照 / 不重新切图** —— 视觉设计更新走 planner 重抓 + AMD
 - **ui-reviewer 视觉验收**：见 `~/.claude/skills/review-mobile-ui/SKILL.md` Step 5.b 视觉层 —— ui-reviewer 跑每条用例时 Read「本地设计快照」列下的 PNG 与 mobile-mcp 实拍图对比；按「对齐严格度」字段判定（`strict` 下视觉层不符 → blocking `ui-figma-mismatch`；`loose` 只看版式骨架 + 颜色 token）。assets/ 下设计快照缺失 → warning（不阻断整体 verdict），全部缺失 → `ui_verified: degraded`
 
 **mobile-mcp 冒烟用例**：

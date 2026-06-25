@@ -88,17 +88,17 @@
 
 **参考稿列表**（每行一个 figma node；冒烟用例 >1 条且各对应不同 node 时「对应用例」列填 `case-N` 绑定，只有 1 条用例或单 node 通用时填 `*`。`<nodeId-safe>` = nodeId 把 `:` 替换成 `-`）：
 
-| 对应用例 | Figma URL | 节点 ID | 页面 / 屏幕名 | 本地设计快照（planner 抓） |
-| --- | --- | --- | --- | --- |
-| `*` | `<https://figma.com/design/<fileKey>/<fileName>?node-id=<X-Y>>` | `<X:Y>` | <例如「Composer / Empty State / Dark」> | `.specs/<slug>/assets/figma-<nodeId-safe>.png` |
+| 对应用例 | Figma URL | 节点 ID | 页面 / 屏幕名 | 视觉快照 PNG（planner 抓） | 测量 HTML（planner 烘焙） |
+| --- | --- | --- | --- | --- | --- |
+| `*` | `<https://figma.com/design/<fileKey>/<fileName>?node-id=<X-Y>>` | `<X:Y>` | <例如「Composer / Empty State / Dark」> | `.specs/<slug>/assets/figma-<nodeId-safe>.png` | `.specs/<slug>/assets/figma-<nodeId-safe>.html` |
 
-**设计契约快照**（planner 抓 figma 后填的**轻量契约**，generator / ui-reviewer 的视觉真相 + 结构基线）：
+**设计契约快照**（planner 烘焙 figma 后填的**轻量契约**，generator / ui-reviewer 的工件路径 + 结构基线）：
 
-> planner 冻结 PNG + 写本段轻量契约（结构摘要 / token 名 / 设计基准倍率 / 严格度 / 切图清单），**不预先量逐元素测量表**。逐元素精确 px→pt 由 generator 实现时按 `~/.claude/skills/figma-precise-extract/SKILL.md` 拉 get_metadata + get_variable_defs、对着冻结 PNG 核对（冲突以 PNG 为准）。切图见 `~/.claude/skills/figma-asset-export/SKILL.md`。
+> planner 冻结 PNG（视觉真相）+ 烘焙 measurement-grade HTML（测量真相、含精确 pt）+ 写本段轻量契约（工件路径 / 结构摘要 / token 名 / 设计基准倍率 / 严格度 / 切图清单），**不内联逐元素测量表**。逐元素精确测量烘焙进 HTML 工件；generator 实现时 Read HTML 取数、Read PNG 视觉对照（尺寸/间距以 HTML 为准、颜色/阴影以 PNG 为准）。烘焙取数见 `~/.claude/skills/figma-precise-extract/SKILL.md`、切图见 `~/.claude/skills/figma-asset-export/SKILL.md`。
 
 - **设计基准倍率**：<**必算别默认 1** = frame_px / 目标设备点宽；=1 才 px==pt（frame 宽正好等设备点宽），@2x/@3x 或非整设备宽度稿（1440 web 稿 / 414 稿放 393 设备）则布局数除以倍率>
 - **Frame 尺寸**：<例 375 × 200 pt>
-- **关键 spacing**：<例 外 padding 16pt / VStack spacing 12pt / icon-text gap 8pt>
+- **测量 HTML**：`.specs/<slug>/assets/figma-<nodeId-safe>.html` —— 精确 pt 尺寸 / 间距 / 圆角 / token 已烘焙进此文件，generator Read 取数；§4 **不内联** spacing 数字
 - **关键 typography**：<例 标题 SF Pro Display semibold 17pt / 正文 SF Pro Text regular 14pt 行高 20pt>
 - **关键 colors（设计 token 名优先）**：<例 background → `<DesignSystemPackage>.Color.surface` / accent → `<DesignSystemPackage>.Color.primary`>
 - **图层结构**：<一段简短描述 z-order 与对齐：例「VStack { HStack { 24×24 icon + 17pt title }, 14pt body text, 44pt height button }；全部左对齐、外层 16pt padding」>
@@ -111,8 +111,8 @@
 - **对齐严格度**（默认 `strict`，除非用户在 §6 硬约束里明确写降级）：
   - `strict`：图标大小、间距、控件样式、颜色、字号**全部 1:1 还原**，肉眼 diff 即视为不通过；generator 不允许凭感觉调一两个 pt，要改必须 §9 AMD 显式记下并附原因
   - `loose`：只对齐版式骨架（哪个元素在哪一行哪一列）+ 颜色 token，间距 / 字号允许 ±2pt 误差，需在本字段写明降级原因
-- **generator 使用方式**：Read `.specs/<slug>/assets/figma-*.png` 冻结快照（视觉真相）+ 本段轻量契约 → 用只读 figma（get_metadata + get_variable_defs）拉逐元素精确 px→pt（按设计基准倍率换算）+ 用切图清单的资源 → mobile-mcp 拉实拍截图视觉对照。generator **不 RE-FREEZE 快照 / 不重新切图** —— 视觉设计更新走 planner 重抓 + AMD
-- **ui-reviewer 视觉验收**：见 `~/.claude/skills/review-mobile-ui/SKILL.md` Step 5.b 视觉层 —— ui-reviewer 跑每条用例时 Read「本地设计快照」列下的 PNG 与 mobile-mcp 实拍图对比；按「对齐严格度」字段判定（`strict` 下视觉层不符 → blocking `ui-figma-mismatch`；`loose` 只看版式骨架 + 颜色 token）。assets/ 下设计快照缺失 → warning（不阻断整体 verdict），全部缺失 → `ui_verified: degraded`
+- **generator 使用方式**：Read `.specs/<slug>/assets/figma-*.html`（测量真相、精确 pt、无需换算）取尺寸 / 间距 + Read `figma-*.png`（视觉真相）+ 本段轻量契约 + 用切图清单的资源 → mobile-mcp 拉实拍截图视觉对照（尺寸/间距以 HTML 为准、颜色/阴影以 PNG 为准）。generator **不 RE-FREEZE PNG / 不 RE-BAKE HTML / 不重新切图 / 不 live 拉测量** —— 视觉设计更新走 planner 重抓 + 重烘焙 + AMD
+- **ui-reviewer 视觉验收**：见 `~/.claude/skills/review-mobile-ui/SKILL.md` Step 5.b 视觉层 —— ui-reviewer 跑每条用例时 Read「视觉快照 PNG」列下的 PNG 与 mobile-mcp 实拍图对比（需精确尺寸/间距时参考「测量 HTML」列）；按「对齐严格度」字段判定（`strict` 下视觉层不符 → blocking `ui-figma-mismatch`；`loose` 只看版式骨架 + 颜色 token）。assets/ 下设计快照缺失 → warning（不阻断整体 verdict），全部缺失 → `ui_verified: degraded`
 
 **mobile-mcp 冒烟用例**：
 

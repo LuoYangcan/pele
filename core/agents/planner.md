@@ -96,9 +96,9 @@ git log --oneline origin/dev..HEAD -10
 
 不要把 AskUserQuestion 当摆设。模糊的需求**一定要问**，宁可多问一轮也不能写出空 spec。问题尽量提供 2-4 个具体选项让用户挑，不要全是开放题。
 
-#### Step 3.1: Figma 设计稿引用 + 抓快照冻结进 spec（iOS UI 改动触发）
+#### Step 3.1: Figma 设计稿引用 + 抓快照 + 烘焙 HTML 冻结进 spec（iOS UI 改动触发）
 
-判定本需求是否触发 iOS UI 改动专项（改 SwiftUI/UIKit view / 改图片资源 / 改样式 / 改布局 / 用户原话有 UI 字眼）。**触发**时按下面流程一次性把设计契约冻结进 spec —— generator / ui-reviewer 后续不再调 figma MCP，只 Read `.specs/<slug>/assets/` 下的 PNG + §4「设计契约快照」段。
+判定本需求是否触发 iOS UI 改动专项（改 SwiftUI/UIKit view / 改图片资源 / 改样式 / 改布局 / 用户原话有 UI 字眼）。**触发**时按下面流程一次性把设计契约冻结进 spec —— generator / ui-reviewer 后续不再调 figma MCP，只 Read `.specs/<slug>/assets/` 下的 PNG（视觉真相）+ HTML（测量真相）+ §4「设计契约快照」段。
 
 ##### a. 抽 URL + 验证
 
@@ -115,9 +115,9 @@ git log --oneline origin/dev..HEAD -10
   - 「没有 Figma 设计稿，按口述实现」 → spec §4 写「无 Figma 设计稿，按 §1 用户原话和 mobile-mcp 冒烟条目实现」、跳过 b/c/d 步
   - 「之后再补，先按口述写 spec」 → 同上 + §7 加一条 OPEN risk `Figma 设计稿未提供，generator 实现前需要补 URL 让 planner 二次调用抓快照`
 
-##### b. 冻结视觉快照 + 结构/token 摘要 + 切图（每个 get_metadata PASS 的 nodeId 都跑）
+##### b. 烘焙：冻视觉 PNG + measurement-grade HTML + 切图（每个 get_metadata PASS 的 nodeId 都跑）
 
-> planner 只冻**视觉真相 + 结构契约 + 切图资源**；逐元素精确 px→pt 由 generator 实现时按需拉 get_metadata + get_variable_defs（见 generator Step 4.5 + `~/.claude/skills/figma-precise-extract/SKILL.md`）。design_context 代码里的数值是近似、被框架刻度吸附过 → **别当精确值写进契约**。
+> planner **烘焙**：冻 PNG（视觉真相）+ measurement-grade HTML（含精确 pt 尺寸/间距/token，用 get_metadata + get_variable_defs 覆盖 design_context 被框架刻度吸附的近似值）+ 切图资源。generator 实现时只 Read 这两份冻结工件，**不再 live 拉 figma**。烘焙取数约定见 `~/.claude/skills/figma-precise-extract/SKILL.md`。
 
 `<slug>` = 当前 worktree 目录名（pwd 末段）。先建 assets 目录：
 
@@ -125,31 +125,33 @@ git log --oneline origin/dev..HEAD -10
 mkdir -p .specs/<slug>/assets
 ```
 
-对**每个** nodeId 依次跑这套（任一失败 → 进 d 步处理，不要 retry 死循环）：
+对**每个** nodeId 依次跑这套烘焙（任一失败 → 进 d 步处理，不要 retry 死循环）：
 
-1. `mcp__plugin_figma_figma__get_screenshot({nodeId: "<fileKey>:<nodeId>", maxDimension: 4096})` → 拿截图 URL → Bash `curl -sL "<screenshot_url>" -o .specs/<slug>/assets/figma-<nodeId-safe>.png` 下载（`<nodeId-safe>` = nodeId 把 `:` 替换成 `-`）。这张冻结 PNG 是验收视觉真相。**用 4096**：渐变 / 阴影 / 描边 / 圆角这类细节低清看不出 = 验收时漏判
-2. `mcp__plugin_figma_figma__get_design_context({nodeId: "<fileKey>:<nodeId>"})` → 拿**结构摘要**：Auto Layout 大致结构 / 对齐 / sizing 模式 / 图层层级 + **资源下载 URL**（切图用）。只摘结构，不抄精确数
-3. `mcp__plugin_figma_figma__get_variable_defs({nodeId: "<fileKey>:<nodeId>"})` → 拿**设计 token 列表**：spacing / size / radius / color 变量名（generator 后续按名核对）
-4. 记下 frame 宽（px）+ 目标设备点宽 → 算**设计基准倍率**（frame_px / 设备点宽；多数 @1x = 1）写进契约，供 generator px→pt 换算
-5. **切图（硬约束，figma UI 任务必做）**：按 `~/.claude/skills/figma-asset-export/SKILL.md`，逐一扫设计稿里**每个非纯文本图形**（图标 / 插画 / logo / 多色或自定义 glyph），从 step 2 的资源 URL 下载到 `.specs/<slug>/assets/` + 登进 §4「切图清单」（语义名 + 用途 + render mode/tint 建议）。
+1. **冻视觉 PNG** ← `mcp__plugin_figma_figma__get_screenshot({nodeId: "<fileKey>:<nodeId>", maxDimension: 4096})` → 拿截图 URL → Bash `curl -sL "<screenshot_url>" -o .specs/<slug>/assets/figma-<nodeId-safe>.png` 下载（`<nodeId-safe>` = nodeId 把 `:` 替换成 `-`）。这张冻结 PNG 是**视觉真相**（颜色 / 阴影 / 渐变）。**用 4096**：细节低清看不出 = 验收漏判
+2. **算设计基准倍率** ← 记下 frame 宽（px）+ 目标设备点宽 → `倍率 = frame_px / 设备点宽`（多数 @1x = 1）。烘焙时只应用**一次**，冻进 HTML 的数全是 pt
+3. **取结构骨架** ← `mcp__plugin_figma_figma__get_design_context({nodeId: "<fileKey>:<nodeId>", forceCode: true})` → 拿 Auto Layout 结构 / 对齐 / sizing / 图层层级 + 参考 HTML/CSS 骨架 + **资源下载 URL**（切图用）。`forceCode: true` 防大节点退化成只回 metadata；**保留结构、不信里面的数值**（被框架刻度吸附过）。仍稀疏（仅 metadata / 无资源 URL / 只剩标签没样式）→ 按 `figma-precise-extract`「大节点退化兜底」逐一级子节点分级重抓（救回结构 + 资源 URL）、合并时按 metadata 子节点相对根 x/y 偏移，**别直接手写骨架**（救不回切图资源 URL）
+4. **取精确数** ← `get_metadata`（逐图标 / 关键控件精确 w/h/x/y，唯一精确像素源）+ `get_variable_defs`（spacing / size / radius / color token 值）；用它们**覆盖** step 3 骨架里被吸附的数值，按倍率换成 pt
+5. **烘焙冻结 HTML** → 把 step 3 结构 + step 4 精确数写成自包含 HTML/CSS，`Write` 到 `.specs/<slug>/assets/figma-<nodeId-safe>.html`：数值全 pt、token 用值 + 注释标名。generator Read 这一份即拿全部测量真相
+6. **切图（硬约束，figma UI 任务必做）**：按 `~/.claude/skills/figma-asset-export/SKILL.md`，逐一扫设计稿里**每个非纯文本图形**（图标 / 插画 / logo / 多色或自定义 glyph），从 step 3 的资源 URL 下载到 `.specs/<slug>/assets/` + 登进 §4「切图清单」（语义名 + 用途 + render mode/tint 建议）。
    - **拿不准某图标能否用 SF Symbol / 设计系统还原 → 默认切图**（切一次比一轮「图标不对」返工便宜）。
    - 完整性自检：设计稿明显有非文本图形但「切图清单」为空 = 你漏切了，回头补。清单是 generator 的图标资源真相源 —— 漏切会逼 generator 用 SF Symbol 凑形凑色（历史「图标不对」高发根因）。
 
 ##### c. 整理「设计契约快照」段写进 spec §4（轻量契约）
 
-按 spec-template「设计契约快照」段填 §4（**轻量契约、不是逐元素测量表**）：
+按 spec-template「设计契约快照」段填 §4（**轻量契约、不内联逐元素测量表**）：
 
-- **设计基准倍率**（frame_px / 目标设备点宽；多数 @1x = 1）—— generator 据此把 figma px 换成 iOS pt
+- **冻结工件路径**：`figma-<nodeId-safe>.png`（视觉真相）+ `figma-<nodeId-safe>.html`（measurement-grade、含精确 pt）—— generator Read 这两份
+- **设计基准倍率**（frame_px / 目标设备点宽；多数 @1x = 1）—— 烘焙 HTML 时已应用一次、HTML 里全是 pt；§4 记录倍率供审计
 - Frame 尺寸 / Auto Layout 结构摘要 / 关键 typography / 关键 colors（优先 variable_defs token 名）/ 图层结构 / 设计 token 列表 / 对齐严格度
-- 切图清单（b.5 导出的资源文件路径）
+- 切图清单（b 步导出的资源文件路径）
 
-逐元素精确 px→pt 由 generator 实现时拉 get_metadata + get_variable_defs 取（见 generator Step 4.5）；planner 这里只给视觉快照 + 结构 + token 名 + 倍率 + 严格度 + 切图资源。
+逐元素精确测量已烘焙进 HTML 工件、**不写 §4**；planner 这里只给工件路径 + 结构 + token 名 + 倍率 + 严格度 + 切图资源。
 
 ##### d. 抓失败兜底（b 步任一 figma MCP 调用失败时）
 
 1. 记下错误信息一句话（token 失效 / 权限不足 / 网络断 / 渲染超时 / 其他）
 2. spec §4 该行参考稿后追加 `（figma 抓取失败：<错误一句话>）`
-3. spec §4「设计契约快照」段写：`figma 抓取失败：<原因>；generator 实现前需 planner 重抓 / 用户手动补 .specs/<slug>/assets/figma-*.png`
+3. spec §4「设计契约快照」段写：`figma 抓取失败：<原因>；generator 实现前需 planner 重抓 + 重烘焙 / 用户手动补 .specs/<slug>/assets/figma-*.png + figma-*.html`
 4. §7 加一条 OPEN risk：`figma-fetch-failed-<nodeId>`：`figma MCP 抓取 <nodeId> 失败：<错误>。用户需决定：补 URL 重抓 / 手动 export 设计稿到 .specs/<slug>/assets/ / 按口述实现`
 5. 返回主 agent 的结论里**显式提一句**：「figma 抓取部分失败、已加 risk，请用户审 spec 时拍板」
 
@@ -165,16 +167,17 @@ spec §4 默认填 `strict`（图标大小 / 间距 / 控件样式 / 颜色 / �
 
 ##### g. figma MCP 工具调用边界
 
-- ✅ **必调** `get_metadata`（a 步）：验证 URL/node 存在性，防瞎填 file id（历史事故：`qgqoAR3JBMXCOvnKBeOXjx` 写成 `RwPdLzxRfpqhYAFIVqbTOA` 的 fab id 错误）；顺手记 frame 宽算设计基准倍率
-- ✅ **必调** `get_screenshot`（b 步）：抓冻结 PNG 到 `.specs/<slug>/assets/`（验收视觉真相）
-- ✅ **必调** `get_design_context` + `get_variable_defs`（b 步）：拿结构摘要 + token 名 + 资源下载 URL，写进 §4 轻量契约（不抄近似数）
-- ✅ generator 有只读 figma（get_metadata + get_variable_defs）：实现时自己拉逐元素精确 px→pt，不靠 planner 预先量
-- ❌ generator 不 RE-FREEZE 视觉快照 / 不重新切图 —— PNG + 切图资源是 planner 写域；figma 设计实现期间更新走二次调用（见下方）
-- 取数 + px→pt 详见 `~/.claude/skills/figma-precise-extract/SKILL.md`；切图详见 `~/.claude/skills/figma-asset-export/SKILL.md`
+- ✅ **必调** `get_metadata`（a 步验存在性 + b 步烘焙）：a 步验证 URL/node 存在防瞎填 file id（历史事故：`qgqoAR3JBMXCOvnKBeOXjx` 写成 `RwPdLzxRfpqhYAFIVqbTOA` 的 fab id 错误）+ 记 frame 宽算倍率；b 步拉逐元素精确 px 尺寸烘焙进 HTML（唯一精确像素源）
+- ✅ **必调** `get_screenshot`（b 步）：抓冻结 PNG 到 `.specs/<slug>/assets/`（视觉真相）
+- ✅ **必调** `get_design_context({forceCode: true})`（b 步）：拿结构骨架 + 参考 HTML/CSS + 资源下载 URL；**数值被框架刻度吸附过、烘焙时用 metadata/token 覆盖**
+- ✅ **必调** `get_variable_defs`（b 步）：拿 token 值烘焙进 HTML + token 名写进 §4
+- ✅ **烘焙** `figma-<nodeId-safe>.html`（b 步）：measurement-grade、数值全 pt，generator Read 取数
+- ❌ generator 不 RE-FREEZE PNG / 不 RE-BAKE HTML / 不重新切图 / 不 live 拉测量 —— PNG + HTML + 切图资源是 planner 写域，generator 只 Read；figma 设计实现期间更新走二次调用（见下方）
+- 烘焙取数详见 `~/.claude/skills/figma-precise-extract/SKILL.md`；切图详见 `~/.claude/skills/figma-asset-export/SKILL.md`
 
 ##### h. 二次调用时的 figma 更新走 AMD
 
-实现期间用户给新 figma URL / 替换现有 URL → 场景 A 路由：判别为「实现层指令」走 §9 AMD（[planner 写]）+ 重跑本 Step b 步抓新快照覆写到 `.specs/<slug>/assets/`；同步在 AMD 子文件「影响范围」段记 `更新 .specs/<slug>/assets/figma-<nodeId-safe>.png + spec §4「设计契约快照」`，让 generator 下一轮 Read 时看到新快照。
+实现期间用户给新 figma URL / 替换现有 URL → 场景 A 路由：判别为「实现层指令」走 §9 AMD（[planner 写]）+ 重跑本 Step b 步抓新快照 + 重烘焙 HTML 覆写到 `.specs/<slug>/assets/`；同步在 AMD 子文件「影响范围」段记 `更新 .specs/<slug>/assets/figma-<nodeId-safe>.png + figma-<nodeId-safe>.html + spec §4「设计契约快照」`，让 generator 下一轮 Read 时看到新工件。
 
 ##### 不触发情况
 

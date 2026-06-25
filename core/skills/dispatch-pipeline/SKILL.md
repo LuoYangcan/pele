@@ -54,6 +54,17 @@ verdict==FAIL 路径（外部 generator 实现）：主 agent 停下 AskUserQues
 - `/openpr` / `/review` / `/pr-review` 等 slash command 内部流程
 - 用户**明确**说「这个简单的你直接改」「跳过 planner」「不用 executor」—— 必须用户**显式**说才能跳；主 agent 不能自己判断「这个简单」
 
+## Codex 工具映射（Desktop / CLI）
+
+Codex（Desktop / CLI）里没有字面量 `Skill(...)` / `Agent(...)` / `AskUserQuestion` 工具时，按下面映射执行，不把工具名差异当作跳过 pipeline 的理由：
+
+- `Skill(dispatch-pipeline)`：Read 本 `SKILL.md` 全文；后续按本 SOP 执行。
+- `Agent({ subagent_type: "<role>", prompt: "..." })`：优先用当前会话已暴露的 subagent 工具；若有 `multi_agent_v1.spawn_agent` 就调 `multi_agent_v1.spawn_agent({ agent_type: "<role>", message: "..." })`；若工具尚未加载且有 `tool_search`，先搜 `multi-agent` 再调。`<role>` 取 `planner` / `generator` / `executor` / `ui-reviewer`。
+- `run_in_background: true` / 并行 Agent：同一轮发起多个 `spawn_agent`；需要结果时用 `multi_agent_v1.wait_agent` 等待。
+- `AskUserQuestion`：若有 `request_user_input` / `AskUserQuestion` 等用户输入工具就用；否则在主对话直接停下问用户，等明确回复后再进入下一阶段。
+- 写代码请求命中本 skill 时，视作用户已显式授权本 pipeline 使用 planner / generator / executor delegation；除非用户明确 bypass（「你直接改」「跳过 planner」「不用 executor」）。
+- 无任何等价 subagent 工具时：不要主 agent 自己写代码；报告「当前 Codex 会话没有 multi-agent/subagent 工具」，让用户选择直接改 / 暂停 / 换可用会话。
+
 ## 主 agent 的具体调度动作
 
 ### 阶段 0: 前置

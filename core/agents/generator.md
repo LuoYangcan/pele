@@ -203,22 +203,23 @@ executor 在 Step 5 用 review 模式 invoke 同一个 skill —— 你写时多
 
 - 本轮 diff 改了 SwiftUI / UIKit view 文件 / 图片资源 / 样式 / 布局（验证：`git diff --name-only "$BASE" -- '*.swift' | xargs grep -l -E 'View|body:|UIView|UIViewController' 2>/dev/null` 非空，或改了 `.imageset` / `Assets.xcassets`）
 - 主索引 §4「Figma 设计稿引用」段有 Figma URL（不是「无 Figma 设计稿」占位）
-- planner 已经把设计快照冻结到 `.specs/<slug>/assets/figma-*.png` + spec §4「设计契约快照」段
+- planner 已经把设计快照冻结到 `.specs/<slug>/assets/figma-*.png`（视觉真相）+ `figma-*.html`（measurement-grade 测量真相）+ spec §4「设计契约快照」段
 
 **跳过条件**（满足任一即跳过、并在返回里记 `figma_diff_status: <对应值>`）：
 
 - 非 iOS UI 改动 → `figma_diff_status: not_applicable`
 - 主索引 §4 写「无 Figma 设计稿」 → `figma_diff_status: no_figma`
 - `find-ios-build-artifact` skill 没拿到 `SIMULATOR_UDID`（cwd 不在 worktree / `worktree-sim.sh` 报错）→ `figma_diff_status: skipped:simulator-provision-failed` + 把脚本 stderr 一句话记到返回里
-- `.specs/<slug>/assets/` 目录不存在或没有 figma-*.png（planner 抓 figma 失败 / 用户没补图）→ `figma_diff_status: skipped:figma-assets-missing` + 把缺失情况一句话记到返回里。缺的是**冻结视觉快照**（视觉对照的真相源）。你有只读 figma（get_metadata / get_variable_defs）只用于拉精确数值，**不要**用它重建视觉快照 —— PNG 冻结是 planner 写域，需要触发 Step 4 不确定流程让 planner 二次调用重抓
+- `.specs/<slug>/assets/` 目录不存在 / 没有 figma-*.png（视觉真相）/ 没有 figma-*.html（测量真相）（planner 抓 figma 失败 / 用户没补）→ `figma_diff_status: skipped:figma-assets-missing` + 把缺失情况一句话记到返回里。缺的是 planner 冻结工件（视觉 + 测量真相源）。**不要**用只读 figma 自己重建 PNG / 重烘焙 HTML —— 冻结工件是 planner 写域，需要触发 Step 4 不确定流程让 planner 二次调用重抓 + 重烘焙
 - 主索引 §6 硬约束 / §7 OPEN risk 子文件里出现「跳过 figma 对比」「skip figma diff」字样 → `figma_diff_status: skipped:spec-opt-out`
 
 **流程**（不跳过时）：
 
-1. **Read 冻结 PNG（视觉真相）+ 轻量契约 + 拉精确数**：
-   - 对每个本轮覆盖的 nodeId，Read `.specs/<slug>/assets/figma-<nodeId-safe>.png`（`<nodeId-safe>` = nodeId 把 `:` 替换成 `-`）—— 验收视觉真相，Claude multimodal 直接看图
-   - Read 主索引 §4「设计契约快照」段拿结构 / token 名 / **设计基准倍率** / 严格度
-   - **拉逐元素精确数**（图标大小 / 间距 / 控件尺寸的数值真相源）：按 `Skill(figma-precise-extract)` 约定，对冻结的 nodeId 调 `get_metadata`（精确 px 几何）+ `get_variable_defs`（token 值），**px→pt 按设计基准倍率换算**（多数 @1x = 1，px 即 pt），对着冻结 PNG 核对——不凭截图目测、不凭代码里写的值反推。冻结 PNG 与实时数据冲突以 PNG 为准（figma 漂移 → 触发 Step 4 让 planner 重冻）。逐元素数值落进本 step 的 diff 报告，不写 §4
+1. **Read 冻结 HTML（测量真相）+ 冻结 PNG（视觉真相）+ 轻量契约**：
+   - **Read 冻结 HTML 拿测量值**（图标大小 / 间距 / 控件尺寸的数值真相源）：对每个本轮覆盖的 nodeId，Read `.specs/<slug>/assets/figma-<nodeId-safe>.html`（`<nodeId-safe>` = nodeId 把 `:` 替换成 `-`）—— planner 已把精确数值烘焙成 **pt**（无需再 px→pt 换算、无需 live 拉 figma），直接据此写布局 / 尺寸 / 间距 / 圆角代码
+   - Read `.specs/<slug>/assets/figma-<nodeId-safe>.png` —— 验收视觉真相（颜色 / 阴影 / 渐变），Claude multimodal 直接看图
+   - Read 主索引 §4「设计契约快照」段拿 token 名 / 严格度 / 工件路径
+   - HTML 缺失 / 看起来过期（与 PNG 明显不符）→ **不要**自己 live 拉 figma 补 —— 触发 Step 4 不确定流程让 planner 重烘焙
 
 2. **拿实拍截图** —— 按主索引 §4「mobile-mcp 冒烟」条目逐条跑：
    - 先 `Skill(find-ios-build-artifact)` 拿 `APP_PATH` / `BUNDLE_ID` / `SIMULATOR_UDID`（skill 内部调 `worktree-sim.sh ensure` lazy create + boot per-worktree `sim-<slug>`，并行 session 不抢 sim）。`SIMULATOR_UDID` 为空 → 退跳过条件 `skipped:simulator-provision-failed`、不继续
@@ -232,16 +233,16 @@ executor 在 Step 5 用 review 模式 invoke 同一个 skill —— 你写时多
 
 3. **视觉对照**（按 §4 严格度执行；这是当前 step 的核心、不要省）：
 
-   🔒 **硬约束**：本步骤的**唯一**视觉真相源是 PNG 截图本身。**必须**用 `Read` 工具把 `.specs/<slug>/assets/figma-<nodeId-safe>.png`（planner 冻结的设计稿）和 `.reviews/<slug>-real-<场景>-*.png`（mobile-mcp 实拍）**同时打开** —— 你看到的像素就是验收依据。不准：
+   🔒 **硬约束**：**视觉真相源是冻结 PNG、测量真相源是冻结 HTML**。**必须**用 `Read` 工具把 `.specs/<slug>/assets/figma-<nodeId-safe>.png`（planner 冻结的设计稿）和 `.reviews/<slug>-real-<场景>-*.png`（mobile-mcp 实拍）**同时打开**做视觉对照，尺寸 / 间距偏差对照冻结 HTML 的 pt 值。不准：
    - 跳过 `Read` PNG、只看 `mobile_list_elements_on_screen` 输出的 JSON 就下结论 → 元素树不含颜色 / 渲染尺寸 / 字号 / 阴影
-   - 跳过 `Read` PNG、只看自己代码里写的 `.padding(16)` / `.font(.system(size: 14))` 就推断"应该对" → 代码里写的值不等于设计稿值
-   - 跳过 `Read` PNG、只看 §4「设计契约快照」文本就下结论 → 文本摘要不等于像素（契约快照是辅助核对，不是替代视觉对照）
+   - 跳过 `Read` PNG、只看自己代码里写的 `.padding(16)` / `.font(.system(size: 14))` 就推断"应该对" → 代码里写的值不等于冻结 HTML 的 pt 值
+   - 凭只读 figma live 拉数代替 Read 冻结 HTML → 冻结工件才是本轮契约（live figma 可能已漂移）
 
-   Read 完两张 PNG 后，按严格度过 checklist（参考 §4「设计契约快照」段的关键 frame / spacing / typography / colors 数值核对）：
+   Read 完两张 PNG 后，按严格度过 checklist（尺寸 / 间距参考冻结 HTML 的 pt 值，typography / colors token 参考 §4 契约）：
 
    - 严格度 `strict` 时**逐项**过、有 diff 就记下来：
      - **图标大小**（看 PNG）：实拍里图标占的像素面积 vs 设计稿里图标占的像素面积，是否成同比例（同 @scale 下应 1:1）
-     - **间距**（看 PNG + 对照 §4 契约）：padding / margin / VStack spacing / HStack spacing / safe area inset —— 用像素尺数对，参考 §4 契约里的具体 pt 值，目测 ≤2pt 误差
+     - **间距**（看 PNG + 对照冻结 HTML）：padding / margin / VStack spacing / HStack spacing / safe area inset —— 用像素尺数对，参考冻结 HTML 的 pt 值，目测 ≤2pt 误差
      - **控件样式**（看 PNG）：圆角 / 描边宽度 / 阴影 offset & blur / 背景色 / 渐变 / 模糊
      - **颜色**（看 PNG + 对照 §4 契约 token 名）：先肉眼看 PNG 颜色是否一致；再核对代码里走的 <DesignSystemPackage> / Color token 名是否与 §4 契约「设计 variables」列的 token 名一致。**不能硬编码十六进制**
      - **字号 / 字重 / 行高**（看 PNG + 对照 §4 契约 typography）：实拍 vs 设计稿同位置文字的视觉高度、笔画粗细、行间是否匹配
@@ -262,7 +263,7 @@ executor 在 Step 5 用 review 模式 invoke 同一个 skill —— 你写时多
    - 2 次还 fail → 在返回里记 `figma_diff_status: needs_user_review` + 把每个未通过的场景列出来（`fail_scenarios: [<场景名: 偏差描述>...]`）+ diff 报告路径，让主 agent 报给用户拍板（是不是主索引 §4 严格度要降级、还是用户拍板这次接受妥协 → planner 走 §9 AMD 记下原因）
    - 全部场景 pass → 进 Step 5；返回里记 `figma_diff_status: passed` + `figma_diff_reports: [.reviews/<slug>-figma-diff-*.md]`
 
-**与 planner / ui-reviewer 关系**：本 Step 4.5 是 generator 自测：Read planner 冻结的 PNG（视觉真相）+ §4 轻量契约，并用只读 figma（get_metadata / get_variable_defs）拉逐元素精确 px→pt；**不 RE-FREEZE 视觉快照 / 不重新切图**（PNG + 切图资源是 planner 写域）。Figma 设计在实现期间更新（视觉变了）→ 触发 Step 4「不确定流程」让 planner 二次调用重抓快照 + append AMD。用户显式触发 UI 验收时 `ui-reviewer` 跑独立二次验收（按 `~/.claude/skills/review-mobile-ui/SKILL.md`），同样基于 spec assets。executor **不**跑 mobile-mcp 验收。
+**与 planner / ui-reviewer 关系**：本 Step 4.5 是 generator 自测：Read planner 冻结的 HTML（测量真相）+ PNG（视觉真相）+ §4 轻量契约；**不 RE-FREEZE PNG / 不 RE-BAKE HTML / 不重新切图 / 不 live 拉测量**（冻结工件 + 切图资源是 planner 写域）。Figma 设计在实现期间更新（视觉变了）→ 触发 Step 4「不确定流程」让 planner 二次调用重抓 + 重烘焙 + append AMD。用户显式触发 UI 验收时 `ui-reviewer` 跑独立二次验收（按 `~/.claude/skills/review-mobile-ui/SKILL.md`），同样基于 spec assets。executor **不**跑 mobile-mcp 验收。
 
 ### Step 4.6: Dead-code 自检（review 前清理本轮自产的僵尸）
 

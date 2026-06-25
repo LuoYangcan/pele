@@ -1,6 +1,6 @@
 ---
 name: run-device
-description: Build the iOS app for a connected real iPhone (device-destination build override), then install + launch it via `devicectl`. Use when the user asks to "装真机", "真机跑一眼", "install on device", "run on device / on my iPhone", "部署到手机", "真机调试", "put it on my phone". Auto-picks the single paired device; with >1 paired you pass the device id. Skip for the simulator (use `open-sim`), macOS, or release / archive.
+description: Build the iOS app for a connected real iPhone (`<IOS_BUILD_DESTINATION>` device build), then install + launch it via `devicectl`. Use when the user asks to "装真机", "真机跑一眼", "install on device", "run on device / on my iPhone", "部署到手机", "真机调试", "put it on my phone". Auto-picks the single paired device; with >1 paired you pass the device id. Skip for the simulator (use `open-sim`), macOS, or release / archive.
 ---
 
 # run-device
@@ -17,7 +17,7 @@ description: Build the iOS app for a connected real iPhone (device-destination b
 ## 前置假设（真机特有）
 
 - iPhone **插上线 + 解锁 + 已信任此电脑**，且 paired（`xcrun devicectl list devices` 能看到）
-- 签名已在项目的 signing 配置（如 `Local.xcconfig` 的 `DEVELOPMENT_TEAM` + Automatic）配好，真机 build 不用额外配置
+- 签名已在仓库 `Local.xcconfig` 配好（`DEVELOPMENT_TEAM` + Automatic），真机 build 不用额外配置
 - cwd 在 iOS 仓库（含 worktree）里某层，向上能找到 `justfile`
 
 ## 执行
@@ -26,7 +26,7 @@ description: Build the iOS app for a connected real iPhone (device-destination b
 bash ~/.claude/scripts/run-ios.sh --target device
 ```
 
-脚本会：自动选**唯一 paired 设备**的 CoreDevice `identifier`（`devicectl list devices` 的 `identifier` UUID，如 `A1B2C3D4-...`）→ 用 device destination 跑你的 iOS build 命令（如 `<IOS_BUILD_DESTINATION>="platform=iOS,id=<id>" just build-ios`）→ 定位 `Debug-iphoneos/*.app` → 从产物 `Info.plist` 读 bundle id → `devicectl device install app` + `process launch` → 打印 `----- run-ios result -----` 结果块。
+脚本会：自动选**唯一 paired 设备**的 CoreDevice `identifier`（`devicectl list devices` 的 `identifier` UUID，如 `A1B2C3D4-...`）→ `<IOS_BUILD_DESTINATION>="platform=iOS,id=<id>" just build-ios` → 定位 `Debug-iphoneos/*.app` → 从产物 `Info.plist` 读 bundle id → `devicectl device install app` + `process launch` → 打印 `----- run-ios result -----` 结果块。
 
 - 接了**多台** paired 设备 → 脚本报错列出候选，让用户挑，再传 id：
   ```bash
@@ -56,5 +56,5 @@ bash ~/.claude/scripts/run-ios.sh --target device
 ## 不做的事
 
 - ❌ 不跑 `just generate` · 不切 scheme · 不碰模拟器（sim 走 `open-sim`）
-- ❌ 不配签名 / 不处理 provisioning（假设项目 signing 配置已就绪）
+- ❌ 不配签名 / 不处理 provisioning（假设 `Local.xcconfig` 已就绪）
 - ❌ 不在用户没显式要求时跳过 build（默认每次 build）

@@ -19,20 +19,58 @@ if [[ "$cwd" != *"/.worktrees/"* ]]; then
   exit 0
 fi
 
-# 提取 slug：cwd 形如 .../.worktrees/<slug> 或 .../.worktrees/<slug>/...
-# 取 .worktrees/ 后面、第一个 / 之前的部分
-rest="${cwd#*/.worktrees/}"
-slug="${rest%%/*}"
-if [[ -z "$slug" ]]; then
-  exit 0
+# 找 worktree 根 + slug。
+# 优先用 git 的真实 worktree 根（`git rev-parse --show-toplevel`）—— 这样对**嵌套** worktree
+# （形如 .../.worktrees/<group>/<cell>，例如 bench 的 .worktrees/bench/<cell-rid>）也能正确取到
+# 实际 worktree 根，而不是错误地把第一段 <group> 当 slug。
+# 兜底：拿不到 git toplevel（非 git 目录等）时，退回旧的「.worktrees/ 后第一段」字符串解析。
+wroot=""
+if command -v git >/dev/null 2>&1; then
+  top="$(git -C "$cwd" rev-parse --show-toplevel 2>/dev/null || true)"
+  # 只有当 git 根确实落在某个 .worktrees/ 下时才采用它（避免主仓库根被当成 worktree）
+  if [[ -n "$top" && "$top" == *"/.worktrees/"* ]]; then
+    wroot="$top"
+  fi
+fi
+if [[ -z "$wroot" ]]; then
+  # fallback：旧逻辑，取 .worktrees/ 后第一段（对扁平 worktree 仍正确）
+  rest="${cwd#*/.worktrees/}"
+  first="${rest%%/*}"
+  [[ -z "$first" ]] && exit 0
+  wroot="${cwd%%/.worktrees/*}/.worktrees/$first"
 fi
 
-# 找 worktree 根
-wroot="${cwd%%/.worktrees/*}/.worktrees/$slug"
+slug="$(basename "$wroot")"
+[[ -z "$slug" ]] && exit 0
+
 spec_md="$wroot/.specs/$slug.md"
 spec_skip="$wroot/.specs/$slug.skip"
 
-# spec 或 skip 任一存在 → 放行
+# 豁免: 如果本次 Edit/Write 的目标就是 spec 或 skip 文件本身 → 放行
+# 这是 planner 第一次创建 spec 的场景，hook 不应该卡 planner 自己产物
+if command -v jq >/dev/null 2>&1; then
+  target_path="$(printf '%s' "$payload" | jq -r '.tool_input.file_path // empty' 2>/dev/null || true)"
+  if [[ -n "$target_path" ]]; then
+    # 相对路径前缀加 cwd 规范化
+    if [[ "$target_path" != /* ]]; then
+      target_path="$cwd/$target_path"
+    fi
+    if [[ "$target_path" == "$spec_md" || "$target_path" == "$spec_skip" ]]; then
+      exit 0
+    fi
+  fi
+fi
+
+# 子文件豁免：目标在 .specs/<slug>/{tasks,risks,amendments}/ 子目录里 → 放行
+# planner / generator 写 task-N.md / risk-N.md / AMD-N.md 子文件时主索引可能还未持久化（极少数反序情况兜底）
+spec_subdir="$wroot/.specs/$slug/"
+if command -v jq >/dev/null 2>&1; then
+  if [[ -n "$target_path" && "$target_path" == "$spec_subdir"* ]]; then
+    exit 0
+  fi
+fi
+
+# spec 主索引 或 skip 任一存在 → 放行
 if [[ -f "$spec_md" || -f "$spec_skip" ]]; then
   exit 0
 fi

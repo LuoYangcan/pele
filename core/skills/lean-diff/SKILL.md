@@ -1,10 +1,6 @@
 ---
 name: lean-diff
-description: >
-  Single source of truth for lean-diff write and review judgment.
-  Covers comment noise, patchwork bloat, over-abstraction, and defensive code patterns.
-  Applies in write mode before edits and in review mode when tagging issues.
-  Skip typo, format, rename, comment-only doc, and lint-only diffs.
+description: Lean-diff judgment standard covering comment noise, patchwork bloat, over-abstraction, and defensive code patterns. Use in write mode before edits and in review mode when tagging issues. Skip typo, format, rename, comment-only doc, and lint-only diffs.
 ---
 
 # lean-diff

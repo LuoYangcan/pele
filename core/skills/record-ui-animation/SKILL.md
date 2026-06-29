@@ -1,6 +1,6 @@
 ---
 name: record-ui-animation
-description: Record an iOS / Android Simulator screen, then extract evenly-spaced keyframe PNGs (default 10 frames) that an agent can Read to visually inspect motion a single screenshot can't capture. Use whenever a UI verification case or user request mentions "动画 / animation / 过渡 / transition / 飞行 / fly / morph / 缩放 / scale / 淡入淡出 / fade / 滑出 / dismiss / 弹出 / 录屏" — even if the user doesn't explicitly say "record". The skill ONLY captures evidence (recording + frame extraction) — caller drives the actual animation trigger (tap / type / swipe), and caller / agent reads the frames to judge. Skip for static UI (single screenshot is enough), pure logic verification, non-Simulator targets (real device / macOS app).
+description: Capture iOS / Android Simulator motion as keyframe PNGs an agent can Read to inspect animation a single screenshot can't. Use whenever a UI verification case or user request mentions "动画 / animation / 过渡 / transition / 飞行 / fly / morph / 缩放 / scale / 淡入淡出 / fade / 滑出 / dismiss / 弹出 / 录屏" — even if the user doesn't explicitly say "record". Skip for static UI (single screenshot is enough), pure logic verification, non-Simulator targets (real device / macOS app).
 ---
 
 # record-ui-animation

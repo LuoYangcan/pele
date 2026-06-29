@@ -1,6 +1,6 @@
 ---
 name: use-worktree
-description: 新话题切换时进 git worktree 物理隔离，让每个需求独立从干净的 origin/dev 起步、互不干扰。触发：用户切到新话题（"新任务 / 另一个 / 接下来做 X / 开始搞 Y / 下一个需求 / 现在改 Z"等切话题信号）且本轮要写代码（会落地 Edit / Write / NotebookEdit），在第一次 Edit 前建 worktree。SOP：git fetch origin dev → 决定分支名 `<type>/<scope>-<slug>` → `git worktree add .worktrees/<slug> -b <branch> origin/dev` → `EnterWorktree(path=.worktrees/<slug>)` → 复制 gitignored 本地配置（Local.xcconfig / .env.local / 凭证）→ 跑项目初始化（生成 xcodeproj / npm install / build）→ cp 锁文件（Package.resolved / yarn.lock）。IDE 默认不自动打开，等用户/agent 明确要进 Xcode 时再 open。**不要**用 `EnterWorktree(name=...)`——会从当前 HEAD 起步、继承前一需求的 WIP。不触发：延续当前任务（修 bug / 调样式 / 基于同一需求追加 / 来回迭代）/ 纯问答 / 读代码 / 查状态 / 改 meta 配置（rule / memory / hook / settings）/ 当前已经在 .worktrees/ 里。拿不准是不是切话题时先问用户、别自作主张建 worktree。
+description: 新话题切换时进 git worktree 物理隔离，让每个需求独立从干净的 origin/dev 起步、互不干扰。触发：用户切到新话题（"新任务 / 另一个 / 接下来做 X / 开始搞 Y / 下一个需求 / 现在改 Z"等切话题信号）且本轮要写代码（会落地 Edit / Write / NotebookEdit），在第一次 Edit 前建 worktree。不触发：延续当前任务（修 bug / 调样式 / 基于同一需求追加 / 来回迭代）/ 纯问答 / 读代码 / 查状态 / 改 meta 配置（rule / memory / hook / settings）/ 当前已经在 .worktrees/ 里。拿不准是不是切话题时先问用户、别自作主张建 worktree。
 ---
 
 # 新话题进 git worktree 隔离

@@ -1,6 +1,6 @@
 ---
 name: dead-code
-description: Scan recent code changes for "zombie code" — newly-added or modified symbols that no caller references. Triggered by user invocation when an agent has been iterating heavily on the codebase and may have left orphan helpers, types, files, or enum cases behind. Scope defaults to `dev...HEAD` plus uncommitted changes (or `main...HEAD` — adapt to the project's main branch). Uses Periphery (preferred) and falls back to LSP `findReferences` + grep when Periphery is missing. Reports findings as a markdown table with confidence tiers and lets the user pick what to delete — never auto-deletes. Use when the user says "扫一下僵尸代码 / clean dead code / find unused / 检查是不是有没人调的方法 / 看看这次改动有没有遗弃代码", and especially after a generator subagent finishes a large iteration. Skip when there are no Swift changes in the current diff, or when the user is mid-implementation and explicitly said "稍后再清理".
+description: Scan recent code changes for "zombie code" — newly-added or modified symbols (helpers, types, files, enum cases) that no caller references. Use when the user says "扫一下僵尸代码 / clean dead code / find unused / 检查是不是有没人调的方法 / 看看这次改动有没有遗弃代码", and especially after a generator subagent finishes a large iteration. Skip when there are no Swift changes in the current diff, or when the user is mid-implementation and explicitly said "稍后再清理".
 ---
 
 # dead-code

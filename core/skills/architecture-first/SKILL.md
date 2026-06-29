@@ -1,6 +1,6 @@
 ---
 name: architecture-first
-description: Decision framework for picking the right design pattern, UI architecture, or system architecture before writing or reviewing code. Maps the symptom you're hitting (≥3 if/else branches piling up, boolean flag explosion, copy-pasted similar logic, state coupling, untestable side-effects, fat view-controller, "where should this code live") to a catalog covering GoF object patterns, UI architectures (MVC / MVVM / unidirectional flow), system architectures (Clean / Hexagonal / Functional Core), and anti-patterns. Use whenever about to add a new abstraction, pick a UI layer architecture, refactor a fat ViewController / Service / Manager, introduce state management, or review a diff that does any of the above. Skip for typos, single-line localized fixes, formatting / rename, or changes with only one obviously-correct shape.
+description: Decision framework for picking the right design pattern, UI architecture, or system architecture before writing or reviewing code. Use whenever hitting a symptom like ≥3 if/else branches piling up, boolean flag explosion, copy-pasted similar logic, state coupling, untestable side-effects, fat view-controller, or "where should this code live" — or when about to add a new abstraction, pick a UI layer architecture, refactor a fat ViewController / Service / Manager, introduce state management, or review a diff that does any of the above. Skip for typos, single-line localized fixes, formatting / rename, or changes with only one obviously-correct shape.
 ---
 
 # architecture-first

@@ -1,6 +1,6 @@
 ---
 name: open-sim
-description: Build the iOS app (`just build-ios`), then install + launch it on this worktree's dedicated session Simulator and bring the Simulator window to front. Use when the user asks to "打开模拟器", "open simulator", "跑模拟器", "在模拟器看效果", "编译跑一下", "build 跑模拟器", "launch on simulator". Builds every time (default) so what you see is the current code; targets the per-worktree `sim-<slug>` so parallel sessions don't fight over one device. Skip for macOS app; for a real iPhone use the `run-device` skill instead.
+description: Build the iOS app, then install + launch it on this worktree's Simulator and bring the window to front. Use when the user asks to "打开模拟器", "open simulator", "跑模拟器", "在模拟器看效果", "编译跑一下", "build 跑模拟器", "launch on simulator". Skip for macOS app; for a real iPhone use the `run-device` skill instead.
 ---
 
 # open-sim
@@ -17,7 +17,7 @@ description: Build the iOS app (`just build-ios`), then install + launch it on t
 ## 前置假设
 
 - cwd 在 iOS 仓库（含 worktree）里某层，向上能找到 `justfile`
-- 项目用 `just build-ios`（或等价 build 命令）build iOS Simulator Debug
+- 项目用 `just build-ios` build iOS Simulator Debug
 - worktree 场景：装到 per-worktree `sim-<slug>`；非 worktree：退回 booted / 最新可用 iPhone（脚本内部 fallback）
 
 ## 执行

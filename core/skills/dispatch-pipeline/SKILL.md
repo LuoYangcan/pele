@@ -1,6 +1,6 @@
 ---
 name: dispatch-pipeline
-description: 三段式调度 SOP（主 agent 不写代码、全程委派 subagent）。触发——用户提了写代码需求（新功能 / 修 bug / 改 UI / 重构 / 加 feature / 加测试等会落地 Edit/Write/NotebookEdit 的任务）；主 agent 检测到代码需求后第一步就 Skill 加载本 SOP，再调度 planner → 用户拍板 → generator → executor → PASS/FAIL（FAIL 自动重调 generator 最多 3 次）。含并行模式 2B/3B/3C/5、§8/§9 写权限边界、失败循环 4A/4B、review-fix 子循环、文档同步收尾。不触发——纯问答 / 解释代码 / 找文件 / 查状态 / 改 meta 配置（rule、memory、hook、settings）/ 用户明确 bypass（你直接改 / 跳过 planner）。
+description: 三段式调度 SOP（主 agent 不写代码、全程委派 subagent）。触发——用户提了写代码需求（新功能 / 修 bug / 改 UI / 重构 / 加 feature / 加测试等会落地 Edit/Write/NotebookEdit 的任务）。不触发——纯问答 / 解释代码 / 找文件 / 查状态 / 改 meta 配置（rule、memory、hook、settings）/ 用户明确 bypass（你直接改 / 跳过 planner）。
 ---
 
 # 三段式调度（主 agent 不写代码）

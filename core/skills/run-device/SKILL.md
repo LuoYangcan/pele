@@ -1,6 +1,6 @@
 ---
 name: run-device
-description: Build the iOS app for a connected real iPhone (`<IOS_BUILD_DESTINATION>` device build), then install + launch it via `devicectl`. Use when the user asks to "装真机", "真机跑一眼", "install on device", "run on device / on my iPhone", "部署到手机", "真机调试", "put it on my phone". Auto-picks the single paired device; with >1 paired you pass the device id. Skip for the simulator (use `open-sim`), macOS, or release / archive.
+description: Build, install, and launch the iOS app on a connected real iPhone. Use when the user asks to "装真机", "真机跑一眼", "install on device", "run on device / on my iPhone", "部署到手机", "真机调试", "put it on my phone". Skip for the simulator (use `open-sim`), macOS, or release / archive.
 ---
 
 # run-device

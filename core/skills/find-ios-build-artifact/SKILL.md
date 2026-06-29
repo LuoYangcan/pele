@@ -1,6 +1,6 @@
 ---
 name: find-ios-build-artifact
-description: Locate the just-built iOS Simulator `.app` bundle for a project + resolve the per-worktree Simulator UDID — output `APP_PATH` (absolute) + `BUNDLE_ID` + `SIMULATOR_UDID` so callers can `simctl install -d <udid>` / `simctl launch <udid>` / mobile-mcp tools (which take a `device` parameter). Walks up from cwd to find a `.xcworkspace`, runs `xcodebuild -showBuildSettings`, verifies the `.app` exists, then invokes `~/.claude/scripts/worktree-sim.sh ensure` to lazy-create + boot the worktree's dedicated sim. Use when an executor / open-sim / similar caller has just built iOS with `just build-ios` (or equivalent) and now needs the build artifact paths. Skip when the caller already knows all three values, when there's no `.xcworkspace` ancestor (project uses bare xcodeproj — caller must adapt), or when targeting macOS / device (this skill is iOS Simulator only).
+description: Locate the just-built iOS Simulator `.app` bundle and resolve the per-worktree Simulator UDID so callers can install/launch via simctl or mobile-mcp. Use when an executor / open-sim / similar caller has just built iOS with `just build-ios` (or equivalent) and now needs the build artifact paths. Skip when the caller already knows all three values, when there's no `.xcworkspace` ancestor (bare xcodeproj — caller must adapt), or when targeting macOS / device (iOS Simulator only).
 ---
 
 # find-ios-build-artifact

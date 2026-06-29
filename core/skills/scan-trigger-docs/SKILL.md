@@ -1,6 +1,6 @@
 ---
 name: scan-trigger-docs
-description: Scan project AGENTS.md / AGENTS.md for "trigger-on-touch" doc markers (`**改动以下任一范围前先读该文档**`) and Read full content of any docs whose touch ranges intersect this round's scope. Project AGENTS.md authors maintain these lists with hard-won counter-intuitive knowledge (onboarding resume paths, composer cross-window plumbing, channels QR sheet safeArea, iOS 18 liquid-glass fallback, etc.) — markdown links like `[docs/x.md](docs/x.md)` are NOT auto-injected by Codex (only `@docs/x.md` syntax recurses), so manual Read is the only path. Use this skill from any subagent (planner / generator / executor) before deciding scope, writing code, or judging review issues. Skip when the project has no AGENTS.md / AGENTS.md, or when the current round's touch range is provably outside every listed marker.
+description: Scan project AGENTS.md for "trigger-on-touch" doc markers (`**改动以下任一范围前先读该文档**`) and Read full content of any docs whose touch ranges intersect this round's scope. Use this skill from any subagent (planner / generator / executor) before deciding scope, writing code, or judging review issues. Skip when the project has no AGENTS.md, or when the current round's touch range is provably outside every listed marker.
 ---
 
 # scan-trigger-docs

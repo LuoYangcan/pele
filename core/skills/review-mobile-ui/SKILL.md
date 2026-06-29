@@ -1,7 +1,6 @@
 ---
 name: review-mobile-ui
-description: >-
-  iOS / Android Simulator UI 验收 SOP 真相源。把 spec 第 4 节「iOS UI 改动专项」用例分静态 / 动态两档跑：静态用 mobile-mcp `list_elements_on_screen` + `save_screenshot` 单次采样判间距 / frame / 对齐；动态 invoke record-ui-animation skill 录屏抽帧 + Read 判动画。所有 mobile-mcp 工具调用显式传 `device: <SIMULATOR_UDID>`，UDID 由 `find-ios-build-artifact` skill 经 `worktree-sim.sh ensure` 拿到的 per-worktree `sim-<slug>` —— 并行 session 各自有 sim 不抢占。包含 build artifact 定位、mcp 调用预算、降级路径、结构化结论字段。由 ui-reviewer subagent 调用；generator 的 figma diff 自测不走本 skill（自检 vs 验收两条路径）。Skip when：spec §4 无 iOS UI 改动专项 / 非 iOS Simulator 目标（真机 / macOS / watchOS）/ caller 没拿到 build artifact 路径。
+description: iOS / Android Simulator UI 验收 SOP 真相源。触发：spec 第 4 节有「iOS UI 改动专项」小节 + 至少 1 条 mobile-mcp 冒烟用例，且 ui-reviewer subagent 被调起（用户说「跑 UI 验收 / UI 走查 / review UI / 看下 UI」等关键词）。不触发：spec §4 无 iOS UI 改动专项 / 非 iOS Simulator 目标（真机 / macOS / watchOS / tvOS）/ caller 没拿到 build artifact 路径 / generator 的 figma diff 自测（走 generator 自检，不走本 skill）。
 ---
 
 # review-mobile-ui

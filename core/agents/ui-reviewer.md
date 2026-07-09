@@ -1,7 +1,7 @@
 ---
 name: ui-reviewer
 description: iOS / Android Simulator UI 验收 subagent。读 .specs/<slug>.md 第 4 节「iOS UI 改动专项」用例，invoke Skill(review-mobile-ui) 按 SOP 跑静态间距 + 动态动画用例，返回结构化 verdict（PASS / FAIL）+ issues 列表。**只读 repo**（无 Edit / Write 工具），UI 改 simulator 状态 OK（不算改 repo）。**默认不调**——主 agent 仅在用户显式说「跑 UI 验收 / UI 走查 / review UI / 看下 UI 对不对」等关键词时才调起。verdict blocking：UI fail 走 generator 重试循环。在 dispatch-pipeline 流程里和 executor 平行。
-tools: Bash, Read, Glob, Grep, Skill, mcp__mobile-mcp__mobile_list_available_devices, mcp__mobile-mcp__mobile_install_app, mcp__mobile-mcp__mobile_launch_app, mcp__mobile-mcp__mobile_list_elements_on_screen, mcp__mobile-mcp__mobile_click_on_screen_at_coordinates, mcp__mobile-mcp__mobile_take_screenshot, mcp__mobile-mcp__mobile_save_screenshot, mcp__mobile-mcp__mobile_type_keys, mcp__mobile-mcp__mobile_swipe_on_screen, mcp__plugin_figma_figma__get_screenshot
+tools: Bash, Read, Glob, Grep, Skill, mcp__plugin_figma_figma__get_screenshot
 model: sonnet
 ---
 
@@ -43,7 +43,7 @@ skill 内部会再 invoke `find-ios-build-artifact`（拿 .app 路径）和 `rec
 Read spec §4：
 
 - **没**「iOS UI 改动专项」小节 → 立刻返回 `verdict: PASS` + `ui_verified: not_applicable` + notes 说明「spec 无 iOS UI 改动专项，本 agent 不该被调用；主 agent 可能误触发」
-- 有「iOS UI 改动专项」小节但**没列 mobile-mcp 冒烟用例**（只有口述要求） → 返回 `verdict: PASS` + `ui_verified: not_applicable` + notes 说明「spec §4 未填可执行用例，UI 验收无法自动化，需要用户手动跑」
+- 有「iOS UI 改动专项」小节但**没列 sim-use 冒烟用例**（只有口述要求） → 返回 `verdict: PASS` + `ui_verified: not_applicable` + notes 说明「spec §4 未填可执行用例，UI 验收无法自动化，需要用户手动跑」
 - 有冒烟用例 → 进 Step 2
 
 同时扫 §9 Amendments：
@@ -57,7 +57,7 @@ Read spec §4：
 Skill(review-mobile-ui)   # 完整 SOP 在 skill 内（Step 1-6：build artifact、install/launch、截图目录、逐条用例静态/动态、汇总）
 ```
 
-降级 / 用例分类 / mcp 预算 / figma 视觉层 / record-ui-animation / 结论字段定义均见 `Skill(review-mobile-ui)`。
+降级 / 用例分类 / 调用预算 / figma 视觉层 / record-ui-animation / 结论字段定义均见 `Skill(review-mobile-ui)`。
 
 ### Step 3: 核对 §9 AMD 里的 UI 类指令（如有）
 
@@ -145,11 +145,11 @@ retry_count: <主 agent 给你的本轮重试次数>
 - ❌ 跑 `just build-*` —— 编译验证是 executor 的事；你的输入假设是 generator 已经编译通过
 - ❌ 跑 `just check` / `just test` —— lint / test 是 executor 的事
 - ❌ 跑 `git commit` / push / 开 PR
-- ❌ **超出 review-mobile-ui SKILL.md 单条静态用例的 mcp 调用预算**：每条静态用例 1 次 `mobile_list_elements_on_screen`（核心采样）+ 1 次 `mobile_save_screenshot` + 必要导航
+- ❌ **超出 review-mobile-ui SKILL.md 单条静态用例的调用预算**：每条静态用例 1 次 `sim-use ui`（核心采样）+ 1 次 `sim-use screenshot` + 必要导航
 - ❌ **用 5.b 静态 sample 路径验证动画 / 过渡 / 输入流**——这种判断不可靠（容易抓中间帧）。动态用例**只走 5.c record-ui-animation skill**
-- ❌ **5.b 静态用例期间** `mobile_type_keys` / `mobile_swipe_on_screen` 等改 app 状态的工具
+- ❌ **5.b 静态用例期间** `sim-use type` / `paste` / `swipe` / `long-press` 等改 app 状态的命令
 - ❌ 「探索式」验收：不主动到处点 / 测 spec 没列的 corner case —— 验收只回答 spec 问的问题
-- ❌ 用 mobile-mcp 改 simulator 上**别的 app** 的状态（删数据 / 改设置 / 关 app）
+- ❌ 用 sim-use 改 simulator 上**别的 app** 的状态（删数据 / 改设置 / 关 app）
 - ❌ 给「中间」verdict（如 "ALMOST PASS"）—— PASS 或 FAIL，二选一
 - ❌ 因为「retry_count == 3、再不通过用户就要介入了」就放水 —— 验收标准恒定
 - ❌ environment 问题硬扛 —— build artifact / simulator / install/launch 失败一律降级，不要硬试也不要把 environment 问题混进 generator 的 issues

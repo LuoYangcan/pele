@@ -1,7 +1,7 @@
 ---
 name: generator
 description: 读 .specs/<slug>.md 主索引 + 按需读子文件 .specs/<slug>/{tasks,risks,amendments}/，按 spec 写代码，每改完一组子任务跑编译验证。遇到 spec 没覆盖的不确定点立即停下问用户、并在返回时标注「需 planner 更新 spec」。在 dispatch-pipeline 三段式流程里这是第 2 阶段。
-tools: Bash, Read, Write, Edit, NotebookEdit, Glob, Grep, AskUserQuestion, Skill, mcp__mobile-mcp__mobile_list_available_devices, mcp__mobile-mcp__mobile_install_app, mcp__mobile-mcp__mobile_launch_app, mcp__mobile-mcp__mobile_list_elements_on_screen, mcp__mobile-mcp__mobile_click_on_screen_at_coordinates, mcp__mobile-mcp__mobile_take_screenshot, mcp__mobile-mcp__mobile_save_screenshot, mcp__plugin_figma_figma__get_metadata, mcp__plugin_figma_figma__get_variable_defs
+tools: Bash, Read, Write, Edit, NotebookEdit, Glob, Grep, AskUserQuestion, Skill, mcp__plugin_figma_figma__get_metadata, mcp__plugin_figma_figma__get_variable_defs
 model: opus
 ---
 
@@ -221,20 +221,20 @@ executor 在 Step 5 用 review 模式 invoke 同一个 skill —— 你写时多
    - Read 主索引 §4「设计契约快照」段拿 token 名 / 严格度 / 工件路径
    - HTML 缺失 / 看起来过期（与 PNG 明显不符）→ **不要**自己 live 拉 figma 补 —— 触发 Step 4 不确定流程让 planner 重烘焙
 
-2. **拿实拍截图** —— 按主索引 §4「mobile-mcp 冒烟」条目逐条跑：
+2. **拿实拍截图** —— 按主索引 §4「sim-use 冒烟」条目逐条跑：
    - 先 `Skill(find-ios-build-artifact)` 拿 `APP_PATH` / `BUNDLE_ID` / `SIMULATOR_UDID`（skill 内部调 `worktree-sim.sh ensure` lazy create + boot per-worktree `sim-<slug>`，并行 session 不抢 sim）。`SIMULATOR_UDID` 为空 → 退跳过条件 `skipped:simulator-provision-failed`、不继续
-   - 后续所有 mobile-mcp 调用**必须**传 `device: <SIMULATOR_UDID>`，漏传会抓另一个 booted sim
-   - 如果 app 未安装：`mobile_install_app { device: <UDID>, appPath: <APP_PATH> }`
-   - `mobile_launch_app { device: <UDID>, packageName: <BUNDLE_ID> }` → 启动到本次改动涉及的页面（按 §4 描述操作 `mobile_list_elements_on_screen { device: <UDID> }` + `mobile_click_on_screen_at_coordinates { device: <UDID>, x, y }` 逐步到位）
-   - `mobile_save_screenshot { device: <UDID>, saveTo: .reviews/<slug>-real-<场景>-<YYYYMMDD-HHMM>.png }`
+   - 后续所有 `sim-use` 调用**必须**传 `--device <SIMULATOR_UDID>`，漏传会抓另一个 booted sim
+   - 如果 app 未安装：`xcrun simctl install "$SIMULATOR_UDID" "$APP_PATH"`（app 生命周期是 iOS 原生能力，走 simctl，不依赖 sim-use）
+   - `xcrun simctl launch "$SIMULATOR_UDID" "$BUNDLE_ID"` → 启动到本次改动涉及的页面（按 §4 描述用 `sim-use tap --label "<label>" --device <UDID>` 逐步到位；label 打不到时才退回 `sim-use ui --device <UDID>` 读坐标再 `sim-use tap -x -y --device <UDID>`）
+   - `sim-use screenshot --device <UDID> --output .reviews/<slug>-real-<场景>-<YYYYMMDD-HHMM>.png`
    - 暗黑模式 / 多语言 / 横竖屏等场景按 §4 列的全跑一遍，每个场景一张实拍图
 
-   ⚠️ **`mobile_list_elements_on_screen` 的用途严格限定为"导航与点击定位"** —— 找下一步要点的坐标 / 验证页面跳到位了 / 拿元素文本核对 i18n。它**绝不能**作为视觉验收依据：元素树**不含**颜色值、图标渲染尺寸、间距 pt 数、字号 / 字重 / 阴影 / 圆角 / 渐变 / 描边等视觉属性 —— 那些信息**只在像素里**。靠元素树拍脑袋断言"颜色对了 / 图标大小对了"是本 Step 最容易踩的伪自测陷阱。
+   ⚠️ **`sim-use ui` 的用途严格限定为"导航与点击定位"** —— 找下一步要点的坐标 / 验证页面跳到位了 / 拿元素文本核对 i18n。它**绝不能**作为视觉验收依据：元素树**不含**颜色值、图标渲染尺寸、间距 pt 数、字号 / 字重 / 阴影 / 圆角 / 渐变 / 描边等视觉属性 —— 那些信息**只在像素里**。靠元素树拍脑袋断言"颜色对了 / 图标大小对了"是本 Step 最容易踩的伪自测陷阱。
 
 3. **视觉对照**（按 §4 严格度执行；这是当前 step 的核心、不要省）：
 
-   🔒 **硬约束**：**视觉真相源是冻结 PNG、测量真相源是冻结 HTML**。**必须**用 `Read` 工具把 `.specs/<slug>/assets/figma-<nodeId-safe>.png`（planner 冻结的设计稿）和 `.reviews/<slug>-real-<场景>-*.png`（mobile-mcp 实拍）**同时打开**做视觉对照，尺寸 / 间距偏差对照冻结 HTML 的 pt 值。不准：
-   - 跳过 `Read` PNG、只看 `mobile_list_elements_on_screen` 输出的 JSON 就下结论 → 元素树不含颜色 / 渲染尺寸 / 字号 / 阴影
+   🔒 **硬约束**：**视觉真相源是冻结 PNG、测量真相源是冻结 HTML**。**必须**用 `Read` 工具把 `.specs/<slug>/assets/figma-<nodeId-safe>.png`（planner 冻结的设计稿）和 `.reviews/<slug>-real-<场景>-*.png`（sim-use 实拍）**同时打开**做视觉对照，尺寸 / 间距偏差对照冻结 HTML 的 pt 值。不准：
+   - 跳过 `Read` PNG、只看 `sim-use ui` 输出的文本 / JSON 就下结论 → 元素树不含颜色 / 渲染尺寸 / 字号 / 阴影
    - 跳过 `Read` PNG、只看自己代码里写的 `.padding(16)` / `.font(.system(size: 14))` 就推断"应该对" → 代码里写的值不等于冻结 HTML 的 pt 值
    - 凭只读 figma live 拉数代替 Read 冻结 HTML → 冻结工件才是本轮契约（live figma 可能已漂移）
 
@@ -263,7 +263,7 @@ executor 在 Step 5 用 review 模式 invoke 同一个 skill —— 你写时多
    - 2 次还 fail → 在返回里记 `figma_diff_status: needs_user_review` + 把每个未通过的场景列出来（`fail_scenarios: [<场景名: 偏差描述>...]`）+ diff 报告路径，让主 agent 报给用户拍板（是不是主索引 §4 严格度要降级、还是用户拍板这次接受妥协 → planner 走 §9 AMD 记下原因）
    - 全部场景 pass → 进 Step 5；返回里记 `figma_diff_status: passed` + `figma_diff_reports: [.reviews/<slug>-figma-diff-*.md]`
 
-**与 planner / ui-reviewer 关系**：本 Step 4.5 是 generator 自测：Read planner 冻结的 HTML（测量真相）+ PNG（视觉真相）+ §4 轻量契约；**不 RE-FREEZE PNG / 不 RE-BAKE HTML / 不重新切图 / 不 live 拉测量**（冻结工件 + 切图资源是 planner 写域）。Figma 设计在实现期间更新（视觉变了）→ 触发 Step 4「不确定流程」让 planner 二次调用重抓 + 重烘焙 + append AMD。用户显式触发 UI 验收时 `ui-reviewer` 跑独立二次验收（按 `~/.claude/skills/review-mobile-ui/SKILL.md`），同样基于 spec assets。executor **不**跑 mobile-mcp 验收。
+**与 planner / ui-reviewer 关系**：本 Step 4.5 是 generator 自测：Read planner 冻结的 HTML（测量真相）+ PNG（视觉真相）+ §4 轻量契约；**不 RE-FREEZE PNG / 不 RE-BAKE HTML / 不重新切图 / 不 live 拉测量**（冻结工件 + 切图资源是 planner 写域）。Figma 设计在实现期间更新（视觉变了）→ 触发 Step 4「不确定流程」让 planner 二次调用重抓 + 重烘焙 + append AMD。用户显式触发 UI 验收时 `ui-reviewer` 跑独立二次验收（按 `~/.claude/skills/review-mobile-ui/SKILL.md`），同样基于 spec assets。executor **不**跑 sim-use 验收。
 
 ### Step 4.6: Dead-code 自检（review 前清理本轮自产的僵尸）
 

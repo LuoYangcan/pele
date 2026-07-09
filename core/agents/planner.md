@@ -112,7 +112,7 @@ git log --oneline origin/dev..HEAD -10
   3. **不重复问**用户已经给过的 URL（除非 get_metadata 验证失败）
 - **没有** → 用 `AskUserQuestion` 问一次，给三个选项：
   - 「有 Figma 设计稿，URL 是 …」（让用户粘 URL，支持多个）→ 拿到 URL 回 a 步
-  - 「没有 Figma 设计稿，按口述实现」 → spec §4 写「无 Figma 设计稿，按 §1 用户原话和 mobile-mcp 冒烟条目实现」、跳过 b/c/d 步
+  - 「没有 Figma 设计稿，按口述实现」 → spec §4 写「无 Figma 设计稿，按 §1 用户原话和 sim-use 冒烟条目实现」、跳过 b/c/d 步
   - 「之后再补，先按口述写 spec」 → 同上 + §7 加一条 OPEN risk `Figma 设计稿未提供，generator 实现前需要补 URL 让 planner 二次调用抓快照`
 
 ##### b. 烘焙：冻视觉 PNG + measurement-grade HTML + 切图（每个 get_metadata PASS 的 nodeId 都跑）
@@ -136,6 +136,18 @@ mkdir -p .specs/<slug>/assets
    - **拿不准某图标能否用 SF Symbol / 设计系统还原 → 默认切图**（切一次比一轮「图标不对」返工便宜）。
    - 完整性自检：设计稿明显有非文本图形但「切图清单」为空 = 你漏切了，回头补。清单是 generator 的图标资源真相源 —— 漏切会逼 generator 用 SF Symbol 凑形凑色（历史「图标不对」高发根因）。
 
+##### b2. 建 preview.html 还原度预览（strict 严格度 figma 任务，所有 node 烘焙完后跑一次）
+
+冻结 PNG（视觉真相）+ measurement HTML（测量真相）之外，再产**第三份工件** `.specs/<slug>/assets/preview.html`：一份可在浏览器渲染的**视觉复刻**，供主 agent 在 dispatch-pipeline stage-1 review 打开、用户在 generator 写码**前**肉眼判还原度（measurement HTML 是 pt 数值表不可视、PNG 不可交互）。生成规范详见 `~/.claude/skills/figma-precise-extract/SKILL.md`「preview.html 还原度预览」段，要点：
+
+- **一份合并文件**（非每 node 一份）：完整 `<!DOCTYPE html>` 自包含、内联 CSS/JS、**无任何外部资源**（CSP / 离线都要能开）。字体用系统栈 `-apple-system,"SF Pro",system-ui`。
+- 每个冻结 node 一个 native pt 宽手机框（倍率已应用，宽 = 设备点宽），多 node **并排** + 各标 node-id / 态名。
+- 几何来自 measurement HTML（间距 / 尺寸 / 圆角 / 字号 pt 1:1）；颜色 / 玻璃 / 渐变来自 PNG（玻璃用 backdrop-blur 近似）；图标用内联 SVG 近似。
+- 有状态变体（折叠↔展开 / 选中切换 / 空↔满）→ 加最小内联 JS 点击切换，默认主态。
+- 顶部一条 caveats banner：「近似复刻：judge 版式 / 间距 / 结构；PNG = 视觉真相（玻璃 / 色 / 图标更精细）；agentName 等占位已用运行时值替换」。
+- **loose 严格度跳过**；二次调用更新 figma 时一并重建（同 PNG / measurement HTML 走 §9 AMD 影响范围）。
+- 返回主 agent 的结论里提一句「已产 preview.html，主 agent 可在 review 时 open 给用户判还原度」。
+
 ##### c. 整理「设计契约快照」段写进 spec §4（轻量契约）
 
 按 spec-template「设计契约快照」段填 §4（**轻量契约、不内联逐元素测量表**）：
@@ -157,7 +169,7 @@ mkdir -p .specs/<slug>/assets
 
 ##### e.「对应用例」列绑定规则（写参考稿列表表格时）
 
-- 只有 1 条 mobile-mcp 冒烟用例 → 整张表全部行填 `*`
+- 只有 1 条 sim-use 冒烟用例 → 整张表全部行填 `*`
 - 多条冒烟用例 + 只有 1 个 figma node → 该行填 `*`（视为通用参考）
 - 多条冒烟用例 + 多个 figma node → 优先按用户原话判每个 node 对应哪条用例；用户没说清时**用 `AskUserQuestion` 一次性问完**（每个 node 对应哪条 case），不要瞎猜
 
@@ -203,7 +215,7 @@ spec §4 默认填 `strict`（图标大小 / 间距 / 控件样式 / 颜色 / �
    - **判错代价**：把有依赖的标 parallel → generator 并行撞文件 / API 没就绪 → 整组失败。**宁严不松**，拿不准就归 serial。
 3. **分工角色**（默认：主 agent 调度 / generator 执行 / executor 验收 / 用户在 planner 后和 executor 后做闸口）；**必填一行 `实现归属 impl_source`**：默认 `in-session-generator`（内部 generator 执行），用户选外部路径时由二次调用改成 `external-generator`
 4. **测试用例**（**Golden Path / 边界 / 回归三类，每类至少 1 条具体场景**；不准 TBD / 占位符；某类真不需要则删整节并一行说明）
-   - **iOS UI 改动专项**：触发即必填 mobile-mcp 冒烟用例（具体到 scheme / 进哪个页面 / 做什么操作 / 看什么视觉结果）
+   - **iOS UI 改动专项**：触发即必填 sim-use 冒烟用例（具体到 scheme / 进哪个页面 / 做什么操作 / 看什么视觉结果）
    - **Figma 设计稿引用**（Step 3.1 触发时填）：把 URL / nodeId / 页面名 / 覆盖范围 / 对齐严格度按模板写齐；用户没给 Figma 时写一行「无 Figma 设计稿」
 5. **验收标准**（具体的 done definition + 跑哪些命令）
 6. **硬约束**（落地位置 / 栈 / 不能动的接口或文件 / 明确踢出本次 scope 的事）

@@ -1,6 +1,7 @@
 ---
 name: review-mobile-ui
-description: iOS / Android Simulator UI 验收 SOP 真相源。触发：spec 第 4 节有「iOS UI 改动专项」小节 + 至少 1 条 mobile-mcp 冒烟用例，且 ui-reviewer subagent 被调起（用户说「跑 UI 验收 / UI 走查 / review UI / 看下 UI」等关键词）。不触发：spec §4 无 iOS UI 改动专项 / 非 iOS Simulator 目标（真机 / macOS / watchOS / tvOS）/ caller 没拿到 build artifact 路径 / generator 的 figma diff 自测（走 generator 自检，不走本 skill）。
+description: >-
+  iOS / Android Simulator UI 验收 SOP 真相源。把 spec 第 4 节「iOS UI 改动专项」用例分静态 / 动态两档跑：静态用 sim-use `ui` + `screenshot` 单次采样判间距 / frame / 对齐；动态 invoke record-ui-animation skill 录屏抽帧 + Read 判动画。所有 sim-use 调用显式传 `--device <SIMULATOR_UDID>`，UDID 由 `find-ios-build-artifact` skill 经 `worktree-sim.sh ensure` 拿到的 per-worktree `sim-<slug>` —— 并行 session 各自有 sim 不抢占。包含 build artifact 定位、调用预算、降级路径、结构化结论字段。由 ui-reviewer subagent 调用；generator 的 figma diff 自测不走本 skill（自检 vs 验收两条路径）。Skip when：spec §4 无 iOS UI 改动专项 / 非 iOS Simulator 目标（真机 / macOS / watchOS / tvOS）/ caller 没拿到 build artifact 路径。
 ---
 
 # review-mobile-ui
@@ -9,14 +10,14 @@ iOS UI 验收的 SOP 真相源。由 ui-reviewer subagent invoke 后按本文跑
 
 ## 触发
 
-- spec 第 4 节有「iOS UI 改动专项」小节 + 至少 1 条 mobile-mcp 冒烟用例
+- spec 第 4 节有「iOS UI 改动专项」小节 + 至少 1 条 sim-use 冒烟用例
 - ui-reviewer subagent 被主 agent 调起（用户显式说"跑 UI 验收 / UI 走查 / review UI / 看下 UI"等关键词）
 
 ## 不触发
 
 - spec §4 没 iOS UI 改动专项 → 直接返回 `ui_verified: not_applicable`
 - 非 iOS Simulator（真机 / macOS app / watchOS / tvOS）→ 本 skill 不覆盖、返回 `degraded` + `reason: target_not_supported`
-- generator 的 figma diff 自测——那是 generator 自检（Step 4.5），用 generator 自己的 mobile-mcp 工具，不走本 skill
+- generator 的 figma diff 自测——那是 generator 自检（Step 4.5），用 generator 自己的 sim-use 调用，不走本 skill
 
 ## 工作流程（caller 按顺序跑）
 
@@ -27,7 +28,7 @@ Skill(find-ios-build-artifact)   # 入参：scheme（项目主 iOS scheme，例 
 # 输出：APP_PATH=<绝对路径>  BUNDLE_ID=<bundle id>  SIMULATOR_UDID=<udid>
 ```
 
-scheme 名从项目 AGENTS.md / Justfile 拿。**记下 `$SIMULATOR_UDID`** —— 后续每一次 mobile-mcp 工具调用都必须把它塞进 `device` 参数。
+scheme 名从项目 AGENTS.md / Justfile 拿。**记下 `$SIMULATOR_UDID`** —— 后续每一次 `sim-use` 调用都必须带上 `--device <SIMULATOR_UDID>`。
 
 降级路径：
 
@@ -36,13 +37,15 @@ scheme 名从项目 AGENTS.md / Justfile 拿。**记下 `$SIMULATOR_UDID`** —�
 
 ### Step 2: 把 app 装到 per-worktree sim
 
-`worktree-sim.sh ensure` 已把 `$SIMULATOR_UDID` 这台 booted。无需再判断 booted 数量 —— mobile-mcp 工具靠 `device: <udid>` 精确路由，其他 booted sim 不会干扰。
+`worktree-sim.sh ensure` 已把 `$SIMULATOR_UDID` 这台 booted。无需再判断 booted 数量 —— sim-use 靠 `--device <udid>` 精确路由，其他 booted sim 不会干扰。
 
 ### Step 3: 装 + 启动 app
 
-```
-mcp__mobile-mcp__mobile_install_app   { device: <SIMULATOR_UDID>, appPath: <APP_PATH> }
-mcp__mobile-mcp__mobile_launch_app    { device: <SIMULATOR_UDID>, packageName: <BUNDLE_ID> }
+app 生命周期管理是 iOS 原生能力，不依赖 sim-use / mobile-mcp 任何一层封装，直接走 `xcrun simctl`：
+
+```bash
+xcrun simctl install "$SIMULATOR_UDID" "$APP_PATH"
+xcrun simctl launch "$SIMULATOR_UDID" "$BUNDLE_ID"
 ```
 
 Bash 把 Simulator.app 推到前面（多 sim 时窗口会多个、不强行抢焦点到目标 sim）：
@@ -52,8 +55,6 @@ open -a Simulator
 ```
 
 任一步失败 → 降级：`ui_degradation_reason: install_or_launch_failed: <错误摘要>`。
-
-> mobile-mcp 工具参数名（`device` / `appPath` / `packageName` / `bundleId` 等）以 MCP server 注入的工具 schema 为准；本 skill 写作时 main 分支所有 tool 都有 required `device` 参数（issue mobile-next/mobile-mcp#253 是 iOS 物理设备 bug，Simulator 不受影响）。第一次调用前 Read tool description 确认。
 
 ### Step 4: 准备截图目录
 
@@ -69,10 +70,10 @@ mkdir -p "$SHOT_DIR/refs"
 
 > ⚠️ **两条路径**：
 >
-> - **静态类**（间距 / frame / 布局）→ 5.b 路径，`mobile_list_elements_on_screen` + `mobile_save_screenshot` **单次采样**判断。**禁用**任何改 app 状态的工具（`type_keys` / `swipe` / `double_tap` / `long_press`）。mcp 在动态 UI 上 sample 不可靠。
-> - **动态类**（动画 / 过渡 / 输入流 / 手势引起的状态变化）→ 5.c 路径，invoke `record-ui-animation` skill 录屏 + 自己 Read 帧序列判断。**仅在录屏窗口期间**允许 `type_keys` / `swipe` 触发动画——这是 5.c 的指定路径。
+> - **静态类**（间距 / frame / 布局）→ 5.b 路径，`sim-use ui` + `sim-use screenshot` **单次采样**判断。**禁用**任何改 app 状态的命令（`type` / `paste` / `swipe` / `long-press` / 连续两次 `tap` 模拟双击）。sim-use 在动态 UI 上 sample 不可靠。
+> - **动态类**（动画 / 过渡 / 输入流 / 手势引起的状态变化）→ 5.c 路径，invoke `record-ui-animation` skill 录屏 + 自己 Read 帧序列判断。**仅在录屏窗口期间**允许 `type` / `paste` / `swipe` 触发动画——这是 5.c 的指定路径。
 >
-> ⚠️ **device 参数硬约束**：本 Step 全部 mobile-mcp 工具调用都必须传 `device: <SIMULATOR_UDID>`（Step 1 拿到的）。漏传会让 mobile-mcp 抓另一个 booted sim、并行 session 间互相打架。
+> ⚠️ **device 参数硬约束**：本 Step 全部 `sim-use` 调用都必须传 `--device <SIMULATOR_UDID>`（Step 1 拿到的）。漏传会让 sim-use 抓另一个 booted sim、并行 session 间互相打架。
 
 #### 5.a 用例分类（每条用例先判类型）
 
@@ -86,20 +87,21 @@ mkdir -p "$SHOT_DIR/refs"
 
 | 步骤 | 上限 | 说明 |
 |---|---|---|
-| 导航 `mobile_click_on_screen_at_coordinates` | spec 最短路径所需次数（通常 0-3） | 仅到达目标页面，不 explore |
-| 导航用 `mobile_list_elements_on_screen` | 配合 tap，最多 N 次 | 找 label / accessibility identifier 拿坐标；只用于导航 |
+| 导航 `sim-use tap --label <label>` / `--label-contains` / `--label-regex` | spec 最短路径所需次数（通常 0-3） | 直接按无障碍属性定位并点击，**不需要**先单独跑一次 `sim-use ui` 拿坐标——sim-use 内部会做一次即时 AX 查找；仅到达目标页面，不 explore |
+| `sim-use ui`（配合导航，找不到稳定 label 时的 fallback） | 最多 N 次 | 当 `--label` 系选择器打不到目标元素（无 accessibility label / label 会重复）时才退回读整屏结构拿坐标 |
 | 等待 UI 稳定 | 1 次 `sleep 1` | 让 layout settle |
-| **核心采样 `mobile_list_elements_on_screen`** | **1 次** | 拿目标页面元素列表（坐标 / accessibility / label / frame）—— 文本层间距判定数据源 |
-| **`mobile_save_screenshot`** | **1 次** | 落 `<SHOT_DIR>/case-<N>-static.png`，文本层 + 视觉层共享 |
-| **`mcp__plugin_figma_figma__get_screenshot`** | **1 次**（仅 spec §4 参考稿列表命中本用例时） | 落 `<SHOT_DIR>/refs/case-<N>-figma.png`，视觉层对照图 |
-| `mobile_take_screenshot` | **0 次** | `save_screenshot` 已覆盖；`take_screenshot` 会把图返给 LLM 烧 token |
-| `mobile_type_keys` / `mobile_swipe_on_screen` / `mobile_double_tap_on_screen` / `mobile_long_press_*` | **0 次** | 改 app 状态，5.b 静态档位禁止 |
+| **核心采样 `sim-use ui --device <udid>`** | **1 次** | 拿目标页面元素列表（坐标 / accessibility / label / frame）—— 文本层间距判定数据源 |
+| **`sim-use screenshot --device <udid> --output <path>`** | **1 次** | 落 `<SHOT_DIR>/case-<N>-static.png`，文本层 + 视觉层共享 |
+| **`mcp__plugin_figma_figma__get_screenshot`** | **1 次**（仅 spec §4 参考稿列表命中本用例时） | 落 `<SHOT_DIR>/refs/case-<N>-figma.png`，视觉层对照图（这个仍是 figma MCP，跟 sim-use/mobile-mcp 切换无关） |
+| `sim-use type` / `paste` / `swipe` / `long-press` / 连续 `tap` 模拟双击 | **0 次** | 改 app 状态，5.b 静态档位禁止 |
+
+sim-use 没有"把截图直接传回 LLM 烧 token"的命令（`screenshot` 只落盘），原来 mobile-mcp 里"`mobile_take_screenshot` 预算 0 次"这条规则在这里不适用——sim-use 结构上就不存在这个路径。
 
 **判定**（文本层 + 视觉层并行；任一层产 issue 都进 issues 列表）：
 
 **文本层**（不依赖 figma，必跑）：
 
-- 元素 frame 字段（schema 因 mobile-mcp 版本而异，常见 `rect` / `frame` / `bounds` 含 x/y/width/height）算间距：`b.x - (a.x + a.width)` 之类
+- `sim-use ui` 输出的每个元素条目自带 `(x,y width×height)` 坐标框，直接算间距：`b.x - (a.x + a.width)` 之类
 - 容差 **±2pt**
 - 一致 → 文本层 PASS
 - 不一致 → blocking issue（`issue_type: ui-frame-mismatch`、`file: <SHOT_DIR>/case-<N>-static.png`、测得 vs 期望差值）
@@ -135,11 +137,12 @@ eval "$(DEVICE_UDID=$SIMULATOR_UDID RECORDING_PATH=$RECORDING_PATH \
   bash ~/.Codex/skills/record-ui-animation/scripts/record-xcrun.sh)"
 ```
 
-**D. 触发动画**（按 spec 描述，仅本步允许 5.b 禁用工具；所有 mobile-mcp 调用照样带 `device: <SIMULATOR_UDID>`）：
+**D. 触发动画**（按 spec 描述，仅本步允许 5.b 禁用的命令；所有 sim-use 调用照样带 `--device <SIMULATOR_UDID>`）：
 
-- spec 说「点 send 看 morph 飞向 chat」→ `mobile_list_elements_on_screen { device: <UDID> }` 拿 send 坐标 → `mobile_click_on_screen_at_coordinates { device: <UDID>, x, y }`
-- spec 说「输入文本后输入框抖动」→ `mobile_type_keys { device: <UDID>, text, submit }`
-- spec 说「上滑 sheet 看 dismiss」→ `mobile_swipe_on_screen { device: <UDID>, direction }`
+- spec 说「点 send 看 morph 飞向 chat」→ `sim-use tap --label "Send" --device <UDID>`（直接按 label 点，不需要先读坐标；label 打不到才退回 `sim-use ui` 找坐标再 `sim-use tap -x -y`）
+- spec 说「输入文本后输入框抖动」→ 英文/ASCII 内容用 `sim-use type "<text>" --device <UDID>`；**中文 / 特殊字符**用 `sim-use paste "<text>" --device <UDID>`（`type` 走 HID 键盘协议，只支持美式键盘字符，中文必须走 `paste`，它走 simulator pasteboard 不受这个限制）
+- spec 说「上滑 sheet 看 dismiss」→ `sim-use gesture swipe-from-bottom-edge --device <UDID>`（或用 `sim-use swipe --start-x --start-y --end-x --end-y --device <UDID>` 指定精确起止点，不是简单的 direction 参数）
+- spec 说「双击图片看 zoom」→ sim-use 没有原生 double-tap 原语，用两次连续 `sim-use tap` 模拟（间隔控制在 0.3s 内）；这是已知 workaround，如果动画判定因为时序问题反复失败，降级到 `ui_dynamic_cases_skipped` + `degradation_reason: double_tap_not_supported`，不要死磕
 - 仅触发**一次**——不要"多录几遍取平均"
 
 **E.** `sleep <EXPECTED_DURATION_SECONDS + 0.5>` 等动画 + buffer。
@@ -176,6 +179,7 @@ ui_dynamic_cases_verified:
 - `prepare.sh` / `record-xcrun.sh` / `stop-xcrun.sh` / `extract.sh` 任一报错
 - 抽帧数 <2 （屏幕没动 / 触发没生效——simctl recordVideo 是 frame-driven）
 - Read 完所有帧仍无法对照 spec 判断（关键帧缺失 / 视觉模糊 / spec 描述太抽象）
+- double-tap workaround 时序不稳定导致的重复失败（见 5.c.1.D）
 
 降级时本用例从 `ui_dynamic_cases_verified` 拿走 → 进 `ui_dynamic_cases_skipped` + `degradation_reason`。
 
@@ -183,11 +187,11 @@ ui_dynamic_cases_verified:
 
 ##### 5.c.4 不跑 install / launch
 
-录屏期间 app 已经在 Step 3 的 session 里跑着——不要 terminate / 重启 / 重装。需要特定起点页面就用 `mobile_click_on_screen_at_coordinates` 导航过去再起录。**导航点击不算触发**：先导航到位 → `sleep 0.5` 等 layout settle → 再 prepare.sh / record-xcrun.sh。
+录屏期间 app 已经在 Step 3 的 session 里跑着——不要 terminate / 重启 / 重装。需要特定起点页面就用 `sim-use tap --label <label>` 导航过去再起录。**导航点击不算触发**：先导航到位 → `sleep 0.5` 等 layout settle → 再 prepare.sh / record-xcrun.sh。
 
 #### 5.d 单 Session 复用 install / launch
 
-整个 Step 5 内**只 install + launch 一次**——多条用例共享同一 app session。每条跑完**不要** terminate / 重启；用 `mobile_click_on_screen_at_coordinates` 导航到下一条用例所需页面。两条用例的页面互相不可达（一个在 OnBoarding、一个在主 tab） → 第二条标 `ui_verified: degraded` + `ui_degradation_reason: cross_flow_navigation_required`。
+整个 Step 5 内**只 install + launch 一次**（Step 3 的 `xcrun simctl install/launch`）——多条用例共享同一 app session。每条跑完**不要** terminate / 重启；用 `sim-use tap --label <label>` 导航到下一条用例所需页面。两条用例的页面互相不可达（一个在 OnBoarding、一个在主 tab） → 第二条标 `ui_verified: degraded` + `ui_degradation_reason: cross_flow_navigation_required`。
 
 ### Step 6: 汇总结论
 
@@ -212,24 +216,25 @@ ui_dynamic_cases_verified:
 - `ui_dynamic_cases_verified`: list of `{case_number, spec_description, frames_dir, verdict, observations}`
 - `ui_dynamic_cases_skipped`: list of `{case_number, spec_description, degradation_reason}`
 - `ui_screenshots_dir`: 仅 `ui_verified ∈ {pass, fail}` 时给（动态降级 / environment 降级时**没有**截图产出）
-- `ui_degradation_reason`: 仅 `ui_verified == degraded` 时给（`build_artifact_not_found` / `simulator_provision_failed: <details>` / `install_or_launch_failed: <details>` / `target_not_supported` / `all_cases_dynamic` / `cross_flow_navigation_required` / `figma_screenshot_all_failed`）
+- `ui_degradation_reason`: 仅 `ui_verified == degraded` 时给（`build_artifact_not_found` / `simulator_provision_failed: <details>` / `install_or_launch_failed: <details>` / `target_not_supported` / `all_cases_dynamic` / `cross_flow_navigation_required` / `figma_screenshot_all_failed` / `double_tap_not_supported`）
 
 ## 禁止
 
-- ❌ **超出 5.b 单条静态用例的 mcp 调用预算**——每条静态用例 1 次 `mobile_list_elements_on_screen`（核心采样）+ 1 次 `mobile_save_screenshot` + 必要导航
+- ❌ **超出 5.b 单条静态用例的调用预算**——每条静态用例 1 次 `sim-use ui`（核心采样）+ 1 次 `sim-use screenshot` + 必要导航
 - ❌ **用 5.b 静态 sample 路径验证动画**——容易抓中间帧、还吃调用次数。动态**只走 5.c**；skill 失败再降级到 `ui_dynamic_cases_skipped`
-- ❌ **5.b 静态用例期间** `mobile_type_keys` / `mobile_swipe_on_screen` / `mobile_double_tap_on_screen` / `mobile_long_press_*`——会触发动态 UI / 改 app 状态。5.c record skill 路径下允许这些工具仅用于触发动画（且仅在 `record-xcrun.sh` 起录 → `stop-xcrun.sh` 收尾的窗口内）
-- ❌ **`mobile_uninstall_app` / `mobile_terminate_app`**：Session 内只 install + launch 一次（5.d）
-- ❌ 同一条静态用例多次 `mobile_list_elements_on_screen` / `mobile_save_screenshot`：1+1 已经够判间距；觉得不够说明 spec 用例本身该拆或本来就不该归静态
+- ❌ **5.b 静态用例期间** `type` / `paste` / `swipe` / `long-press` / 连续 tap 模拟双击——会触发动态 UI / 改 app 状态。5.c record skill 路径下允许这些命令仅用于触发动画（且仅在 `record-xcrun.sh` 起录 → `stop-xcrun.sh` 收尾的窗口内）
+- ❌ **重装 / 重启 app**：Session 内只 `xcrun simctl install/launch` 一次（5.d）
+- ❌ 同一条静态用例多次 `sim-use ui` / `sim-use screenshot`：1+1 已经够判间距；觉得不够说明 spec 用例本身该拆或本来就不该归静态
 - ❌ 「探索式」验收：不主动到处点 / 滚列表 / 测 spec 没列的 corner case——验收只回答 spec 问的问题
-- ❌ 用 mobile-mcp 改 simulator 上别的 app 的状态（删数据 / 改设置 / 关 app）
+- ❌ 用 sim-use 改 simulator 上别的 app 的状态（删数据 / 改设置 / 关 app）
 
 ## Why（核心）
 
-- 静态 vs 动态分类：mobile-mcp 在动态 UI 上 sample 会抓到中间帧，间距 / frame 不对
-- 5.b 1+1 预算：核心采样 1 次足够；多次 sample 不增加准确性反而推高 mcp 调用 + token
+- 静态 vs 动态分类：sim-use 在动态 UI 上 sample 会抓到中间帧，间距 / frame 不对
+- 5.b 1+1 预算：核心采样 1 次足够；多次 sample 不增加准确性反而推高调用次数 + token
 - 5.c 走录屏：动画看时序，单帧 sample 失去时序信息
-- 降级路径而非硬失败：environment 问题（build artifact / simulator provision / install/launch / 跨流程导航）不是 generator 的代码问题
-- per-worktree `sim-<slug>` + mobile-mcp `device` 参数：并行 session 各自有 sim，不需要"只能 1 台 booted"约束
+- 降级路径而非硬失败：environment 问题（build artifact / simulator provision / install/launch / 跨流程导航 / double-tap 时序不稳）不是 generator 的代码问题
+- per-worktree `sim-<slug>` + sim-use `--device` 参数：并行 session 各自有 sim，不需要"只能 1 台 booted"约束
 - 不重跑动态用例：record skill 失败兜底在 skill 内；本 SOP 单次失败立即降级
 - 截图存到 `.reviews/`：spec 不被污染，`.gitignore` 已排除
+- install/launch 用原生 `xcrun simctl`：这是 iOS 系统能力，不依赖任何 UI 交互工具，换 sim-use 还是 mobile-mcp 都不影响这一步

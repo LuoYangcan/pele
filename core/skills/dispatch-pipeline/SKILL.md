@@ -99,9 +99,10 @@ planner 返回后：
    ```
    任何 file id 在用户原话中**不存在** → 立即报给用户「spec §4 出现了你没给过的 URL/ID `<X>`，可能是 planner 瞎填，要不要让 planner 修？」，给 AskUserQuestion 选项「调 planner 修 / 我自己 Edit 改 / 保留（确实是合理的衍生）」。这一步是 **B+C 防呆机制的 C 环节**（planner 端 figma get_metadata 验证是 B 环节）。**注意**：用户原话里只有 URL 时按 file id 段精确匹配；只有提到产品 / 项目名时不算（不要把 "某产品名" 当作 URL 验证依据）
 3. 把 **spec 文件路径** + **planner 返回的关键摘要** + **planner 返回的 decisions 四子段摘要**（直接转述 planner 给的「自作主张 / 存疑 / 隐含偏差 / 借鉴 pattern」各一句话，空段标「无」；**不要**只甩路径，让用户当场就能看到 planner 做了哪些判断）+ **`.specs/<slug>/decisions.md` 路径**（附在摘要后，供用户 Read 全文核对）展示给用户
-4. 用 AskUserQuestion 停下问，至少给这几个选项：
+4. **若存在 `.specs/<slug>/assets/preview.html`**（planner 为 strict figma 任务产的还原度预览）→ 跑 Bash `open .specs/<slug>/assets/preview.html`（连同冻结 PNG 一起 `open` 供对照）给用户在浏览器看 UI 还原度；在展示文本里点明「已打开 HTML 预览，可对照设计稿判还原度，再决定是否开始」。无 preview.html（非 figma / loose / 抓取失败）→ 跳过本步
+5. 用 AskUserQuestion 停下问，至少给这几个选项：
    - 开始实现（调 generator）
-   - 我先看 spec，等我说开始
+   - 我先看 spec / preview，等我说开始
    - 改 spec / 改方向（重新调 planner）
    - 不用 generator，我自己改 / 跳过
 
@@ -401,7 +402,7 @@ generator 完成后**不**自动进 executor。主 agent 必须停下来 AskUser
 
 UI 验收**默认不跑**。主 agent 在调 executor 前判断 `ui_review_requested`：
 
-- 用户在本轮（或本需求的早期对话）说过「跑下 UI / UI 走查 / UI 验收 / review UI / 看下 UI 对不对 / 跑下模拟器 / 跑下 mobile-mcp」等关键词 → `ui_review_requested = true`
+- 用户在本轮（或本需求的早期对话）说过「跑下 UI / UI 走查 / UI 验收 / review UI / 看下 UI 对不对 / 跑下模拟器 / 跑下 sim-use」等关键词 → `ui_review_requested = true`
 - 没说 → `ui_review_requested = false`
 
 > ⛔ **不要自主判定**：哪怕 spec §4 有「iOS UI 改动专项」用例、哪怕 generator 改了 view 文件，**不是**主 agent 自己决定要不要跑 ui-reviewer。**用户没明说就 = false**。spec §4 列了用例 + 用户没说 UI 验收时，主 agent 报告里提示「spec §4 有 UI 用例但本轮没跑 ui-reviewer，需要 UI 验收请明说」，让用户自己决定。
@@ -537,7 +538,7 @@ AskUserQuestion 问「要不要现在总结这次工作 + 更新项目文档？�
 
 #### 3B: 并行模式（每组各自跑 executor，ui-reviewer 不进 3B）
 
-> 并行模式下 ui-reviewer **不进 3B** —— 每组 sub-worktree 各自跑 executor 时，UI 验收（如果用户触发了）留到 3C 合并后或阶段 5 最终验收时**在主 worktree 跑一次**。理由：mobile-mcp 不支持 UDID 透传，多 sub-worktree 同时跑会互相抢 simulator 交互；且 UI 用例本来就是看整体效果，分组分别跑 UI 反而拼不出全貌。
+> 并行模式下 ui-reviewer **不进 3B** —— 每组 sub-worktree 各自跑 executor 时，UI 验收（如果用户触发了）留到 3C 合并后或阶段 5 最终验收时**在主 worktree 跑一次**。理由：UI 用例本来就是看整体效果，分组分别跑 UI 反而拼不出全貌；另外多个 sub-worktree 同时跑 sim-use 各打各的 simulator 在并发下有没有隐藏的资源争抢（窗口焦点 / daemon 冲突之类）还没做过真实并行压测，保守起见先维持"只在主 worktree 跑一次"这条约束，不因为换了工具就放开。
 
 ##### Step 1: 调 executor
 

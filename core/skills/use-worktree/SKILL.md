@@ -29,7 +29,10 @@ description: 新话题切换时进 git worktree 物理隔离，让每个需求�
 1. `git fetch origin dev` —— 拉最新 dev
 2. 决定分支名 `<type>/<scope>-<slug>`，`type ∈ {feat, fix, chore, refactor, docs, test, perf, style}`
 3. `git worktree add .worktrees/<slug> -b <type>/<scope>-<slug> origin/dev` —— 指定 base 为 `origin/dev`，和当前分支 HEAD 解耦
-4. `EnterWorktree(path=.worktrees/<slug>)` —— 进入已创建的 worktree（cwd 切到该 worktree 目录）
+4. `EnterWorktree(path=.worktrees/<slug>)` —— 进入已创建的 worktree（cwd 切到该 worktree 目录），然后预写 Claude Code 目录信任（folder trust 按精确路径存储、不从主仓库继承，Claude Code ~2.1.x 存在 worktree 内接受后不持久化的 bug，不预写则该 worktree 每次新 session 都弹 trust 对话框）：
+   ```bash
+   ~/.claude/scripts/trust-dir.sh "$PWD"
+   ```
 5. **`<project-specific>` 从主仓库 cp gitignored 的本地配置文件**（如 `Local.xcconfig` / `.env.local` / 凭证文件等，新 worktree 没有这些）：
    ```bash
    MAIN_REPO="${PWD%/.worktrees/*}"

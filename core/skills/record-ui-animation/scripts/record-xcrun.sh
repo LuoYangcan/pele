@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-# record-ui-animation / Step B (xcrun backend, optional fallback)
+# record-ui-animation / Step B（唯一录屏路径，直接走 xcrun simctl）
 #
-# 用于 caller 不在 mcp env 里、没法调 mobile-mcp 时的录屏路径。
-# 与 mobile-mcp 模板二选一。
+# 不依赖任何 UI 交互工具（sim-use / mobile-mcp 都不需要）——只管录屏本身。
+# 触发动画的动作（tap / type / swipe）caller 用 sim-use 另外驱动，跟这个脚本无关。
 #
 # 用法：
 #   1. caller 在前台跑此脚本，脚本会 fork simctl io 到后台并打印 PID

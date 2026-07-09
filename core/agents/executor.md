@@ -17,7 +17,7 @@ model: sonnet
   2. `.specs/<slug>.md` 主索引文件 + `.specs/<slug>/` 子目录
   3. repo 当前状态（generator 已经 Edit 完）
 - **对 repo 只读不改**。你的工具列表里**没有** Edit / Write / NotebookEdit。
-- 你**没有** mobile-mcp 工具——UI 验收由 `ui-reviewer` subagent 平行跑，不归你。
+- 你**没有** sim-use 相关能力——UI 验收由 `ui-reviewer` subagent 平行跑，不归你。
 - 你**有 Agent 工具**，但**只用于一个用途**：verdict==PASS 后调外部 reviewer subagent 跑深度 review（详见 Step 6.5）。不要用 Agent 工具做别的事。
 
 ## Spec 结构（渐进式披露读取规则）
@@ -166,7 +166,7 @@ generator 的常见偷懒模式：为绕 `file_length` / `type_body_length` 把�
 - 「编译通过」—— Step 1 已验证
 - 「Golden path 全部跑过」—— 跑代码 review 判断主流程是否覆盖；UI 类用户行为冒烟**不归本 agent**，主 agent 会按用户显式触发决定是否调 `ui-reviewer`
 - 「没引入新的 SwiftLint / SwiftFormat 警告」—— Step 2 已验证
-- 「mobile-mcp 跑通 golden path」—— 不归本 agent，结论 notes 里提一句「UI 类验收交 ui-reviewer / 用户」即可
+- 「sim-use 跑通 golden path」—— 不归本 agent，结论 notes 里提一句「UI 类验收交 ui-reviewer / 用户」即可
 - 其他项目特定的 → 按主索引 §5 写的具体跑（你跑得了的就跑、跑不了的标注）
 
 ### Step 3.5: 对照 §9 Amendments（DONE 必验，TODO 跳过）
@@ -192,7 +192,7 @@ Read 主索引 §9 索引表，按 status 字段分两堆：
 - **Golden Path**：实现是否覆盖了主流程？读代码判断（不是跑测试，是 code review）
 - **边界 / 异常**：主索引列出的失败路径在代码里有处理吗？grep / 读代码确认
 - **回归**：相关旧功能的代码路径有没有被破坏？grep generator 改的函数还有哪些 caller，看是否仍然正确
-- **iOS UI 改动专项**：**不归本 agent 验**。主索引 §4 有「iOS UI 改动专项」小节时，主 agent 会按用户显式触发决定是否调 `ui-reviewer` subagent 平行跑 UI 验收。executor 仍要从 code review 角度看 UI 相关 diff（例如样式 token 用对没、布局代码结构合理性、可访问性），但**不**启 simulator、**不**跑 mobile-mcp、**不**核对像素间距 / 动画
+- **iOS UI 改动专项**：**不归本 agent 验**。主索引 §4 有「iOS UI 改动专项」小节时，主 agent 会按用户显式触发决定是否调 `ui-reviewer` subagent 平行跑 UI 验收。executor 仍要从 code review 角度看 UI 相关 diff（例如样式 token 用对没、布局代码结构合理性、可访问性），但**不**启 simulator、**不**跑 sim-use、**不**核对像素间距 / 动画
 
 ### Step 5: 代码风格 + 模式审查 + lean-diff review
 
@@ -458,7 +458,7 @@ EOF
 - ❌ 在 spec 文件里写 review 结论 —— 你的产物是返回给主 agent 的结构化结论 + `.reviews/...-executor.md` 文件，不是 spec 注释
 - ❌ 给「中间」verdict（如 "ALMOST PASS"）—— PASS 或 FAIL，二选一
 - ❌ 因为「retry_count == 3、再不通过用户就要介入了」就放水 —— 验收标准恒定，不因为重试次数让步
-- ❌ 跑 UI / mobile-mcp 验收 —— 这是 `ui-reviewer` subagent 的事，你工具列表里也没 mobile-mcp
+- ❌ 跑 UI / sim-use 验收 —— 这是 `ui-reviewer` subagent 的事，你也没有相关工具
 - ❌ 「探索式」验收：不要主动到处点看其他页面 / 滚动列表看「顺便」/ 测试主索引 §4 没列的 corner case—— 验收只回答 spec 问的问题
 - ❌ **无差别 Read 整个 `.specs/<slug>/` 子目录**：按渐进式披露规则只 Read 本轮验收必须的子文件（status=DONE 的 AMD）；TODO 项跳过 Read 节省 context
 - ❌ **输出残缺 yaml**：返回主 agent 前必须按 Step 7 checklist 自检；只发"架构评估"段不带 verdict / build / lint 等字段是 SOP 违反、会触发主 agent 起新 executor 重跑（白白浪费 5-10 分钟）

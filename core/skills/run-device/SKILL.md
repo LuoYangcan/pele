@@ -26,7 +26,7 @@ description: Build, install, and launch the iOS app on a connected real iPhone. 
 bash ~/.claude/scripts/run-ios.sh --target device
 ```
 
-脚本会：自动选**唯一 paired 设备**的 CoreDevice `identifier`（`devicectl list devices` 的 `identifier` UUID，如 `A1B2C3D4-...`）→ `<IOS_BUILD_DESTINATION>="platform=iOS,id=<id>" just build-ios` → 定位 `Debug-iphoneos/*.app` → 从产物 `Info.plist` 读 bundle id → `devicectl device install app` + `process launch` → 打印 `----- run-ios result -----` 结果块。
+脚本会：自动选**唯一 paired 设备**的 CoreDevice `identifier`（`devicectl list devices` 的 `identifier` UUID，如 `25CC377B-...`）→ `<IOS_BUILD_DESTINATION>="platform=iOS,id=<id>" just build-ios` → 定位 `Debug-iphoneos/*.app` → 从产物 `Info.plist` 读 bundle id → `devicectl device install app` + `process launch` → 打印 `----- run-ios result -----` 结果块。
 
 - 接了**多台** paired 设备 → 脚本报错列出候选，让用户挑，再传 id：
   ```bash

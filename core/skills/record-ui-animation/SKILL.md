@@ -18,7 +18,7 @@ description: Capture iOS / Android Simulator motion as keyframe PNGs an agent ca
 
 ## 不触发
 
-- 静态 UI / 间距 / 字号 / 颜色 / 布局核对 → 一张 `mobile_take_screenshot` 就够，**不要**为了"更安全"无脑录屏
+- 静态 UI / 间距 / 字号 / 颜色 / 布局核对 → 一张 `sim-use screenshot` 就够，**不要**为了"更安全"无脑录屏
 - 纯逻辑 / 数据 / 网络验证 → 没视觉成分，录屏没意义
 - 真机 / macOS app / Apple Watch / TV → 本 skill 只覆盖 iOS Simulator + Android emulator
 - caller 还没把 simulator boot 起来 / app 装上 / 走到动画起点 → 先走 `find-ios-build-artifact` + `open-sim` skill 把环境立起来再回来
@@ -33,12 +33,12 @@ skill 是**三段式契约**，第 2 段由 caller 自己驱动 —— 这样 ca
 │   ─ 检查 ffmpeg / 选 device UDID / 建输出目录                   │
 │   ─ 输出 RECORDING_PATH / FRAMES_DIR / DEVICE_UDID              │
 ├────────────────────────────────────────────────────────────────┤
-│ Step B: record + act   (caller 驱动 — skill 给两套模板供选)     │
-│   ─ 启动录屏 (mobile-mcp / xcrun simctl)                       │
-│   ─ 把 app 走到动画起点 (caller 知道怎么走、本 skill 不管)      │
-│   ─ 触发动画 (tap send / swipe up / type + enter / 等)         │
+│ Step B: record + act   (caller 驱动)                            │
+│   ─ 启动录屏 (record-xcrun.sh，直接走 xcrun simctl)            │
+│   ─ 把 app 走到动画起点 (caller 用 sim-use 驱动、本 skill 不管) │
+│   ─ 触发动画 (sim-use tap / swipe / type + enter / 等)         │
 │   ─ 等动画跑完 + 一点 buffer (default +0.5s)                   │
-│   ─ 停止录屏                                                    │
+│   ─ 停止录屏 (stop-xcrun.sh)                                    │
 ├────────────────────────────────────────────────────────────────┤
 │ Step C: extract   (skill 提供 shell)                            │
 │   ─ ffmpeg 抽 N 帧 → frames/frame-001.png ... frame-NNN.png     │
@@ -56,10 +56,9 @@ Agent 拿到 FRAMES_DIR 后用 Read 工具看每一帧 (Codex 支持 PNG 多图�
 | ---- | ---- | ---- |
 | `WORKTREE_SLUG` | 必填 | 当前 worktree 名（caller 从主 agent 入参拿；executor 已经有），决定输出目录前缀。一般是 spec slug |
 | `CASE_SLUG` | 必填 | 动画用例短名（小写 kebab-case，例 `chat-send-morph` / `dismiss-sheet`），决定 frame 子目录 |
-| `DEVICE_UDID` | 必填 | iOS Simulator UDID（caller 从 `xcrun simctl list devices booted` 或 `mobile_list_available_devices` 拿）。Android 用 `adb` device id |
+| `DEVICE_UDID` | 必填 | iOS Simulator UDID（caller 从 `xcrun simctl list devices booted` 或 `sim-use devices` 拿）。Android 用 `adb` device id |
 | `EXPECTED_DURATION_SECONDS` | 选填，默认 3 | 估计动画时长（含起手 + 动画 + 收尾）。caller 按 spec 估；偏长无所谓、ffmpeg 会全程抽帧 |
 | `FRAME_COUNT` | 选填，默认 10 | 抽几帧。短动画（<1s）建议 6-8、长动画（>2s）建议 10-15 |
-| `BACKEND` | 选填，默认 `auto` | `auto` / `mobile-mcp` / `xcrun`。auto 优先 mobile-mcp，调失败退到 xcrun |
 | `PLATFORM` | 选填，默认 `ios` | `ios` / `android`（android 走 adb screenrecord，详见 §Android 适配） |
 
 ### 出参（skill 在 Step A 末尾输出）
@@ -69,7 +68,6 @@ RECORDING_PATH=<绝对路径>   # caller Step B 启动录屏时写到这个 path
 FRAMES_DIR=<绝对路径>       # frames 子目录，Step C 写完后给 agent
 META_PATH=<绝对路径>        # meta.json，Step C 写元数据
 DEVICE_UDID=<回显>          # 透传 caller 用
-BACKEND_RESOLVED=<mobile-mcp|xcrun>  # auto 模式下报告实际选的后端
 ```
 
 ### 出参（Step C 末尾打印）
@@ -97,47 +95,28 @@ WORKTREE_SLUG=<slug> CASE_SLUG=<case> DEVICE_UDID=<udid> \
 
 ## Step B: record + act（caller 驱动）
 
-skill 给两套模板。**caller 二选一**，根据自己 env：
-
-### 模板 B1: mobile-mcp（推荐 — 在 executor / generator subagent 里）
-
-caller 是 subagent 且有 `mcp__mobile-mcp__*` 工具访问权：
-
-```
-1. caller 调 mcp__mobile-mcp__mobile_start_screen_recording:
-     device   = $DEVICE_UDID
-     output   = $RECORDING_PATH
-     timeLimit = $EXPECTED_DURATION_SECONDS + 2  ← 上限兜底，避免动作出错卡死
-
-2. caller 把 app 走到动画起点（如果需要）：
-     - mcp__mobile-mcp__mobile_launch_app / 已经在了就跳过
-     - mcp__mobile-mcp__mobile_click_on_screen_at_coordinates / mobile_type_keys / mobile_swipe
-     - 期间可以 mobile_take_screenshot 一张确认到位
-
-3. caller 触发动画（关键动作）：
-     - 例：点 send → mobile_click_on_screen_at_coordinates(x=355, y=820)
-
-4. caller 等动画完成：
-     - Bash: sleep $(echo "$EXPECTED_DURATION_SECONDS + 0.3" | bc)
-     - 或者通过 mobile_list_elements_on_screen 检测到稳定态再停
-
-5. caller 调 mcp__mobile-mcp__mobile_stop_screen_recording(device=$DEVICE_UDID)
-     - 返回 {path, size, duration_seconds}，path 应等于 RECORDING_PATH
-```
-
-### 模板 B2: xcrun simctl（caller 是 Bash 自动化 / 没 mcp env）
-
-skill 提供两段：`record-xcrun.sh` 起录 + 返回 PID，`stop-xcrun.sh` SIGINT 收尾 + 校验文件。
+录屏本身跟用哪个 UI 交互工具无关，只有一条路径——`record-xcrun.sh` 直接走 `xcrun simctl io recordVideo`；触发动画的动作用 `sim-use` 驱动（CLI，任何 caller 都能直接 Bash 调用，不需要区分"subagent 有没有 mcp 工具访问权"）：
 
 ```bash
 # 1. 起录（脚本后台 fork simctl + 等 0.4s first frame + 返回 REC_PID）
 eval "$(DEVICE_UDID=$DEVICE_UDID RECORDING_PATH=$RECORDING_PATH \
   bash ~/.Codex/skills/record-ui-animation/scripts/record-xcrun.sh)"
 
-# 2. caller 自己触发动画 —— 任意方式：osascript 控 Simulator、跑 UI test、纯 sleep（屏上动画自播）
-sleep "$EXPECTED_DURATION_SECONDS"
+# 2. caller 把 app 走到动画起点（如果需要）
+sim-use tap --label "<目标按钮/入口>" --device "$DEVICE_UDID"
 
-# 3. 收尾（SIGINT + wait + 校验 mp4 是否完整）
+# 3. caller 触发动画（关键动作，按 spec 描述选一种）：
+#    - 点按类：sim-use tap --label "Send" --device "$DEVICE_UDID"
+#    - 输入类（ASCII）：sim-use type "Hello" --device "$DEVICE_UDID"
+#    - 输入类（中文/特殊字符）：sim-use paste "你好" --device "$DEVICE_UDID"
+#    - 滑动类：sim-use gesture swipe-from-bottom-edge --device "$DEVICE_UDID"
+#      （或 sim-use swipe --start-x --start-y --end-x --end-y --device "$DEVICE_UDID" 指定精确起止点）
+#    - 双击类：sim-use 没有原生 double-tap，连续两次 sim-use tap 模拟（间隔 <0.3s）
+
+# 4. 等动画完成
+sleep "$(echo "$EXPECTED_DURATION_SECONDS + 0.3" | bc)"
+
+# 5. 收尾（SIGINT + wait + 校验 mp4 是否完整）
 REC_PID=$REC_PID RECORDING_PATH=$RECORDING_PATH \
   bash ~/.Codex/skills/record-ui-animation/scripts/stop-xcrun.sh
 ```
@@ -168,7 +147,7 @@ RECORDING_PATH=$RECORDING_PATH FRAMES_DIR=$FRAMES_DIR META_PATH=$META_PATH \
 
 ## 完整调用示例
 
-### 例 1: executor 跑 chat-send-morph 动画验证（subagent + mobile-mcp）
+### 例 1: executor 跑 chat-send-morph 动画验证
 
 ```bash
 # Step A: prepare
@@ -186,16 +165,23 @@ eval "$(WORKTREE_SLUG=chat-send-morph CASE_SLUG=chat-send-fly DEVICE_UDID=$UDID 
 # → 现在 env 里有 RECORDING_PATH / FRAMES_DIR / META_PATH
 ```
 
-Step B（caller 在 subagent prompt 内调 mcp 工具）：
+Step B：
 
-```
-1. mcp__mobile-mcp__mobile_start_screen_recording
-     device=$DEVICE_UDID, output=$RECORDING_PATH, timeLimit=5
-2. 走到 chat sheet（如不在）—— mobile_launch_app / mobile_click_...
-3. mcp__mobile-mcp__mobile_type_keys(device=$DEVICE_UDID, text="Hello", submit=false)
-4. 通过 mobile_list_elements_on_screen 拿 send 按钮坐标 → mobile_click_on_screen_at_coordinates
-5. Bash: sleep 3.3   ← 等动画 + buffer
-6. mcp__mobile-mcp__mobile_stop_screen_recording(device=$DEVICE_UDID)
+```bash
+eval "$(DEVICE_UDID=$UDID RECORDING_PATH=$RECORDING_PATH \
+  bash ~/.Codex/skills/record-ui-animation/scripts/record-xcrun.sh)"
+
+# 走到 chat sheet（如不在）
+sim-use tap --label "Chat" --device "$UDID"
+
+# 触发：输入文字 + 点 send
+sim-use type "Hello" --device "$UDID"
+sim-use tap --label "Send" --device "$UDID"
+
+sleep 3.3   # 等动画 + buffer
+
+REC_PID=$REC_PID RECORDING_PATH=$RECORDING_PATH \
+  bash ~/.Codex/skills/record-ui-animation/scripts/stop-xcrun.sh
 ```
 
 Step C: extract
@@ -214,7 +200,7 @@ RECORDING_PATH=$RECORDING_PATH FRAMES_DIR=$FRAMES_DIR META_PATH=$META_PATH \
 
 1. 判断 simulator booted（不在则先 `Skill(open-sim)`）
 2. `prepare.sh` 准备目录
-3. `record-xcrun.sh` 起录 → 跑 osascript / mcp tool 触发 dismiss → sleep 1.3 → `stop-xcrun.sh` 收尾
+3. `record-xcrun.sh` 起录 → 用 `sim-use swipe` / `sim-use gesture` 触发 dismiss → sleep 1.3 → `stop-xcrun.sh` 收尾
 4. `extract.sh` 抽 10 帧
 5. Read 10 张 PNG → 写一份观察「frame-001 sheet 满屏、frame-005 滑到一半、frame-010 完全消失，曲线看 ease-out」给用户
 
@@ -223,7 +209,7 @@ RECORDING_PATH=$RECORDING_PATH FRAMES_DIR=$FRAMES_DIR META_PATH=$META_PATH \
 `PLATFORM=android` 时改两点：
 
 - Step A 的 device 检查改 `adb -s $DEVICE_UDID get-state`，期望 `device`
-- Step B 模板换成 `adb -s $DEVICE_UDID shell screenrecord /sdcard/recording.mp4 --time-limit N`、停录后 `adb pull`
+- Step B 触发动作换成 `sim-use`（同一套 CLI，Android adb serial 会自动路由到 Android backend）；录屏模板换成 `adb -s $DEVICE_UDID shell screenrecord /sdcard/recording.mp4 --time-limit N`、停录后 `adb pull`
 
 Step C 完全一致（mp4 输入 ffmpeg 无差异）。
 
@@ -254,3 +240,4 @@ Step C 完全一致（mp4 输入 ffmpeg 无差异）。
 - 动画 / 过渡 / 飞行类时间维度行为单帧截图判不出，原方案降级让人肉看；`xcrun simctl io recordVideo` + ffmpeg 抽帧让 agent 自己 Read 关键帧序列判
 - skill 只采集证据，不编排触发动画（spec-specific）+ 不判 pass/fail（视觉判断硬编码维护成本爆炸）
 - 默认 0.5x scale：Simulator @3x 录屏每帧 2-3MB，10 帧塞进 context 撑爆；0.5x 既保留可读 + 把 10 帧总量压到 ~7MB
+- 录屏路径只保留 xcrun simctl 一条：原来的 mobile-mcp 模板和 xcrun 模板只是"caller 有没有 mcp 工具访问权"的分支，换成 sim-use（CLI，谁都能 Bash 调用）之后这个分支没有存在意义了，合并成一条路径反而更简单、少一层要维护的模板

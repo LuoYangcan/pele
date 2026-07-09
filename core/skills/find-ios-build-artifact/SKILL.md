@@ -1,11 +1,11 @@
 ---
 name: find-ios-build-artifact
-description: Locate the just-built iOS Simulator `.app` bundle and resolve the per-worktree Simulator UDID so callers can install/launch via simctl or mobile-mcp. Use when an executor / open-sim / similar caller has just built iOS with `just build-ios` (or equivalent) and now needs the build artifact paths. Skip when the caller already knows all three values, when there's no `.xcworkspace` ancestor (bare xcodeproj — caller must adapt), or when targeting macOS / device (iOS Simulator only).
+description: Locate the just-built iOS Simulator `.app` bundle for a project + resolve the per-worktree Simulator UDID — output `APP_PATH` (absolute) + `BUNDLE_ID` + `SIMULATOR_UDID` so callers can `simctl install -d <udid>` / `simctl launch <udid>` / sim-use (which takes a `--device` flag). Walks up from cwd to find a `.xcworkspace`, runs `xcodebuild -showBuildSettings`, verifies the `.app` exists, then invokes `~/.claude/scripts/worktree-sim.sh ensure` to lazy-create + boot the worktree's dedicated sim. Use when an executor / open-sim / similar caller has just built iOS with `just build-ios` (or equivalent) and now needs the build artifact paths. Skip when the caller already knows all three values, when there's no `.xcworkspace` ancestor (project uses bare xcodeproj — caller must adapt), or when targeting macOS / device (this skill is iOS Simulator only).
 ---
 
 # find-ios-build-artifact
 
-跑完 iOS Simulator build 后，找到产物 `.app` 路径 + bundle id + **当前 worktree 绑定的 simulator UDID**。caller 拿这三个值给 `simctl install -d <udid> <app>` / `simctl launch <udid> <bundle>` / mobile-mcp 工具（`device: <udid>` 参数）。
+跑完 iOS Simulator build 后，找到产物 `.app` 路径 + bundle id + **当前 worktree 绑定的 simulator UDID**。caller 拿这三个值给 `simctl install -d <udid> <app>` / `simctl launch <udid> <bundle>` / sim-use（`--device <udid>` 参数）。
 
 并行 session 隔离：每个 worktree 用专属 sim（`sim-<slug>`），由 `~/.claude/scripts/worktree-sim.sh ensure` lazy 管理。两个 session 同时跑也不会抢同一台。
 
@@ -166,4 +166,4 @@ Skill(find-ios-build-artifact)   # 入参：scheme = <YourApp>iOS
 ## Why（核心）
 
 - 三字段（`APP_PATH` / `BUNDLE_ID` / `SIMULATOR_UDID`）打包输出 — caller 一次拿齐 install/launch 所需的全部
-- `SIMULATOR_UDID` 来自 `worktree-sim.sh ensure`：lazy create + boot per-worktree `sim-<slug>`，并行 session 各自有 sim、mobile-mcp `device` 参数能精确路由
+- `SIMULATOR_UDID` 来自 `worktree-sim.sh ensure`：lazy create + boot per-worktree `sim-<slug>`，并行 session 各自有 sim、sim-use `--device` 参数能精确路由

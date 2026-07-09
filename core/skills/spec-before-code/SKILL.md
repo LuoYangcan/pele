@@ -73,8 +73,8 @@ description: 新需求先写 spec 再写代码的 SOP（主索引 + 子目录两
 
 **spec 必须额外满足**：
 
-1. 第 4 节 Golden Path 至少 1 条用 mobile-mcp 的冒烟步骤——明确写清楚：跑哪个 scheme、打开哪个页面、做什么操作、看什么视觉/行为结果
-2. 第 5 节 Done Definition 加一条：`mobile-mcp 跑通 golden path 无 crash + 视觉符合预期`
+1. 第 4 节 Golden Path 至少 1 条用 sim-use 的冒烟步骤——明确写清楚：跑哪个 scheme、打开哪个页面、做什么操作、看什么视觉/行为结果
+2. 第 5 节 Done Definition 加一条：`sim-use 跑通 golden path 无 crash + 视觉符合预期`
 
 仅 iOS 适用；macOS UI 改动不强制（按项目现状走 build + 手动 open）。
 

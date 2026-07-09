@@ -37,8 +37,11 @@ C) **回合 checkpoint**：同一需求卡 >3 回合用户仍不满 → 停下�
 ## 语言/栈规则
 
 - [swift-formatting](rules/swift-formatting.md) — 触发：改 Swift 代码；遵守 SwiftLint / SwiftFormat，冲突时以项目的 lint-fix 命令为准。
+- [ios-list-ui-container](rules/ios-list-ui-container.md) — 触发：写 / 重构 iOS list UI（滚动的同类条目集合）；重复同类条目集合默认虚拟化容器（collectionView / tableView / List / LazyVStack），stackView 只给 cell 内组合 / tag 流 / 固定异构详情表单；判据按形态、不用有界无界。
 - [open-sim](skills/open-sim/SKILL.md) — **形态：skill**，用 `Skill(open-sim)` 加载，不要 Read。触发：用户说「打开模拟器 / open simulator / 跑模拟器 / 在模拟器看效果 / 编译跑一下 / build 跑模拟器」。SOP：调 `~/.claude/scripts/run-ios.sh --target sim`（共享脚本：build → 定位 `.app` → 从产物读 bundle id → per-worktree sim（非 worktree fallback）→ install/launch → `open -a Simulator`）；不用 build 时加 `--no-build`。不触发：macOS app / **真机（用 `run-device`）** / 改 meta 配置。
 - [run-device](skills/run-device/SKILL.md) — **形态：skill**，用 `Skill(run-device)` 加载，不要 Read。触发：用户说「装真机 / 真机跑一眼 / install on device / run on my iPhone / 部署到手机 / 真机调试」。SOP：调 `~/.claude/scripts/run-ios.sh --target device`（与 open-sim 共享脚本：自动选唯一 paired 设备的 CoreDevice `identifier` → `<IOS_BUILD_DESTINATION>=platform=iOS,id=<id> just build-ios` → 定位 `Debug-iphoneos/*.app` → `devicectl install/launch`）；多台设备加 `--device-id <id>`，不用 build 加 `--no-build`。前置：设备插线+解锁+信任、签名已在 `Local.xcconfig`。不触发：模拟器（用 `open-sim`）/ macOS / release。
+- [figma-precise-extract](skills/figma-precise-extract/SKILL.md) — **形态：skill**，用 `Skill(figma-precise-extract)` 加载（planner 无 Skill 工具时按需 Read）。触发：figma→code 拿精确图标尺寸 / 间距 / token、figma px→iOS pt 换算、排查「按 figma 实现但图标/间距对不齐」。核心：planner 把 get_design_context 结构骨架 + get_metadata 精确尺寸 + get_variable_defs token **烘焙**成 measurement-grade 冻结 HTML（数值按设计基准倍率换成 pt、覆盖被框架刻度吸附的近似值），generator 实现时直接 Read 冻结 HTML 取数、不再 live 拉 figma。三段式：planner 冻 PNG（视觉真相）+ 烘焙 HTML（测量真相），generator Read 两份工件（尺寸/间距以 HTML 为准、颜色/阴影以 PNG 为准）。不触发：无 figma / 非 UI 改动 / loose 严格度。
+- [figma-asset-export](skills/figma-asset-export/SKILL.md) — **形态：skill**，用 `Skill(figma-asset-export)` 加载（planner 无 Skill 工具时按需 Read）。触发：从 figma 切图 / 导出图标 / 插画 / logo 进 iOS、判该切图还是用设计系统还原、定切图格式。核心：自定义资源用 get_design_context 资源下载 URL（figma 给 SVG/PNG、不给 PDF）导出、别从几何重画；单色可缩放→SVG（Xcode 直接用或转 PDF）template + token tint，多色/位图→@1x/2x/3x .imageset；导出 box = 外框非裁剪 path。三段式：planner Step 3.1 切图冻进 assets/，generator 接进 asset catalog + 设 render mode / tint。不触发：无自定义资源（图标全走设计系统 / SF Symbol）/ 非 iOS。
 
 ## 加载约定
 

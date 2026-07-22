@@ -175,7 +175,7 @@ reality-check 通过后再走这一步。
 ## 与 simplify 的关系
 
 - **architecture-first**（本条）：动手**前** + review 中介入**架构 / 模式选型**决策。**不写代码**，产出 checklist 和「该用哪个模式 / 该放哪一层 / 该不该重构」的判断。
-- **simplify**（内置）：改完代码**后** spawn 3 个并行 review subagent（复用 / 质量 / 效率），**自动 fix**。
+- **cleanup backend**：Claude 用 `/simplify`；Codex 用 `codex-simplify`。改完代码后做多角度只读 findings，再由单一 writer 自动 fix。
 - 一次任务可串行：开干前 architecture-first 把方向 + 模式定对 → 迭代收尾时 simplify 扫尾。
 
 ## 不做的事

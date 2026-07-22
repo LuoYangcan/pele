@@ -84,7 +84,7 @@
 
 **iOS UI 改动专项**（触发信号：改了 SwiftUI/UIKit view、改了图片资源、改了样式/布局/颜色、需求里出现 UI 字眼。任一命中则**必填**至少 1 条；不触发则删掉本小节）：
 
-**Figma 设计稿引用**（触发条件同上 iOS UI 专项；用户提供了 Figma URL 才填，没有写「无 Figma 设计稿，按 §1 用户原话和下面 mobile-mcp 冒烟条目实现」）：
+**Figma 设计稿引用**（触发条件同上 iOS UI 专项；用户提供了 Figma URL 才填，没有写「无 Figma 设计稿，按 §1 用户原话和下面 sim-use 冒烟条目实现」）：
 
 **参考稿列表**（每行一个 figma node；冒烟用例 >1 条且各对应不同 node 时「对应用例」列填 `case-N` 绑定，只有 1 条用例或单 node 通用时填 `*`。`<nodeId-safe>` = nodeId 把 `:` 替换成 `-`）：
 
@@ -111,12 +111,12 @@
 - **对齐严格度**（默认 `strict`，除非用户在 §6 硬约束里明确写降级）：
   - `strict`：图标大小、间距、控件样式、颜色、字号**全部 1:1 还原**，肉眼 diff 即视为不通过；generator 不允许凭感觉调一两个 pt，要改必须 §9 AMD 显式记下并附原因
   - `loose`：只对齐版式骨架（哪个元素在哪一行哪一列）+ 颜色 token，间距 / 字号允许 ±2pt 误差，需在本字段写明降级原因
-- **generator 使用方式**：Read `.specs/<slug>/assets/figma-*.html`（测量真相、精确 pt、无需换算）取尺寸 / 间距 + Read `figma-*.png`（视觉真相）+ 本段轻量契约 + 用切图清单的资源 → mobile-mcp 拉实拍截图视觉对照（尺寸/间距以 HTML 为准、颜色/阴影以 PNG 为准）。generator **不 RE-FREEZE PNG / 不 RE-BAKE HTML / 不重新切图 / 不 live 拉测量** —— 视觉设计更新走 planner 重抓 + 重烘焙 + AMD
-- **ui-reviewer 视觉验收**：见 `~/.claude/skills/review-mobile-ui/SKILL.md` Step 5.b 视觉层 —— ui-reviewer 跑每条用例时 Read「视觉快照 PNG」列下的 PNG 与 mobile-mcp 实拍图对比（需精确尺寸/间距时参考「测量 HTML」列）；按「对齐严格度」字段判定（`strict` 下视觉层不符 → blocking `ui-figma-mismatch`；`loose` 只看版式骨架 + 颜色 token）。assets/ 下设计快照缺失 → warning（不阻断整体 verdict），全部缺失 → `ui_verified: degraded`
+- **generator 使用方式**：Read `.specs/<slug>/assets/figma-*.html`（测量真相、精确 pt、无需换算）取尺寸 / 间距 + Read `figma-*.png`（视觉真相）+ 本段轻量契约 + 用切图清单的资源 → `sim-use screenshot` 拉实拍截图视觉对照（尺寸/间距以 HTML 为准、颜色/阴影以 PNG 为准）。generator **不 RE-FREEZE PNG / 不 RE-BAKE HTML / 不重新切图 / 不 live 拉测量** —— 视觉设计更新走 planner 重抓 + 重烘焙 + AMD
+- **ui-reviewer 视觉验收**：见 `~/.claude/skills/review-mobile-ui/SKILL.md` Step 5.b 视觉层 —— ui-reviewer 跑每条用例时 Read「视觉快照 PNG」列下的 PNG 与 `sim-use screenshot` 实拍图对比（需精确尺寸/间距时参考「测量 HTML」列）；按「对齐严格度」字段判定（`strict` 下视觉层不符 → blocking `ui-figma-mismatch`；`loose` 只看版式骨架 + 颜色 token）。assets/ 下设计快照缺失 → warning（不阻断整体 verdict），全部缺失 → `ui_verified: degraded`
 
-**mobile-mcp 冒烟用例**：
+**sim-use 冒烟用例**：
 
-- [ ] **mobile-mcp 冒烟**：<scheme + 进入哪个页面 + 做什么操作 + 看什么视觉/行为结果>
+- [ ] **sim-use 冒烟**：<scheme + 进入哪个页面 + 做什么操作 + 看什么视觉/行为结果>
   - 例：`<YourApp>iOS-Dev` → 打开「设置」tab → 点"主题" → 看到新加的卡片在最顶部、深色模式下背景色正确、点击有 push 动画
 - [ ] ...
 
@@ -158,8 +158,8 @@
 - [ ] 第 4 节列出的 golden path 全部肉眼/手测验证过
 - [ ] 第 4 节列出的边界场景至少快速过一遍
 - [ ] 没有引入新的 lint / format 警告
-- [ ] **iOS UI 改动专项**（触发条件同第 4 节，命中则必勾；macOS UI 改动不强制）：mobile-mcp 跑通 golden path 无 crash + 视觉符合预期
-- [ ] **Figma 设计稿还原**（仅当第 4 节列了 Figma URL + planner 抓快照成功时勾；无 Figma / 抓失败则跳过本项 + §7 留 OPEN risk）：generator 在 Step 4.5 Read `.specs/<slug>/assets/figma-*.png` 设计快照 + §4「设计契约快照」段，用 mobile-mcp 拉实拍截图视觉对照；按 §4「对齐严格度」字段验收 —— `strict` 模式下图标大小 / 间距 / 控件样式 / 颜色 / 字号 / 字重 / 行高 **全部 1:1** 对齐，肉眼 diff 不通过即视为 FAIL；diff 截图存到 `.reviews/<slug>-figma-diff-*.png`
+- [ ] **iOS UI 改动专项**（触发条件同第 4 节，命中则必勾；macOS UI 改动不强制）：sim-use 跑通 golden path 无 crash + 视觉符合预期
+- [ ] **Figma 设计稿还原**（仅当第 4 节列了 Figma URL + planner 抓快照成功时勾；无 Figma / 抓失败则跳过本项 + §7 留 OPEN risk）：generator 在 Step 4.5 Read `.specs/<slug>/assets/figma-*.png` 设计快照 + §4「设计契约快照」段，用 `sim-use screenshot` 拉实拍截图视觉对照；按 §4「对齐严格度」字段验收 —— `strict` 模式下图标大小 / 间距 / 控件样式 / 颜色 / 字号 / 字重 / 行高 **全部 1:1** 对齐，肉眼 diff 不通过即视为 FAIL；diff 截图存到 `.reviews/<slug>-figma-diff-*.png`
 - [ ] <项目特定>：...
 
 ## 6. 硬约束

@@ -26,9 +26,9 @@ description: Build, install, and launch the iOS app on a connected real iPhone. 
 bash ~/.claude/scripts/run-ios.sh --target device
 ```
 
-脚本会：自动选**唯一 paired 设备**的 CoreDevice `identifier`（`devicectl list devices` 的 `identifier` UUID，如 `25CC377B-...`）→ `<IOS_BUILD_DESTINATION>="platform=iOS,id=<id>" just build-ios` → 定位 `Debug-iphoneos/*.app` → 从产物 `Info.plist` 读 bundle id → `devicectl device install app` + `process launch` → 打印 `----- run-ios result -----` 结果块。
+脚本会：自动选**唯一 paired 物理设备**的 CoreDevice `identifier`（按 `hardwareProperties.reality == physical` 过滤，排除注册成 CoreDevice 的模拟器；`identifier` 是 UUID，如 `25CC377B-...`）→ `<IOS_BUILD_DESTINATION>="platform=iOS,id=<id>" just build-ios` → 定位 `Debug-iphoneos/*.app` → 从产物 `Info.plist` 读 bundle id → `devicectl device install app` + `process launch` → 打印 `----- run-ios result -----` 结果块。
 
-- 接了**多台** paired 设备 → 脚本报错列出候选，让用户挑，再传 id：
+- 接了**多台** paired 物理设备 → 脚本报错列出候选（已排除模拟器），让用户挑，再传 id：
   ```bash
   bash ~/.claude/scripts/run-ios.sh --target device --device-id <identifier>
   ```
@@ -40,7 +40,7 @@ bash ~/.claude/scripts/run-ios.sh --target device
 
 ## 省 context（可选）
 
-真机 build 比 sim 慢、xcodebuild 日志更长。想挡在主对话外：派一个 `model: haiku` / sonnet 的 subagent 跑这条命令、只回结果块。skill 本身 model-agnostic，派不派是调用时决定。
+真机 build 比 sim 慢、xcodebuild 日志更长。想挡在主对话外：Claude 派 Haiku / Sonnet；Codex 派 `command-runner`（Luna low），角色未加载时用 Terra low。subagent 只跑命令并返回结果块，不判断代码质量。
 
 ## 失败处理（脚本退出码）
 
@@ -51,7 +51,7 @@ bash ~/.claude/scripts/run-ios.sh --target device
 | 3 | 找不到 `.app` | 仅 `--no-build` 时可能；让用户去掉 `--no-build` 重跑 |
 | 4 | devicectl install / launch 失败 | 设备插着+解锁+信任？install 成功 launch 才有意义 |
 
-设备 `tunnelState` 不是 `connected`（拔线 / 锁屏 / 没开 dev session）时脚本会先 `WARN:` 但仍尝试，让真实的 xcodebuild / devicectl 错误兜底。
+设备选择只认物理机（`reality == physical`）；wired 连着的机器即使 `tunnelState` 显示 `disconnected` 也照跑（tunnel 由 devicectl 到用时才建）。仅当链路**非 wired 且未 connected**（无线休眠 / 拔线 / 锁屏）才先 `WARN:` 但仍尝试，让真实的 xcodebuild / devicectl 错误兜底。
 
 ## 不做的事
 

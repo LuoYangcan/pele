@@ -10,7 +10,7 @@ description: 三段式调度 SOP（主 agent 不写代码、全程委派 subagen
 ```
 用户需求
   ↓
-主 agent: 判断 + 建 worktree（如需要）
+主 agent: 判断 + 建 worktree（如需要）+ ⚡ 后台预热（初始化 + baseline build，与 planner / 拍板并行）
   ↓
 [planner subagent] —— 独立 context、写 .specs/<slug>.md
   ↓
@@ -22,7 +22,7 @@ description: 三段式调度 SOP（主 agent 不写代码、全程委派 subagen
   ↓ 用户拍板「进 executor」（或先「起模拟器看一下」→ 主 agent simctl install/launch → 再 AskUserQuestion）
 [executor subagent] —— 独立 context、跑硬验收（spec/build/lint/AMD/UI/硬约束）
   ↓ verdict==PASS
-[executor 内嵌 Step 6.5] —— PASS 后跑一次外部 reviewer subagent（Opus 4.8 extended thinking，~5-10 分钟）
+[executor 内嵌 Step 6.5] —— PASS 后跑一次旗舰 reviewer（Claude Opus subagent / Codex native review xhigh，~5-10 分钟）
   ↓
 主 agent: 报告 verdict==PASS + 展示 review 报告摘要 + AskUserQuestion 问「review 怎么处理」
   ↓
@@ -38,6 +38,8 @@ verdict==FAIL 路径（外部 generator 实现）：主 agent 停下 AskUserQues
 > ⚡ **并行模式扩展**：spec 第 2 节并行分组里有**多个** `parallel-N` 组时，阶段 2 / 3 走「并行模式」—— 见下方 **2B / 3B / 3C / 阶段 5** 子节。串行模式（只有 `serial` 组 / 写「全部串行」）按上图原流程跑。判别由 planner 在 spec 里标注、用户在阶段 1 末尾审 spec 时拍板，主 agent 自己**不**判断是否并行。
 >
 > 🔁 **review 在并行模式下的处理**：3B 各组 executor 都传 `run_review_subagent: false`（单组不跑 review）；review 只在 3C 合并 + 阶段 5 最终 executor 跑一次。
+>
+> ⛔ **后台派发边界**：harness 默认把 subagent 丢后台，后台 subagent 的 `AskUserQuestion` 到不了用户。需要与用户对齐的调用必须显式 `run_in_background: false`：阶段 1 planner（澄清 / 对齐）、阶段 1.5 平衡 / 旗舰模型行同步、串行模式 generator（不确定流程要提问）。可后台：阶段 0 预热 Bash、阶段 1.5 纯确认词轻量模型同步（prompt 禁提问）、并行模式各组 generator / executor（不确定点走 feedback 文件不提问）、ui-reviewer。
 
 ## 触发
 
@@ -59,18 +61,34 @@ verdict==FAIL 路径（外部 generator 实现）：主 agent 停下 AskUserQues
 Codex（Desktop / CLI）里没有字面量 `Skill(...)` / `Agent(...)` / `AskUserQuestion` 工具时，按下面映射执行，不把工具名差异当作跳过 pipeline 的理由：
 
 - `Skill(dispatch-pipeline)`：Read 本 `SKILL.md` 全文；后续按本 SOP 执行。
-- `Agent({ subagent_type: "<role>", prompt: "..." })`：优先用当前会话已暴露的 subagent 工具；若有 `multi_agent_v1.spawn_agent` 就调 `multi_agent_v1.spawn_agent({ agent_type: "<role>", message: "..." })`；若工具尚未加载且有 `tool_search`，先搜 `multi-agent` 再调。`<role>` 取 `planner` / `generator` / `executor` / `ui-reviewer`。
+- `Agent({ subagent_type: "<role>", prompt: "..." })`：优先用当前会话已暴露的 subagent 工具；若有 `multi_agent_v1.spawn_agent` 就调 `multi_agent_v1.spawn_agent({ agent_type: "<role>", fork_turns: "none", message: "..." })`；若工具尚未加载且有 `tool_search`，先搜 `multi-agent` 再调。`<role>` 取 `planner` / `generator` / `executor` / `ui-reviewer` / `planner-sync` / `command-runner`。pipeline prompt 必须自包含；Codex 指定 custom `agent_type` 或 model override 时禁用 full-history fork，否则会继承父 agent 类型 / 模型。
 - `run_in_background: true` / 并行 Agent：同一轮发起多个 `spawn_agent`；需要结果时用 `multi_agent_v1.wait_agent` 等待。
 - `AskUserQuestion`：若有 `request_user_input` / `AskUserQuestion` 等用户输入工具就用；否则在主对话直接停下问用户，等明确回复后再进入下一阶段。
+- **Simulator UI 交互**：统一用 `exec_command` / Bash 调 `sim-use` CLI；不要搜索或调用 `mobile-mcp`，即使它出现在工具列表。app 装 / 启仍走 `xcrun simctl install/launch`；每次 `sim-use` 调用都显式传 `--device <SIMULATOR_UDID>`（由 `find-ios-build-artifact` / `worktree-sim.sh ensure` 获取）。
 - 写代码请求命中本 skill 时，视作用户已显式授权本 pipeline 使用 planner / generator / executor delegation；除非用户明确 bypass（「你直接改」「跳过 planner」「不用 executor」）。
 - 无任何等价 subagent 工具时：不要主 agent 自己写代码；报告「当前 Codex 会话没有 multi-agent/subagent 工具」，让用户选择直接改 / 暂停 / 换可用会话。
 
+### 模型路由（按职责，不按旧模型名机械替换）
+
+| 职责 | Claude | Codex |
+| --- | --- | --- |
+| 复杂规划、实现、架构判断、深度 review | `opus` | `gpt-5.6-sol`，`high` / `xhigh` |
+| executor、UI 验收、AMD 转写、机械修复 | `sonnet` | `gpt-5.6-terra`，通常 `high` |
+| 轻量 PR review（含语义判断 + 外部评论） | `haiku` | `gpt-5.6-terra` + `high`，不下放 Luna |
+| 纯确认词、命令执行、日志裁剪、结构化摘要 | `haiku` | `planner-sync` / `command-runner`（Luna low） |
+
+Codex 固定角色的默认值写在 `~/.codex/agents/*.toml`；调用点只在窄任务时 override。`spawn_agent` 用 `model` + `reasoning_effort`，agent TOML 用 `model` + `model_reasoning_effort`。当前工具不能直接 override Luna 时，调用固定为 Luna low 的 `planner-sync` / `command-runner`；角色未加载或 host 不支持 Luna时用 Terra low，不试错重跑。
+
 ## 主 agent 的具体调度动作
 
-### 阶段 0: 前置
+### 阶段 0: 前置（worktree + 后台预热）
 
 - 收到需求 → 判断是否新话题 → 如需要按 `~/.claude/rules/use-worktree.md` 建 worktree
-- 已经在 worktree 里 → 跳过
+- 已经在 worktree 里 → 跳过建 worktree 与预热（环境已就绪）
+- ⚡ **后台预热**（新建 worktree 后立即发起，不等完成就进阶段 1）：把 use-worktree 的项目配置、依赖锁与初始化步骤（step 5-9）+ baseline build（项目 build 命令、暖编译缓存）+ iOS 项目 sim 预热（`~/.claude/scripts/worktree-sim.sh ensure`）串成**一条**后台 Bash（`run_in_background: true`），与 planner / 用户拍板并行跑
+  - 预热只暖缓存：主 agent 不把 build 结果当验证用（不违反「不跑 build 自己验证」）
+  - 包管理器探测：Node ≥25 已无 corepack；无 corepack / 无全局 pnpm 时，pnpm 项目一律 `npx -y pnpm@$(node -p "require('./package.json').packageManager?.split('@')[1]") <cmd>`（钉住 packageManager 版本；不要 `corepack enable` 写全局 shim）
+  - join 点在阶段 2 前提 2；无后台 Bash 的会话（Codex 等）退化为串行初始化，预热是优化不是硬依赖
 
 ### 阶段 1: 调 planner
 
@@ -78,6 +96,7 @@ Codex（Desktop / CLI）里没有字面量 `Skill(...)` / `Agent(...)` / `AskUse
 Agent({
   description: "<需求一句话> — 规划 spec",
   subagent_type: "planner",
+  run_in_background: false,   # planner 要 AskUserQuestion 与用户对齐，必须前台
   prompt: """
     用户原始需求（原话）：
     <贴用户原话>
@@ -122,7 +141,7 @@ planner 返回后：
 
 #### 阶段 1.5: 用户决策后必须调 planner 同步 spec（强制闸口）
 
-> ⛔ **硬约束**：用户对 spec 给出**实质决策**后，该决策**必须**由 planner 写进 spec 文件，且**在主 agent 进入下一步之前**完成（下一步 = 调 generator / 交接外部 generator / 起模拟器 / 收尾 / 等下一条指令）。**绝不允许**只用自然语言回一句「明白」就略过落 spec。
+> ⛔ **硬约束**：用户对 spec 给出**实质决策**后，该决策**必须**由 planner 写进 spec 文件，且**在主 agent 进入下一步之前**完成（下一步 = 调 generator / 交接外部 generator / 起模拟器 / 收尾 / 等下一条指令）。**绝不允许**只用自然语言回一句「明白」就略过落 spec。⚡ 唯一例外：**纯确认词**（无实质决策内容）的同步可后台并行，见下方「时序分两档」。
 >
 > **顺序**：决策**先聊清楚、再落 spec**——不要抢在回复用户前盲目同步一个半成品决策。判断决策是否「聊清楚」：用户给了明确、可执行、无歧义的内容（不是反问 / 模糊 / 还在比选项）。聊清楚的当轮就落 spec，别拖到忘。
 >
@@ -146,6 +165,7 @@ Agent({
   description: "<需求一句话> — 同步用户决策",
   subagent_type: "planner",
   model: <见下方「模型选择」表>,
+  run_in_background: false,   # 仅纯确认词轻量模型行例外走后台，见下方「时序分两档」
   prompt: """
     场景：用户决策同步（dispatch-pipeline 阶段 1.5）
 
@@ -162,17 +182,22 @@ Agent({
 })
 ```
 
-**模型选择**（`model` 参数 override planner.md frontmatter 默认 opus）：
+**模型选择**（调用参数 override planner 的旗舰默认值）：
 
-| 用户回复类型 | model |
-| --- | --- |
-| 简单确认词（「开始 / 开 / ok 开始 / 干 / go / 实现吧 / 没问题开始 / 没问题 / 没意见」） | `haiku` |
-| append AMD（机械转写指令成 §9 子文件 + 轻量判断是否撞 §1-6） | `sonnet` |
-| 真·实质决策（改硬约束 / 改 scope / 拆任务 / 改测试用例 / 「跳过 generator」/ 带具体内容的指令） | 不传（默认 opus） |
+| 用户回复类型 | Claude | Codex |
+| --- | --- | --- |
+| 简单确认词（「开始 / 开 / ok 开始 / 干 / go / 实现吧 / 没问题开始 / 没问题 / 没意见」） | `haiku` | `planner-sync`（Luna low）；不可用时 planner + Terra low |
+| append AMD（机械转写指令成 §9 子文件 + 轻量判断是否撞 §1-6） | `sonnet` | Terra high |
+| 真·实质决策（改硬约束 / 改 scope / 拆任务 / 改测试用例 / 「跳过 generator」/ 带具体内容的指令） | 不传（默认 `opus`） | 不传（默认 Sol xhigh） |
 
-拿不准 → 不传（走 opus）。
+Codex 命中简单确认词行时，把上方模板的 `subagent_type` 改为 `planner-sync`，prompt 只传 spec 绝对路径、用户回复原话、决策摘要；`planner-sync` 返回 `unsupported: true` 时再串行调完整 planner，不进入 generator。
 
-planner 同步完返回后，主 agent 再次 Read 一遍 `.specs/<slug>.md` 确认改动落地，**然后**才进入下一步（阶段 2 调 generator / 等用户进一步指令 / 其他分支）。
+拿不准 → 不传（走旗舰默认值）。
+
+同步与进入下一步的时序，按模型行分两档：
+
+- ⚡ **轻量模型行（纯确认词）后台并行**：同步只 append 更新日志一行、不改 §1-9 实质内容 → 同一个 message 里同时发 planner 同步（`run_in_background: true`，prompt 追加「只 append 更新日志、不动其他节；你在后台、**禁用 AskUserQuestion**，遇到任何不确定直接返回说明」）+ 阶段 2 的 generator（**前台** `run_in_background: false`，它的不确定流程要能问到用户）。不等同步返回；同步完成通知到达后 Read 更新日志抽查；没落地 / 返回了不确定说明 → 补调一次同步（不打断 generator）
+- **平衡 / 旗舰模型行（AMD append / 实质决策）串行**：generator 必须读到落地后的 spec 才能开工 —— planner 同步完返回后，主 agent 再次 Read 一遍 `.specs/<slug>.md` 确认改动落地，**然后**才进入下一步（阶段 2 调 generator / 等用户进一步指令 / 其他分支）
 
 #### 自检 checklist（每次准备调 generator 前过一遍）
 
@@ -180,14 +205,16 @@ planner 同步完返回后，主 agent 再次 Read 一遍 `.specs/<slug>.md` 确
 - [ ] 我向用户展示了 spec 路径 + 摘要？
 - [ ] 我用 AskUserQuestion 问过用户「是否开始实现」？
 - [ ] 用户给了**明确同意词**？（不是「嗯」「ok」之外的模糊词）
-- [ ] **我已经在用户决策后调 planner 同步进 spec、并 Read 确认了？**（阶段 1.5 强制闸口）
+- [ ] **我已经在用户决策后调 planner 同步进 spec、并 Read 确认了？**（阶段 1.5 强制闸口；⚡ 纯确认词后台并行场景 = 同步已在同一 message 发起即算过，Read 抽查移到完成通知后）
 - [ ] 5 项全部 ✅ → 才能 invoke generator
 
 > ⛔ **通用闸口（不止「调 generator 前」）**：任何时候准备回复用户并进入下一步（含**交接外部 generator** / 起模拟器 / 收尾 / 等指令）之前，若本轮用户给过实质决策，先问自己「这条决策的**内容**进 spec 了吗（§1-6 或 §9 AMD）？」没进就先调 planner 落，再回复。外部 generator 路径不过上面的 generator checklist，**唯一**防漏点就是这条通用闸口。
 
 ### 阶段 2: 调 generator（用户说「开始」之后）
 
-> 前提：阶段 1.5 已经跑过 —— 用户决策已经由 planner 同步进 `.specs/<slug>.md`。如果还没跑，**回去补**，不要继续往下。
+> 前提 1：阶段 1.5 已经跑过 —— 用户决策已经由 planner 同步进 `.specs/<slug>.md`（⚡ 纯确认词场景 = 后台同步已在同一 message 发起）。如果还没跑，**回去补**，不要继续往下。
+>
+> 前提 2（⚡ join 点）：阶段 0 后台预热已结束 —— 初始化还在跑就等完成再调 generator（generator 内的 build 会与预热 build 抢锁）；初始化**失败** → 先报用户拿主意，不带着坏环境进 generator。
 
 #### Step 0: 选模式
 
@@ -202,6 +229,7 @@ planner 同步完返回后，主 agent 再次 Read 一遍 `.specs/<slug>.md` 确
 Agent({
   description: "<需求一句话> — 实现",
   subagent_type: "generator",
+  run_in_background: false,   # 串行 generator 的不确定流程要能问到用户
   prompt: """
     Worktree slug: <slug>
     Worktree 绝对路径: <pwd>
@@ -240,7 +268,9 @@ for group in $GROUPS; do
 done
 ```
 
-每个 sub-worktree 还要按 `~/.claude/rules/use-worktree.md` 的 step 5-7 复制 `<project-specific>` 的 gitignored 本地配置 / 锁文件 / 跑初始化命令（例：`Local.xcconfig`、`.env.local`、`Package.resolved`、`yarn.lock`、生成 xcodeproj、`npm install` 等）—— 没这些 build 会失败。
+每个 sub-worktree 还要按 `use-worktree` skill 的 step 5-9 复制 `<project-specific>` 的 gitignored 本地配置 / 锁文件并跑初始化命令（例：`Local.xcconfig`、`.env.local`、`Package.resolved`、`yarn.lock`、生成 xcodeproj、`npm install` 等）—— 没这些 build 会失败。
+
+仓库无 `.gitignore` 或缺条目时，先把 `.specs/`、`.reviews/` 加进 `.gitignore` —— executor verdict cache 与 review 报告是 agent 工作笔记，不进 diff。
 
 **不要**在每个 sub-worktree 都打开 IDE / workspace —— 多开 N 个窗口浪费。sub-worktree 只跑命令行 build，主 worktree 的 IDE 窗口留给用户审改动。
 
@@ -264,6 +294,7 @@ Agent({
     - 你只改本组分配的子任务对应的文件 —— 其他 parallel-* 组同时在改别的文件，撞了就互相覆盖
     - 不改 spec 第 1-7 节
     - 不动主 worktree（你的 cwd 是 sub-worktree）
+    - 你在后台跑、禁用 AskUserQuestion —— 不确定点走 needs_planner_update + feedback 文件返回
     
     按 ~/.claude/agents/generator.md 的 SOP 工作。
   """
@@ -291,7 +322,7 @@ Agent({...serial...}, run_in_background: true)
 
 generator 完成后**不**自动进 executor。主 agent 必须停下来 AskUserQuestion 问用户下一步——给 generator 改动一个"先让用户看"的机会、避免用户没确认就闯进硬验收。
 
-代码 review 在**最终 PASS 后跑一次**：正常路径由 executor 在 verdict==PASS 后内嵌跑（详见 `~/.claude/agents/executor.md` Step 6.5）。但最终 PASS 可能经 **lint 快速路径 / 外部 generator / 跳过 executor** 到达，绕过 executor 的 PASS 流程、内嵌 review 不触发 —— 所以由**主 agent 在 Step P2 保底**：到达最终 PASS 时检查「本轮 review 跑过没」，没跑就主 agent 跑一次（同 `/review` 的 review subagent），跑过就不重复（不双跑）。review 与 verdict 解耦，retry 期间不重复 review。bypass：用户主动跑 `/review` 或 `/codex:review` slash command 任何时候都可以，不是默认流程的一部分。
+代码 review 在**最终 PASS 后跑一次**：正常路径由 executor 在 verdict==PASS 后内嵌跑（详见 Step 6.5）。最终 PASS 经 lint 快速路径 / 外部 generator / 跳过 executor 到达时，由主 agent 在 Step P2 按共享 contract 的 `embedded-review` 模式补跑；**不得调用会执行 cleanup 的完整 source-command review workflow**。review 与 verdict 解耦，retry 期间不重复 review。
 
 #### Step 0: 触发条件
 
@@ -348,6 +379,7 @@ generator 完成后**不**自动进 executor。主 agent 必须停下来 AskUser
 > Agent({
 >   description: "<需求一句话> — 按用户调整指令修",
 >   subagent_type: "generator",
+>   run_in_background: false,
 >   prompt: """
 >     Worktree slug: <slug>
 >     Worktree 绝对路径: <pwd>
@@ -371,12 +403,13 @@ generator 完成后**不**自动进 executor。主 agent 必须停下来 AskUser
 > Agent({
 >   description: "<需求一句话> — 按 review 修",
 >   subagent_type: "generator",
+>   run_in_background: false,
 >   prompt: """
 >     Worktree slug: <slug>
 >     Worktree 绝对路径: <pwd>
->     本轮任务: 按 executor review 报告修复，不扩范围、不修 §1-7
+>     本轮任务: 按 review 报告修复，不扩范围、不修 §1-7
 >
->     Executor review 报告路径: <.reviews/<branch>-<ts>-executor.md 绝对路径>
+>     Review 报告路径: <review_file 绝对路径>
 >     采纳范围: <全部 | 只 must-fix | 用户挑出的具体条目（列出来）>
 >
 >     按 ~/.claude/agents/generator.md 的 SOP 工作，本轮重点：
@@ -388,13 +421,13 @@ generator 完成后**不**自动进 executor。主 agent 必须停下来 AskUser
 > })
 > ```
 >
-> **model 选择（B3）**：review-fix / 按用户口头指令修时 —— 若采纳项全是 nits / lint-error / 文案微调（无 logic / architecture / 跨调用方改动）→ 加 `model: sonnet` 起 generator（机械修复、省 opus）；含实质逻辑 / 架构改动 → 不传（默认 opus）。拿不准走 opus。仅限 in-session Claude generator。
+> **model 选择（B3）**：review-fix / 按用户口头指令修时，若采纳项全是 nits / lint-error / 文案微调（无 logic / architecture / 跨调用方改动）→ Claude 用 `sonnet`；Codex 用 `gpt-5.6-terra` + `high`。含实质逻辑 / 架构改动或拿不准 → 不传，走旗舰默认值。
 
 ### 阶段 3: 调 executor（+ ui-reviewer，按用户触发）
 
 > **executor 续问场景由 executor 自己 Step 0 cache 命中处理**：主 agent 不必区分"续问 vs 真 retry"。executor 每轮 Step 9 把 verdict + repo 指纹（HEAD + porcelain hash）落盘 `.specs/<slug>-verdict.md`；下次 executor 启动时 Step 0 检测指纹一致即直接返回上轮 yaml（不重跑 Step 1-8）。
 >
-> 主 agent 想强制重跑（绕过 cache）→ 在 executor prompt 里显式传 `force_rerun: true`。典型场景：用户挑修 review 后回到 retry executor、主 agent 知道 generator 改了代码（其实 repo 指纹也会自动变、不必显式传，但显式传更安全）。
+> 主 agent 想强制重跑（绕过 cache）→ 在 executor prompt 里显式传 `force_rerun: true`。仅在用户明确要求重新验收且 repo 指纹不足以区分状态时使用。
 >
 > 阶段 3A / 3B / 5 调 executor 时**不必**主动管 cache —— executor 自己处理。
 
@@ -476,10 +509,14 @@ Agent({
 
 **Step P2: 展示 review 报告 + AskUserQuestion 问「review 怎么处理」**
 
+共享 review contract：Claude 与 Codex 都读 Pele 安装的 `~/.claude/skills/review-contract.md`；后端只负责各自的工具调用。
+
 **Step P2.0（保底闸口）：先确保本轮 review 已跑过一次。**
 
 - `review_subagent_status == success`（executor 在正常 PASS 时跑过）→ review 已跑，直接走下面 `success` 路由展示，**不重跑**。
-- 否则（`skipped:verdict_fail` / 经 lint 快速路径或外部 generator 到达 PASS / 本轮根本没调 executor）→ **review 还没跑** → 主 agent **现在跑一次**：调 `/review` 的 review subagent（Opus extended thinking，审 `dev...HEAD` + 未提交改动，输出到 `.reviews/<branch>-<ts>.md`），拿到 verdict + findings 后按下面 `success` 路由展示。
+- `review_subagent_status == skipped:flag_off` → review-fix 后的 retry 状态；沿用主 agent 保存的上一份 `review_file`，跳过 Step P2，直接进 Step P3 / P4。
+- `review_subagent_status == failed` → 不自动重跑，走下面 `failed` 路由让用户决定。
+- `review_subagent_status == skipped:verdict_fail`，或经 lint 快速路径 / 外部 generator 到达 PASS / 本轮没调 executor → 主 agent 按共享 contract 的 `embedded-review` 模式补跑一次（Claude Opus / Codex Sol xhigh；`base_ref=origin/dev`、`report_suffix` 为空、`cleanup_result=none`），输出到 `.reviews/<branch>-<ts>.md`。**不得运行 simplify**。
 
 确认 review 已跑（或刚补跑完）后，按 `review_subagent_status`（或主 agent 本轮补跑的结果）路由：
 
@@ -500,14 +537,14 @@ Agent({
   
 - `failed` → 把 `review_subagent_error` 报给用户，AskUserQuestion 问「下一步」，给选项：
   - **跳过 review，进入下一步**（Recommended）
-  - **主动跑一次 `/review` 重试** —— 走 commands/review.md 的 SOP
+  - **主动重试 report-only review** —— 按共享 contract 的 `embedded-review` 模式，不运行 simplify
   - **暂停，等我下一步指令**
 - `skipped:verdict_fail` —— 出现在最终 PASS 路径里 = review 被上轮 FAIL 跳过、之后经快速路径 / 外部 generator 到了 PASS：由 **Step P2.0 保底**触发主 agent 补跑一次 review（不再当 warning 忽略）
 - `skipped:flag_off` —— 这是 review-fix 子循环后的 retry executor 才会出现（主 agent 自己传了 false），跳过 Step P2 直接进 Step P3 / P4
 
 **Step P3: review-fix（仅当用户挑「修」时）—— 不跑 retry executor**
 
-1. 调 generator 按 review 修，prompt 用阶段 2.5 末尾的「按 review 修 prompt 模板」（带 `Executor review 报告路径` 字段）
+1. 调 generator 按 review 修，prompt 用阶段 2.5 末尾的「按 review 修 prompt 模板」（带 `Review 报告路径` 字段）
 2. generator 修完返回 → 主 agent **自己**做下面这套轻量验证（不调 executor）：
    - Read generator 返回的结构化结论，确认：编译通过 / 改动文件清单合理 / 没动 spec §1-7 / §9 AMD 状态推进了
    - 把改动文件清单 + 编译结果一句话报给用户
@@ -579,6 +616,8 @@ Agent({...serial 验收...}, run_in_background: true)
 
 所有 sub-worktree 的 executor 都 PASS 后，主 agent 把各组提交合并回主 worktree 的主分支：
 
+各组分支未 commit 时（generator 默认不 commit），主 agent 先在该组 sub-worktree 内 commit：`git add` 用**显式路径**（对照 generator 返回的改动清单），禁 `git add -A` —— 会把 executor 写的 `.specs/` verdict cache 等 agent 工作笔记扫进 diff。commit message 按项目或全局规则写 conventional 单行。
+
 ```bash
 cd <主 worktree 绝对路径>
 
@@ -614,7 +653,9 @@ build 通过 → 清理 sub-worktree：
 ```bash
 cd <主 worktree 绝对路径>
 for group in serial parallel-1 parallel-2 ...; do
-  git worktree remove .subworktrees/$group
+  subworktree_path="$(pwd -P)/.subworktrees/$group"
+  git worktree remove "$subworktree_path"
+  bash ~/.claude/skills/cleanup-and-exit/scripts/remove-worktree-derived-data.sh "$subworktree_path"
   git branch -d "<type/scope-slug>--$group"   # 已 merge，安全删除
 done
 rmdir .subworktrees 2>/dev/null || true
@@ -677,8 +718,7 @@ while i <= 3:
        and (ui-reviewer 上轮 PASS / not_applicable / 未触发)
        and (not fast_path_used):
         # 【lint-only 快速路径】—— 不调 retry executor
-        调 generator（**用 `model: sonnet`** 起 —— lint 修复纯机械、不需要 opus；
-                     仅限 in-session Claude generator，Codex 路径不受此影响），prompt 里追加：
+        调 generator（lint 修复纯机械：Claude 用 `sonnet`；Codex 用 `gpt-5.6-terra` + `high`），prompt 里追加：
           - executor review 文件路径: `.specs/<slug>-review.md`
           - 本轮是第 i 次重试 / 共 3 次
           - **显式说**「上轮 executor 仅 lint 失败、build / spec / AMD / 硬约束 / mock 等全过；
@@ -861,6 +901,7 @@ generator 启动前发现 §8 ↔ §2 / §7 / 子文件 status 不一致时，**
 ## 主 agent **可以**做的事
 
 - ✅ 用 Bash 跑 `git status` / `git log` / `pwd` / `ls` 等只读命令了解状态
+- ✅ 阶段 0 把项目初始化 + baseline build + sim 预热丢后台 Bash —— 只暖缓存、不把结果当验证
 - ✅ Read 任何文件来回答用户的问答类问题
 - ✅ AskUserQuestion 澄清需求 / 让用户在 planner 后拍板 / 报告 executor 失败
 - ✅ 用户在阶段 2.5 闸口挑「起模拟器」时跑 `Skill(find-ios-build-artifact)` + `xcrun simctl install/launch` 起 app —— 这是给用户看效果用、不算「自己验证」
@@ -880,10 +921,11 @@ bypass 必须**用户主动说**。主 agent **不能**自己判断「这个简�
 
 ## 与现有 rule 的关系
 
-- `use-worktree.md`：本 rule 的阶段 0 仍按它执行
+- `use-worktree` skill：本 rule 的阶段 0 仍按它执行；其 step 5-9 配置与初始化在本流程里丢后台（阶段 0 ⚡）、join 在阶段 2 前提 2 —— 「第一次 Edit 前初始化完成」约束不变
 - `spec-before-code.md`：本 rule 的阶段 1 (planner) 是它的具体执行者；现有 PreToolUse hook 卡 generator 的 Edit（generator 阶段如果 spec 不存在仍会被 hook 拦下）
 - `iteration-checkpoint.md`：planner 的 AskUserQuestion 是它的具体落地；generator 的「不确定流程」也是
 - `parallel-subagents.md`：本 rule 的并行模式（阶段 2B / 3B / 3C / 5）是 parallel-subagents 的具体执行路径之一 —— planner 在 spec 第 2 节标注多个 `parallel-N` 组、用户审 spec 未删除即视同「拆分方案过审」。用户也可以**显式发令**「拆开并行跑」直接 bypass 三段式走 parallel-subagents。两条入口共用 parallel-subagents 的核心约束（文件边界严格不重叠 / sub-worktree 隔离 / 主 agent 集成验证）。
+- `cleanup-and-exit` skill：阶段 3C 删除 sub-worktree 后复用其脚本清理对应的 Xcode DerivedData；worktree 内 `build/`、local `DerivedData`、Swift Package `.build` 随目录删除。
 - `post-change-verify.md`：generator 阶段遵守（只跑 build）；executor 阶段额外跑 lint
 - `architecture-first` skill：generator 阶段必 invoke；executor 阶段做 review 时再 invoke 一次
 - `review-mobile-ui` skill + `ui-reviewer` agent：UI 验收的独立路径；默认不跑、用户显式触发（关键词「跑下 UI / UI 走查 / UI 验收 / review UI / 看下 UI 对不对」）。验收 verdict blocking，UI fail 走阶段 4 重试；与 executor 平行、互不污染。详见 `~/.claude/skills/review-mobile-ui/SKILL.md` 和 `~/.claude/agents/ui-reviewer.md`

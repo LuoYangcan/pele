@@ -240,4 +240,4 @@ Step C 完全一致（mp4 输入 ffmpeg 无差异）。
 - 动画 / 过渡 / 飞行类时间维度行为单帧截图判不出，原方案降级让人肉看；`xcrun simctl io recordVideo` + ffmpeg 抽帧让 agent 自己 Read 关键帧序列判
 - skill 只采集证据，不编排触发动画（spec-specific）+ 不判 pass/fail（视觉判断硬编码维护成本爆炸）
 - 默认 0.5x scale：Simulator @3x 录屏每帧 2-3MB，10 帧塞进 context 撑爆；0.5x 既保留可读 + 把 10 帧总量压到 ~7MB
-- 录屏路径只保留 xcrun simctl 一条：原来的 mobile-mcp 模板和 xcrun 模板只是"caller 有没有 mcp 工具访问权"的分支，换成 sim-use（CLI，谁都能 Bash 调用）之后这个分支没有存在意义了，合并成一条路径反而更简单、少一层要维护的模板
+- 录屏路径只保留 xcrun simctl 一条：系统自带 CLI、任何 caller 都能 Bash 调用，无需按 caller 工具访问权分多套模板

@@ -2,7 +2,7 @@
 
 Pele is a **deliberate fork**: the maintainer's `~/.claude/` is the day-to-day working copy and accumulates personal additions (per-project rules, language-specific rules, project-specific commands, project-specific build skills). The published `pele/core/` only ships the universal subset that any user can install on any project. This doc describes how to push improvements from the personal version into the public version without leaking personal additions in.
 
-If you're reading this as an agent: **`scripts/sync-from-local.sh` does the mechanical first pass; you still have to scan the result.** The script is a labor-saver, not a replacement for your eyes.
+If you're reading this as an agent: the maintainer-local `scripts/sync-from-local.sh` does the mechanical first pass; you still have to scan the result. The helper is gitignored because its replacement dictionary contains private identifiers.
 
 ## The boundary: what ships vs what stays personal
 
@@ -14,15 +14,17 @@ Pele's core is **project-neutral**. It contains no real project names, no hardco
 | `agents/{generator,executor,planner,ui-reviewer}.md` | Yes | Core subagent contracts |
 | `rules/{dispatch-pipeline,spec-before-code,iteration-checkpoint,parallel-subagents,post-change-verify}.md` | Yes | Universal workflow rules |
 | `templates/*.md` | Yes | Spec / feedback templates |
-| `skills/{scan-trigger-docs,lean-diff,use-worktree,architecture-first,dead-code}/SKILL.md` | Yes | Universal skills |
+| `commands/{review,cleanup-and-exit,clean-and-exit}.md` | Yes | Universal entry points; paths must use `~/.claude/` |
+| `skills/{scan-trigger-docs,lean-diff,use-worktree,architecture-first,dead-code,cleanup-and-exit,source-command-review}/` | Yes | Universal skills and their required helper files |
+| `scripts/{trust-dir,worktree-sim}.sh` | Yes | Helpers referenced by public skills |
 | `skills/*/evals/` | **No** | Test fixtures may contain real project names |
 | `rules/commit-message.md` | **No** | Personal trailer-policy preference, not universal |
 | `rules/swift-formatting.md` | **No** | Language-specific, not universal |
 | `rules/image-assets.md`, `rules/logging-pii.md`, `rules/viewcontroller-split.md`, `rules/nse-dependencies.md`, etc. | **No** | Project-level rules, live in the maintainer's project repo |
 | `skills/find-ios-build-artifact/`, other iOS-specific skills | **No** | Project / platform specific |
-| `commands/<project-specific>.md` | **No** | Maintainer-specific slash commands |
+| Other `commands/<project-specific>.md` | **No** | Maintainer-specific slash commands |
 
-The script's file list reflects this — extend it when pele starts shipping a new file family or when you add a new personal-only rule that the script should skip.
+The maintainer-local script's file list reflects this boundary. Extend it when Pele starts shipping a new universal file family; never publish its private replacement dictionary.
 
 ## When to sync
 

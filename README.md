@@ -15,8 +15,9 @@ Drop-in install adds the following under `~/.claude/`:
 | **CLAUDE.md** | Top-level index that progressively discloses rules / skills / agents on demand |
 | **rules/** | `dispatch-pipeline` · `spec-before-code` · `iteration-checkpoint` · `parallel-subagents` · `post-change-verify` (`use-worktree` is now a skill — see below; `rules/use-worktree.md` is a stub redirect) |
 | **agents/** | `planner` · `generator` · `executor` (the three-stage pipeline) |
-| **commands/** | `/openpr` · `/review` · `/pr-review` |
-| **skills/** | `use-worktree` (new-topic worktree isolation; full SOP for fetch / branch / project init steps) · `architecture-first` (pattern / architecture selection before adding abstraction) · `dead-code` (zombie-symbol scanner for recent diff via LSP `findReferences` + grep, with optional Periphery fast-path for Swift projects; auto-cleanup hook in `generator` Step 4.5) · `scan-trigger-docs` (read project AGENTS.md trigger-on-touch docs; shared by all three subagents) · `lean-diff` (single source of truth for verbose-comment / patchwork-bloat / silent-catch judgments — write mode for `generator`, review mode for `executor`) |
+| **commands/** | `/openpr` · `/review` · `/pr-review` · `/cleanup-and-exit` (`/clean-and-exit` alias) |
+| **skills/** | `use-worktree` (new-topic isolation) · `cleanup-and-exit` (safe worktree + matching Xcode DerivedData cleanup) · `source-command-review` (cleanup + report-only review) · `architecture-first` · `dead-code` · `scan-trigger-docs` · `lean-diff` |
+| **scripts/** | `run-ios.sh` · `worktree-sim.sh` · `trust-dir.sh` and hook helpers |
 | **templates/** | `spec-template.md` (the structure planner writes) |
 | **hooks/** | Protected-branch guard · `spec-before-code` enforcement · per-prompt clarification reminder |
 | **permissions/** | `settings.permissions.json` — recommended `permissions.allow` entries (e.g. `mcp__ios-simulator__*`). **Not auto-merged** by `install.sh`; copy entries into your settings manually |
@@ -209,7 +210,9 @@ pele/
 ├── install.sh / uninstall.sh
 ├── scripts/
 │   ├── bootstrap.sh         # used by the curl one-liner
-│   └── check-spec.sh        # PreToolUse hook helper
+│   ├── check-spec.sh        # PreToolUse hook helper
+│   ├── trust-dir.sh         # pre-seed Claude Code folder trust
+│   └── worktree-sim.sh      # per-worktree iOS Simulator lifecycle
 ├── core/                    # always installed
 │   ├── CLAUDE.md
 │   ├── rules/

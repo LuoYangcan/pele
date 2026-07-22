@@ -62,7 +62,7 @@ subagent 有独立 context，**拿不到**当前对话、TodoList、memory、pla
 1. 合并 subagent 的改动回主工作区（merge 它们的分支 / cherry-pick）
 2. 跑**编译**验证整体能不能过（按 `.claude/rules/post-change-verify.md`）
 3. 冒烟级 review：检查跨任务的交互点（被 freeze 的接口是不是双方对齐使用）
-4. **不做**深度 code review —— 那走 `/review` 的 Sonnet subagent
+4. **不做**深度 code review —— 那走 `/review` 的旗舰 reviewer 路径
 
 ## 不做什么
 

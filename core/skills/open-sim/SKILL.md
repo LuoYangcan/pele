@@ -41,7 +41,7 @@ bash ~/.claude/scripts/run-ios.sh --target sim
 
 ## 省 context（可选）
 
-`just build-ios` 会吐几千行 xcodebuild 日志。想把它挡在主对话外：派一个 `model: haiku` / sonnet 的 subagent 去跑这条命令、只回结果块那几行。skill 本身 model-agnostic，派不派、派给谁是调用时决定。
+`just build-ios` 会吐几千行 xcodebuild 日志。想把它挡在主对话外：Claude 派 Haiku / Sonnet；Codex 派 `command-runner`（Luna low），角色未加载时用 Terra low。subagent 只跑命令并返回结果块，不判断代码质量。
 
 ## 失败处理（脚本退出码）
 

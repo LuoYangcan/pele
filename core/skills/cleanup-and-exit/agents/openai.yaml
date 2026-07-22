@@ -1,0 +1,4 @@
+interface:
+  display_name: "Cleanup and Exit"
+  short_description: "Clean a worktree and its Xcode build cache"
+  default_prompt: "Use $cleanup-and-exit to clean the current worktree before exiting."

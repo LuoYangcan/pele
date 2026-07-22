@@ -109,9 +109,9 @@ Skill(architecture-first)    # 引入新抽象前过一遍模式选型 checklist
 3. **实现改动**（Edit / Write 代码文件）
 4. **把过程笔记追加到 `tasks/task-N.md` 的「进度注记」段**：碰到的问题 / 选的方案 / 关键代码位置链接 / 备忘。**这是 scratchpad** —— 不污染主索引、task DONE 后随主索引 status 一起从 hot context 退出
 5. **该子任务结束后跑编译**：
-   - iOS 改动：`just build-ios`（或 `xcodebuild -project <YourApp>iOS.xcodeproj -scheme <YourApp>iOS -configuration Debug -derivedDataPath build/DerivedData -destination "generic/platform=iOS Simulator" build`）
-   - macOS 改动：`just build-macos`
-   - 只改 package：`swift build`
+   - iOS 改动：运行项目定义的 iOS build 命令（如 `just build-ios` 或 `xcodebuild -workspace <YourApp>.xcworkspace -scheme <YourApp>iOS -configuration Debug -derivedDataPath build/DerivedData -destination "generic/platform=iOS Simulator" build`）
+   - macOS 改动：运行项目定义的 macOS build 命令（如 `just build-macos`）
+   - 只改 package：运行包管理器的 build 命令（如 `swift build`）
 6. **编译失败 → 修到通过**；不要带着编译失败进下一个子任务
 7. **完成时同步两处 status**：
    - 推进的是 §2 task → Edit `tasks/task-N.md` `**状态**` 改 `DONE` + Edit 主索引 §8 索引行 status

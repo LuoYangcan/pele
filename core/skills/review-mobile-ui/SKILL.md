@@ -41,7 +41,7 @@ scheme 名从项目 AGENTS.md / Justfile 拿。**记下 `$SIMULATOR_UDID`** —�
 
 ### Step 3: 装 + 启动 app
 
-app 生命周期管理是 iOS 原生能力，不依赖 sim-use / mobile-mcp 任何一层封装，直接走 `xcrun simctl`：
+app 生命周期管理是 iOS 原生能力，直接走 `xcrun simctl`：
 
 ```bash
 xcrun simctl install "$SIMULATOR_UDID" "$APP_PATH"
@@ -92,10 +92,8 @@ mkdir -p "$SHOT_DIR/refs"
 | 等待 UI 稳定 | 1 次 `sleep 1` | 让 layout settle |
 | **核心采样 `sim-use ui --device <udid>`** | **1 次** | 拿目标页面元素列表（坐标 / accessibility / label / frame）—— 文本层间距判定数据源 |
 | **`sim-use screenshot --device <udid> --output <path>`** | **1 次** | 落 `<SHOT_DIR>/case-<N>-static.png`，文本层 + 视觉层共享 |
-| **`mcp__plugin_figma_figma__get_screenshot`** | **1 次**（仅 spec §4 参考稿列表命中本用例时） | 落 `<SHOT_DIR>/refs/case-<N>-figma.png`，视觉层对照图（这个仍是 figma MCP，跟 sim-use/mobile-mcp 切换无关） |
+| **`mcp__plugin_figma_figma__get_screenshot`** | **1 次**（仅 spec §4 参考稿列表命中本用例时） | 落 `<SHOT_DIR>/refs/case-<N>-figma.png`，视觉层对照图（这是 figma MCP，不是 sim-use） |
 | `sim-use type` / `paste` / `swipe` / `long-press` / 连续 `tap` 模拟双击 | **0 次** | 改 app 状态，5.b 静态档位禁止 |
-
-sim-use 没有"把截图直接传回 LLM 烧 token"的命令（`screenshot` 只落盘），原来 mobile-mcp 里"`mobile_take_screenshot` 预算 0 次"这条规则在这里不适用——sim-use 结构上就不存在这个路径。
 
 **判定**（文本层 + 视觉层并行；任一层产 issue 都进 issues 列表）：
 
@@ -237,4 +235,4 @@ ui_dynamic_cases_verified:
 - per-worktree `sim-<slug>` + sim-use `--device` 参数：并行 session 各自有 sim，不需要"只能 1 台 booted"约束
 - 不重跑动态用例：record skill 失败兜底在 skill 内；本 SOP 单次失败立即降级
 - 截图存到 `.reviews/`：spec 不被污染，`.gitignore` 已排除
-- install/launch 用原生 `xcrun simctl`：这是 iOS 系统能力，不依赖任何 UI 交互工具，换 sim-use 还是 mobile-mcp 都不影响这一步
+- install/launch 用原生 `xcrun simctl`：这是 iOS 系统能力，不依赖任何 UI 交互工具

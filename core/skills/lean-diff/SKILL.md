@@ -157,7 +157,7 @@ executor / `/review` 把命中条目放进 `issues` 数组，每条按上方 §�
 ## 与其他 skill / rule 的关系
 
 - **architecture-first**：管「选模式 / 选边界」（不写代码）。本 skill 是 architecture-first 之后的一道补充判断 —— architecture-first 决定要不要新建抽象、本 skill 检查实际落地是否过度。两者正交。
-- **simplify**（内置）：simplify 改完代码后跑 3 个 review subagent + 自动 fix。本 skill 只产判断 + issue 列表，不自动 fix。可以串：simplify 跑完后 executor 用本 skill 再扫一遍。
+- **cleanup backend**：Claude 用 `/simplify`；Codex 用 `codex-simplify`。cleanup 自动 fix；本 skill 只产判断 + issue 列表。可以串：cleanup 后 executor 用本 skill 再扫一遍。
 - **dead-code**：dead-code 管"无人调用"（孤儿符号）；本 skill 管"该不该写"（写之前 / 写之后的判断）。两者正交。
 - **post-change-verify** rule：本 skill 不跑 build / lint。lint 工具能抓的格式问题（空格 / 缩进 / 行长）属于 swift-formatting 的领域，本 skill 重点放在工具抓不到的语义级问题。
 

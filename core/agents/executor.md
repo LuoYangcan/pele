@@ -39,7 +39,7 @@ model: sonnet
 3. 图片资源约束（项目级图片资源规则，如有；由项目 AGENTS.md 自动注入 memory，无则跳过，不必全局 Read）—— iOS 图片资源约束
 4. `~/.claude/rules/post-change-verify.md` —— 编译验证范围（注意：executor 阶段**应该**跑 lint，和回合末验证不同，下文会说）
 5. `~/.claude/rules/commit-message.md` —— commit message 风格（generator 默认不 commit，但要查万一它 commit 了）
-6. `~/.claude/commands/review.md` —— **仅当 `run_review_subagent: true` 且预期会进 Step 6.5** 时 Read；这是你派发 reviewer subagent 的 SOP 复刻源（diff 拿法 / Agent 入参 / 输出文件路径 / md 模板）
+6. `~/.claude/skills/review-contract.md` —— **仅当 `run_review_subagent: true` 且预期会进 Step 6.5** 时 Read；只使用 `embedded-review` 模式，不运行 cleanup
 
 > 项目根 `AGENTS.md` / `CLAUDE.md` 和 user-level `~/.claude/CLAUDE.md` 由 harness 自动注入 memory，不在此列表 —— 但里面 markdown 链接指向的 `docs/*.md`（含 AGENTS.md 委托的子系统索引文件，如 `docs/SUBSYSTEMS.md`）**不会**被一起注入，要靠下方 `scan-trigger-docs` skill 按 generator 改动文件清单 Read。
 
@@ -289,7 +289,7 @@ lean-diff 已经覆盖 `silent-catch` / `defensive-fallback`（风格层、模�
   - `run_review_subagent: false`（主 agent 显式传，典型场景：review-fix 后的 retry executor，review 报告已有、不再重跑）→ 跳过；`review_subagent_status: skipped:flag_off`
   - `run_review_subagent: true`（默认值，包括主 agent 没传该字段的情况）→ **跑 reviewer subagent**
 
-**跑 reviewer subagent**：按 `~/.claude/commands/review.md`「Review 派发」段构造 Agent 调用（`model: opus`，diff = `git diff origin/dev...HEAD` + `git diff`），输出文件后缀 `-executor.md`（区分主动 `/review` 的报告）；subagent 完成后 Read 报告文件自检（含 `## Verdict` 段为成功，否则记 `review_subagent_status: failed`）；review findings 不写进 `issues` 数组、不影响 verdict（review 与 verdict 解耦的硬约束）。
+**跑 reviewer subagent**：严格使用 `review-contract.md` 的 `embedded-review` 模式，输入固定为 `base_ref=origin/dev`、`report_suffix=-executor`、`cleanup_result=none`。派 `model: opus` 的只读 reviewer；prompt 要求它 Read contract、检查 committed/staged/unstaged/untracked 改动、只把 canonical Markdown 写到 `review_file`，并返回完整 core review schema。禁止运行 `/simplify`、修改源码、commit、push 或发评论。subagent 完成后 Read 报告并核对 `## Verdict` + schema 字段；缺失则记 `review_subagent_status: failed`。review findings 不写进 executor `issues`、不影响 executor verdict。
 
 ### Step 7: 给结论（输出完整 yaml + 自检字段齐全）
 
@@ -463,4 +463,3 @@ EOF
 - ❌ **无差别 Read 整个 `.specs/<slug>/` 子目录**：按渐进式披露规则只 Read 本轮验收必须的子文件（status=DONE 的 AMD）；TODO 项跳过 Read 节省 context
 - ❌ **输出残缺 yaml**：返回主 agent 前必须按 Step 7 checklist 自检；只发"架构评估"段不带 verdict / build / lint 等字段是 SOP 违反、会触发主 agent 起新 executor 重跑（白白浪费 5-10 分钟）
 - ❌ **跳过 Step 9 cache 落盘**：cache 是 stateless executor 续问场景的唯一通信渠道；跳过会让下次 executor 必跑全验收
-

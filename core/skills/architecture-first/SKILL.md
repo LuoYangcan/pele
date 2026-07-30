@@ -137,7 +137,7 @@ reality-check 通过后再走这一步。
 ### 2) 搜过现有实现了吗
 
 - [ ] grep 函数名 / 类名 / 关键词的多个变体
-- [ ] 翻过相关 package 的公开 API + 项目说明（`AGENTS.md` / `AGENTS.md` / `docs/*.md`）
+- [ ] 翻过相关 package 的公开 API + 项目说明（`AGENTS.md` / `CLAUDE.md` / `docs/*.md`）
 - [ ] 翻过 `Package.swift` / `Package.resolved` 看已有依赖能不能直接用
 - [ ] **第三方 SDK 尤其谨慎**：引一个 = 永久维护 + 升级 + 体积成本
 

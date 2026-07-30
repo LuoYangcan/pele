@@ -9,7 +9,7 @@ Shared contract for the Claude and Codex source-command review backends. Backend
 
 Inputs:
 
-- `base_ref`: default `dev` for active commands and `origin/dev` for executor-embedded review
+- `base_ref`: caller-resolved remote default ref, normally `git symbolic-ref --quiet --short refs/remotes/origin/HEAD`; if the project documents a different PR base, use that
 - `report_suffix`: default empty for active commands and `-executor` for executor-embedded review
 - `report_path`: absolute path computed from branch, timestamp, and `report_suffix`
 - `snapshot_path`: active-command pre-cleanup patch path

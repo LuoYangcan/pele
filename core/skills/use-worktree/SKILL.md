@@ -1,6 +1,6 @@
 ---
 name: use-worktree
-description: 新话题切换时进 git worktree 物理隔离，让每个需求独立从干净的 origin/dev 起步、互不干扰。触发：用户切到新话题（"新任务 / 另一个 / 接下来做 X / 开始搞 Y / 下一个需求 / 现在改 Z"等切话题信号）且本轮要写代码（会落地 Edit / Write / NotebookEdit），在第一次 Edit 前建 worktree。不触发：延续当前任务（修 bug / 调样式 / 基于同一需求追加 / 来回迭代）/ 纯问答 / 读代码 / 查状态 / 改 meta 配置（rule / memory / hook / settings）/ 当前已经在 .worktrees/ 里。拿不准是不是切话题时先问用户、别自作主张建 worktree。
+description: 新话题切换时进 git worktree 物理隔离，让每个需求独立从干净的远端默认分支起步。触发：用户切到新话题且本轮要写代码，在第一次 Edit 前建 worktree。不触发：延续当前任务、纯问答、读代码、查状态、改 meta 配置、当前已在 .worktrees/。拿不准时先问用户。
 ---
 
 # 新话题进 git worktree 隔离
@@ -20,15 +20,15 @@ description: 新话题切换时进 git worktree 物理隔离，让每个需求�
 
 拿不准是不是切话题时，**问用户一句**再决定，别自作主张建 worktree。
 
-## 建 worktree 流程（必须基于最新 origin/dev）
+## 建 worktree 流程（必须基于最新远端默认分支）
 
 **不要**直接 `EnterWorktree(name=...)`—— 那会从当前 HEAD 起步，可能继承前一个需求的 WIP。
 
 正确流程（标记 `<project-specific>` 的步骤要按你的项目改）：
 
-1. `git fetch origin dev` —— 拉最新 dev
-2. 决定分支名 `<type>/<scope>-<slug>`，`type ∈ {feat, fix, chore, refactor, docs, test, perf, style}`
-3. `git worktree add .worktrees/<slug> -b <type>/<scope>-<slug> origin/dev` —— 指定 base 为 `origin/dev`，和当前分支 HEAD 解耦
+1. `git fetch origin`
+2. 读取 `BASE_REF="$(git symbolic-ref --quiet --short refs/remotes/origin/HEAD)"`。为空时列出 `git branch -r` 并询问用户默认基线，不猜 `main` / `master` / `dev`。
+3. 决定分支名 `<type>/<scope>-<slug>`，`type ∈ {feat, fix, chore, refactor, docs, test, perf, style}`；执行 `git worktree add .worktrees/<slug> -b <type>/<scope>-<slug> "$BASE_REF"`。
 4. `EnterWorktree(path=.worktrees/<slug>)` —— 进入已创建的 worktree（cwd 切到该 worktree 目录），然后预写 Claude Code 目录信任（folder trust 按精确路径存储、不从主仓库继承，Claude Code ~2.1.x 存在 worktree 内接受后不持久化的 bug，不预写则该 worktree 每次新 session 都弹 trust 对话框）：
    ```bash
    ~/.claude/scripts/trust-dir.sh "$PWD"
@@ -93,6 +93,4 @@ description: 新话题切换时进 git worktree 物理隔离，让每个需求�
 - 若 worktree 做到一半发现不需要、无改动：`ExitWorktree(action="remove")` 干净退出
 - 有未提交改动又想删：需要 `ExitWorktree(action="remove", discard_changes=true)`，**先跟用户确认**
 
-## Why
-
-过去所有需求叠在同一分支 / 同一工作区，新需求和旧 WIP 互相污染；开 PR 容易带入不相关改动。worktree 让每个需求物理隔离、各自从干净的 dev 起步、互不干扰。
+<!-- Why 核心：worktree 让每个需求从干净基线物理隔离，避免分支和工作目录互相污染。 -->

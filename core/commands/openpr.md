@@ -6,7 +6,8 @@ description: push 当前分支并开 PR。不跑 review（用 /review）、不�
 
 ## 前置检查
 
-- `git status`、`git log --oneline dev..HEAD`，确认：
+- `BASE_REF="$(git symbolic-ref --quiet --short refs/remotes/origin/HEAD)"`（项目明确指定其他 PR base 时用项目值）；为空则暂停并询问用户
+- `git status`、`git log --oneline "$BASE_REF"..HEAD`，确认：
   - 当前不在 `main` / `master` / `dev` 分支上
   - 工作区干净（无未提交改动）；若有 → 提示用户先 commit，暂停
   - 至少有一个领先 base 分支的 commit
@@ -21,7 +22,7 @@ description: push 当前分支并开 PR。不跑 review（用 /review）、不�
    - 检查是否有上游：`git rev-parse --abbrev-ref @{u} 2>/dev/null`
    - 有 → `git rebase origin/<当前分支>`（等价 `git pull --rebase`）
    - 无（首次 push 的新分支）→ 跳过这一步
-3. **rebase 到最新 base**（默认 `origin/dev`，按你项目的 PR base 替换；`main` / `master` / `develop` 都常见）：`git rebase origin/dev`
+3. **rebase 到最新 base**：`git rebase "$BASE_REF"`
    - 保证 PR base 是最新的，冲突在本地提前暴露
 4. 成功后才进入下一节
 
@@ -48,7 +49,7 @@ description: push 当前分支并开 PR。不跑 review（用 /review）、不�
 
 ### 步骤
 
-1. **看改动范围**：`git diff origin/dev...HEAD --stat`，列出 worktree 内所有变更文件
+1. **看改动范围**：`git diff "$BASE_REF"...HEAD --stat`，列出 worktree 内所有变更文件
 2. **Agent 自动判断**是否触发文档更新需求。常见触发信号：
    - 新增 / 删除 / 重命名了 rule / skill / template / hook / slash command
    - 改了某个工作流的步骤（worktree 流程、spec 流程、`/openpr` 自己等）
@@ -95,7 +96,7 @@ rm -rf .specs/ .reviews/ 2>/dev/null || true
   - 用 `--force-with-lease` 是因为上一节 rebase 可能重写了 commit hash；首次 push 时该参数等价普通 push（无害）
   - **不要**用 `--force`——会覆盖别人可能在同一远程分支上推过的改动
 - 按项目 PR 风格开 PR：
-  - `gh pr create --base dev --title "<type(scope): desc>" --body "$(cat <<'EOF' ... EOF)"`
+  - `gh pr create --base "${BASE_REF#origin/}" --title "<type(scope): desc>" --body "$(cat <<'EOF' ... EOF)"`
   - body 列改动摘要、测试计划、若有 UI 变更附截图说明
 - 保存 PR URL
 

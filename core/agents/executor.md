@@ -49,7 +49,7 @@ model: sonnet
 Skill(scan-trigger-docs)   # 扫项目 AGENTS.md/CLAUDE.md 「触发即必读」段落，按 generator 改动文件清单 Read 命中的 docs/*.md 全文
 ```
 
-判命中的范围用 `git diff origin/dev...HEAD --name-only` 拿到的 generator 改动清单。**漏读 = 放过 blocking-级别实现错误**（例：composer 跨 window / channels QR sheet safeArea / iOS 18 毛玻璃 fallback / onboarding resume 路径）—— 宁严不宽。
+先解析 `BASE_REF="$(git symbolic-ref --quiet --short refs/remotes/origin/HEAD)"`；项目或主 agent 明确提供其他 base 时使用其值，解析不到就返回配置错误、不猜。判命中的范围用 `git diff "$BASE_REF"...HEAD --name-only` 拿 generator 改动清单。
 
 ## 工作流程
 
@@ -232,7 +232,7 @@ generator 实现时可能为了「先让它跑起来」在 production 代码里�
 
 #### 扫描范围
 
-`git diff origin/dev...HEAD --name-only` 拿 generator 改的清单，扫描时**排除**以下路径（这些位置出现 mock 是合法的）：
+`git diff "$BASE_REF"...HEAD --name-only` 拿 generator 改的清单，扫描时**排除**以下路径（这些位置出现 mock 是合法的）：
 
 - `Tests/` / 文件名以 `Tests.swift` 结尾 —— 测试代码
 - `packages/ios/ThirdPart/` / 任何 vendor / 第三方目录 —— 不是 generator 写的
@@ -275,7 +275,7 @@ lean-diff 已经覆盖 `silent-catch` / `defensive-fallback`（风格层、模�
 
 ### Step 6: 硬约束核对（主索引 §6）
 
-- **落地位置**：generator 改的文件是不是都在主索引 §6 圈定的 app/package/模块内？跑 `git diff origin/dev...HEAD --name-only` 看清单
+- **落地位置**：generator 改的文件是不是都在主索引 §6 圈定的 app/package/模块内？跑 `git diff "$BASE_REF"...HEAD --name-only` 看清单
 - **不能动的接口/文件**：主索引 §6 标了 freeze 的部分，generator 是否动了？
 - **不在 scope 的事**：generator 是不是顺手扩了范围？
 - **iOS 图片资源**：是否新增了 .imageset？如有，是否在 <DesignSystemPackage>/Assets.xcassets/ 下 + 通过 <ImageRegistry> 暴露？
@@ -289,7 +289,7 @@ lean-diff 已经覆盖 `silent-catch` / `defensive-fallback`（风格层、模�
   - `run_review_subagent: false`（主 agent 显式传，典型场景：review-fix 后的 retry executor，review 报告已有、不再重跑）→ 跳过；`review_subagent_status: skipped:flag_off`
   - `run_review_subagent: true`（默认值，包括主 agent 没传该字段的情况）→ **跑 reviewer subagent**
 
-**跑 reviewer subagent**：严格使用 `review-contract.md` 的 `embedded-review` 模式，输入固定为 `base_ref=origin/dev`、`report_suffix=-executor`、`cleanup_result=none`。派 `model: opus` 的只读 reviewer；prompt 要求它 Read contract、检查 committed/staged/unstaged/untracked 改动、只把 canonical Markdown 写到 `review_file`，并返回完整 core review schema。禁止运行 `/simplify`、修改源码、commit、push 或发评论。subagent 完成后 Read 报告并核对 `## Verdict` + schema 字段；缺失则记 `review_subagent_status: failed`。review findings 不写进 executor `issues`、不影响 executor verdict。
+**跑 reviewer subagent**：严格使用 `review-contract.md` 的 `embedded-review` 模式，输入固定为 `base_ref=$BASE_REF`、`report_suffix=-executor`、`cleanup_result=none`。派 `model: opus` 的只读 reviewer；prompt 要求它 Read contract、检查 committed/staged/unstaged/untracked 改动、只把 canonical Markdown 写到 `review_file`，并返回完整 core review schema。禁止运行 `/simplify`、修改源码、commit、push 或发评论。subagent 完成后 Read 报告并核对 `## Verdict` + schema 字段；缺失则记 `review_subagent_status: failed`。review findings 不写进 executor `issues`、不影响 executor verdict。
 
 ### Step 7: 给结论（输出完整 yaml + 自检字段齐全）
 

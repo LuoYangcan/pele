@@ -61,8 +61,8 @@ if command -v jq >/dev/null 2>&1; then
   fi
 fi
 
-# 子文件豁免：目标在 .specs/<slug>/{tasks,risks,amendments}/ 子目录里 → 放行
-# planner / generator 写 task-N.md / risk-N.md / AMD-N.md 子文件时主索引可能还未持久化（极少数反序情况兜底）
+# 子文件豁免：目标在 .specs/<slug>/ 子目录里 → 放行。
+# 覆盖 canonical task/risk/amendment 与 fan-out draft/report/question；这些工件允许在主索引发布前创建。
 spec_subdir="$wroot/.specs/$slug/"
 if command -v jq >/dev/null 2>&1; then
   if [[ -n "$target_path" && "$target_path" == "$spec_subdir"* ]]; then

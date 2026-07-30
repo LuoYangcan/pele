@@ -12,7 +12,7 @@ If the host cannot invoke Claude `/simplify` and `/code-review`, stop and report
 ## Claude Backend
 
 1. Inspect the target and create the report/snapshot paths from the shared contract.
-2. Invoke Claude `/simplify` on `dev...HEAD plus staged, unstaged, and untracked working-tree changes`. Require the shared cleanup result schema.
+2. Resolve `base_ref` from the project or remote default, then invoke Claude `/simplify` on `<base_ref>...HEAD plus staged, unstaged, and untracked working-tree changes`. Require the shared cleanup result schema.
 3. If cleanup changed code, start the shared build verification.
 4. Invoke Claude `/code-review` with high effort. Pass a self-contained prompt containing the shared reviewer input and cleanup result. Add the hard constraint `report-only; do not post PR comments`.
 5. Join build verification, calculate the shared verdict, write the shared report, and return the compact summary.

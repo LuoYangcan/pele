@@ -25,7 +25,7 @@ description: PR review — Sonnet subagent review 指定 PR（默认当前分支
 
 ## 回报
 
-把 PR URL 和 Haiku 评论摘要返给用户。不自动进下一步。
+把 PR URL 和 Sonnet 评论摘要返给用户。不自动进下一步。
 
 ## 不做的事
 

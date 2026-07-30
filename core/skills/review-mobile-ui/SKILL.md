@@ -128,11 +128,11 @@ mkdir -p "$SHOT_DIR/refs"
 # B. prepare
 eval "$(WORKTREE_SLUG=$WORKTREE_SLUG CASE_SLUG=case-<N> DEVICE_UDID=$SIMULATOR_UDID \
   EXPECTED_DURATION_SECONDS=3 FRAME_COUNT=8 \
-  bash ~/.Codex/skills/record-ui-animation/scripts/prepare.sh)"
+  bash ~/.claude/skills/record-ui-animation/scripts/prepare.sh)"
 
 # C. 起录
 eval "$(DEVICE_UDID=$SIMULATOR_UDID RECORDING_PATH=$RECORDING_PATH \
-  bash ~/.Codex/skills/record-ui-animation/scripts/record-xcrun.sh)"
+  bash ~/.claude/skills/record-ui-animation/scripts/record-xcrun.sh)"
 ```
 
 **D. 触发动画**（按 spec 描述，仅本步允许 5.b 禁用的命令；所有 sim-use 调用照样带 `--device <SIMULATOR_UDID>`）：
@@ -149,11 +149,11 @@ eval "$(DEVICE_UDID=$SIMULATOR_UDID RECORDING_PATH=$RECORDING_PATH \
 
 ```bash
 REC_PID=$REC_PID RECORDING_PATH=$RECORDING_PATH \
-  bash ~/.Codex/skills/record-ui-animation/scripts/stop-xcrun.sh
+  bash ~/.claude/skills/record-ui-animation/scripts/stop-xcrun.sh
 
 RECORDING_PATH=$RECORDING_PATH FRAMES_DIR=$FRAMES_DIR META_PATH=$META_PATH \
   FRAME_COUNT=8 \
-  bash ~/.Codex/skills/record-ui-animation/scripts/extract.sh
+  bash ~/.claude/skills/record-ui-animation/scripts/extract.sh
 ```
 
 **G. Read 每一帧 PNG**（`$FRAMES_DIR/frame-001.png` ... `frame-008.png`），对照 spec：起手帧 / 中段帧 / 收尾帧的视觉是否符合预期、动画曲线是否合理、有无穿帮 / 错位 / 闪烁。

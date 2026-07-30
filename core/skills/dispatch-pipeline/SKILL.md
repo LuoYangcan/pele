@@ -5,14 +5,16 @@ description: 三段式调度 SOP（主 agent 不写代码、全程委派 subagen
 
 # 三段式调度（主 agent 不写代码）
 
-收到**写代码需求**时（新功能 / 修 bug / 改 UI / 重构 / 加 feature 等会落地 Edit / Write / NotebookEdit 的任务），主 agent 不亲自落地。**唯一动作是调度 Agent 工具下三个 subagent**：
+收到**写代码需求**时（新功能 / 修 bug / 改 UI / 重构 / 加 feature 等会落地 Edit / Write / NotebookEdit 的任务），主 agent 不亲自落地。**唯一动作是调度三阶段角色**：
 
 ```
 用户需求
   ↓
 主 agent: 判断 + 建 worktree（如需要）+ ⚡ 后台预热（初始化 + baseline build，与 planner / 拍板并行）
   ↓
-[planner subagent] —— 独立 context、写 .specs/<slug>.md
+[planner] —— 强模型澄清 + 判断 serial / fan-out
+  ├─ serial → planner 写 .specs/<slug>.md
+  └─ fan-out → 2–3 planner-worker 写独立 draft → spec-integrator 单写正式 spec
   ↓
 主 agent: 把 spec 路径告诉用户、AskUserQuestion 问「是否开始实现」
   ↓ 用户拍板「开始」
@@ -37,9 +39,11 @@ verdict==FAIL 路径（外部 generator 实现）：主 agent 停下 AskUserQues
 
 > ⚡ **并行模式扩展**：spec 第 2 节并行分组里有**多个** `parallel-N` 组时，阶段 2 / 3 走「并行模式」—— 见下方 **2B / 3B / 3C / 阶段 5** 子节。串行模式（只有 `serial` 组 / 写「全部串行」）按上图原流程跑。判别由 planner 在 spec 里标注、用户在阶段 1 末尾审 spec 时拍板，主 agent 自己**不**判断是否并行。
 >
+> 🧭 **Planner fan-out**：阶段 1 的并行规划与阶段 2 的并行实现正交。Lead Planner 只在预计 `>=3` 子任务且能形成至少 2 个独立 planning shard 时输出 `planning-manifest.yaml`；完整契约见 `references/planner-fanout.md`。正式 spec 仍由强模型单写者发布。
+>
 > 🔁 **review 在并行模式下的处理**：3B 各组 executor 都传 `run_review_subagent: false`（单组不跑 review）；review 只在 3C 合并 + 阶段 5 最终 executor 跑一次。
 >
-> ⛔ **后台派发边界**：harness 默认把 subagent 丢后台，后台 subagent 的 `AskUserQuestion` 到不了用户。需要与用户对齐的调用必须显式 `run_in_background: false`：阶段 1 planner（澄清 / 对齐）、阶段 1.5 平衡 / 旗舰模型行同步、串行模式 generator（不确定流程要提问）。可后台：阶段 0 预热 Bash、阶段 1.5 纯确认词轻量模型同步（prompt 禁提问）、并行模式各组 generator / executor（不确定点走 feedback 文件不提问）、ui-reviewer。
+> ⛔ **用户交互边界**：Claude 等支持前台直问的 host 把阶段 1 Lead Planner 显式设为 `run_in_background: false`。Codex subagent 或任何无法直达用户的 host，Lead 返回结构化 `NEEDS_USER_INPUT` 给 Root；Root 询问后重调 Lead。Planner Workers 与 `spec-integrator` 永远不直接问用户，统一写/返回问题回调 Root。阶段 1.5 平衡 / 旗舰模型同步、串行 generator 的提问同理；可后台：Planner Workers、阶段 0 预热、阶段 1.5 纯确认词同步、并行 generator / executor、ui-reviewer。
 
 ## 触发
 
@@ -61,7 +65,7 @@ verdict==FAIL 路径（外部 generator 实现）：主 agent 停下 AskUserQues
 Codex（Desktop / CLI）里没有字面量 `Skill(...)` / `Agent(...)` / `AskUserQuestion` 工具时，按下面映射执行，不把工具名差异当作跳过 pipeline 的理由：
 
 - `Skill(dispatch-pipeline)`：Read 本 `SKILL.md` 全文；后续按本 SOP 执行。
-- `Agent({ subagent_type: "<role>", prompt: "..." })`：优先用当前会话已暴露的 subagent 工具；若有 `multi_agent_v1.spawn_agent` 就调 `multi_agent_v1.spawn_agent({ agent_type: "<role>", fork_turns: "none", message: "..." })`；若工具尚未加载且有 `tool_search`，先搜 `multi-agent` 再调。`<role>` 取 `planner` / `generator` / `executor` / `ui-reviewer` / `planner-sync` / `command-runner`。pipeline prompt 必须自包含；Codex 指定 custom `agent_type` 或 model override 时禁用 full-history fork，否则会继承父 agent 类型 / 模型。
+- `Agent({ subagent_type: "<role>", prompt: "..." })`：优先用当前会话已暴露的 subagent 工具；若有 `multi_agent_v1.spawn_agent` 就调 `multi_agent_v1.spawn_agent({ agent_type: "<role>", fork_turns: "none", message: "..." })`；若工具尚未加载且有 `tool_search`，先搜 `multi-agent` 再调。`<role>` 取 `planner` / `planner-worker` / `spec-integrator` / `generator` / `executor` / `ui-reviewer` / `planner-sync` / `command-runner`。pipeline prompt 必须自包含；Codex 指定 custom `agent_type` 或 model override 时禁用 full-history fork，否则会继承父 agent 类型 / 模型。
 - `run_in_background: true` / 并行 Agent：同一轮发起多个 `spawn_agent`；需要结果时用 `multi_agent_v1.wait_agent` 等待。
 - `AskUserQuestion`：若有 `request_user_input` / `AskUserQuestion` 等用户输入工具就用；否则在主对话直接停下问用户，等明确回复后再进入下一阶段。
 - **Simulator UI 交互**：统一用 `exec_command` / Bash 调 `sim-use` CLI；不要搜索或调用 `mobile-mcp`，即使它出现在工具列表。app 装 / 启仍走 `xcrun simctl install/launch`；每次 `sim-use` 调用都显式传 `--device <SIMULATOR_UDID>`（由 `find-ios-build-artifact` / `worktree-sim.sh ensure` 获取）。
@@ -72,7 +76,8 @@ Codex（Desktop / CLI）里没有字面量 `Skill(...)` / `Agent(...)` / `AskUse
 
 | 职责 | Claude | Codex |
 | --- | --- | --- |
-| 复杂规划、实现、架构判断、深度 review | `opus` | `gpt-5.6-sol`，`high` / `xhigh` |
+| Lead Planner、Spec Integrator、复杂实现、架构判断、深度 review | `opus` | `gpt-5.6-sol`，`high` / `xhigh` |
+| 边界明确的 planning shard（repo 调研 / 子 spec / 测试 / 风险） | `sonnet` | `planner-worker`（Terra high） |
 | executor、UI 验收、AMD 转写、机械修复 | `sonnet` | `gpt-5.6-terra`，通常 `high` |
 | 轻量 PR review（含语义判断 + 外部评论） | `haiku` | `gpt-5.6-terra` + `high`，不下放 Luna |
 | 纯确认词、命令执行、日志裁剪、结构化摘要 | `haiku` | `planner-sync` / `command-runner`（Luna low） |
@@ -90,11 +95,11 @@ Codex 固定角色的默认值写在 `~/.codex/agents/*.toml`；调用点只在�
   - 包管理器探测：Node ≥25 已无 corepack；无 corepack / 无全局 pnpm 时，pnpm 项目一律 `npx -y pnpm@$(node -p "require('./package.json').packageManager?.split('@')[1]") <cmd>`（钉住 packageManager 版本；不要 `corepack enable` 写全局 shim）
   - join 点在阶段 2 前提 2；无后台 Bash 的会话（Codex 等）退化为串行初始化，预热是优化不是硬依赖
 
-### 阶段 1: 调 planner
+### 阶段 1: 调 Lead Planner
 
 ```
 Agent({
-  description: "<需求一句话> — 规划 spec",
+  description: "<需求一句话> — Lead 规划",
   subagent_type: "planner",
   run_in_background: false,   # planner 要 AskUserQuestion 与用户对齐，必须前台
   prompt: """
@@ -104,12 +109,22 @@ Agent({
     Worktree slug: <当前 slug>
     Worktree 绝对路径: <pwd>
 
-    按 ~/.claude/agents/planner.md 的 SOP 工作，最终产出 .specs/<slug>.md。
+    初次规划模式：自动选择 serial / fan-out。
+    按 ~/.claude/agents/planner.md 的 SOP 工作。
+    serial 时产出 .specs/<slug>.md；fan-out 时只产出
+    .specs/<slug>/planning-manifest.yaml，不写正式 spec。
   """
 })
 ```
 
-planner 返回后：
+Lead Planner 返回后先按 `planning_mode` 分流：
+
+- `pending` + `status: NEEDS_USER_INPUT` → Root 原样询问结构化问题，把用户回复原话、question IDs 和累计答案加入新 prompt 后重调 Lead；最多 3 轮，期间不得创建 workers 或进入 spec 拍板。
+- `serial` + `status: SPEC_READY` → 正式 spec 已发布，进入下方「正式 spec 自检」。
+- `fanout` + `status: MANIFEST_READY` → 进入阶段 1P；此时没有 `.specs/<slug>.md` 是正常状态，禁止提前进入用户 spec 拍板。
+- 自定义角色 `planner-worker` / `spec-integrator` 未加载 → 不试错循环；重调 Lead Planner 并传 `force_serial: true`。
+
+#### 正式 spec 自检（serial 或 1P 集成完成后）
 
 1. Read 一下 `.specs/<slug>.md` 自己看一眼（确认 planner 没写空 / 没写错路径）
 2. **外部 URL 一致性 grep 自检**（防 planner 瞎填 file id 类错误）：扫主索引 §4 / §1 里出现的所有 `https://...` URL（重点：figma.com / notion.so / linear.app / docs.google.com 等用户参考资料）、对每条 URL 取**file id 段**（如 figma 的 `/design/<fileKey>/`、notion 的 `/page-<id>` 末段、linear 的 `<team>-<num>`），跑：
@@ -127,7 +142,7 @@ planner 返回后：
 
 > ⛔ **硬约束**：
 >
-> planner 返回后，主 agent 的**下一个 tool call** 只能是以下之一：
+> 正式 spec 发布者（serial Planner / Spec Integrator）返回后，主 agent 的**下一个 tool call**只能是以下之一：
 >
 > - `Read`（读 spec 自检）
 > - `AskUserQuestion`（向用户拍板）
@@ -135,9 +150,80 @@ planner 返回后：
 >
 > **绝对不能**是 `Agent(subagent_type="generator")`。哪怕 spec 看起来无懈可击、用户原始需求看起来已经 ready-to-code，也不准自动进入阶段 2。
 >
+> Lead Planner 返回 `MANIFEST_READY` 时不适用上面的正式 spec 限制；下一步必须 Read manifest 或进入阶段 1P 调 `planner-worker`，仍绝对不能调 generator。
+>
 > 用户回复必须是**明确同意词**才能调 generator：「开始 / 开 / ok 开始 / 干 / go / 实现吧 / 没问题开始」之类。
 >
 > 用户回复**模糊**（「嗯」「让我看看」「先放着」「再想想」）→ **继续等**，不要把模糊回复脑补成同意。
+
+#### 阶段 1P: Planner fan-out / fan-in
+
+完整 schema、单写者边界和 callback 规则见 `references/planner-fanout.md`；进入本节前 Read 全文。
+
+##### P1. 校验 manifest
+
+Read `.specs/<slug>/planning-manifest.yaml`，确认：
+
+- `phase: planning_fanout`、revision 与 Lead 返回一致；
+- 只有 wave 1，含 2–3 个 shard，且全部 `depends_on: []`；slug/shard ID 是 lowercase kebab-case；每个 shard 有 `input_revision`，每个 `owned_draft` 精确等于当前 worktree 下 `.specs/<slug>/drafts/<shard-id>.md` 的规范化绝对路径；
+- 用户原话、全局硬约束、required context 和共享 contracts 已冻结；
+- `.specs/<slug>.md` 尚未被任何 worker 提前创建。
+
+任一不满足 → 重调 Lead Planner 修 manifest，不启动 workers。
+
+##### P2. 并行派 Planner Workers
+
+同一轮为全部 shard 各调一个 `planner-worker`，全部后台；Root 占 1 个并发槽，因此最多 3 个：
+
+```text
+subagent_type: planner-worker
+Worktree slug / 绝对路径: <...>
+Planning manifest: <absolute-path>
+Shard ID: <id>
+Expected revision: <该 shard 的 input_revision>
+只写 owned_draft + reports/<shard-id>.yaml + 自己的 question 文件；
+禁止 AskUserQuestion。
+按 planner-worker agent contract 工作。
+```
+
+等待全部 shard 返回。状态路由：
+
+- `DONE` → 保存 draft 路径，等待其他 shard。
+- `NEEDS_USER_INPUT` → 让不受影响的 worker 跑完，进入 P3。
+- `NEEDS_ESCALATION` → 把 worker report、expected manifest revision 与 shard input revision 交给强 Planner 的 `parallel_shard_rescue`：返回 `DONE` 代表局部救援，其他 DONE 保留；返回 `REPLAN_REQUIRED` 代表契约已更新，shared 时重跑 source/producer + 全部消费者，global 时重跑全部 shards；返回 `NEEDS_USER_INPUT` 则进 P3。
+- `STALE_CONTEXT` → Read 最新 manifest，仅重跑 input revision 已变化的 shard。
+- `FAILED` / 写域越界 → 停止 fan-out，让用户选择强 Planner 串行重规划或暂停。
+
+##### P3. Root callback
+
+Root 是唯一用户交互入口：
+
+1. Read 新 question 文件，合并重复问题；
+2. blocking 问题用 AskUserQuestion 一次性向用户询问；Sub-Planner / Integrator 不直接问；
+3. 用户回答后调强 Planner 的 `parallel_callback_sync` 模式，传 manifest、question IDs、用户原话和决策摘要；
+4. Planner 增加 manifest 全局 revision，并只增加 `affected_shards` 的 input revision；只重跑这些 shards；
+5. callback 最多 3 轮，仍不收敛则停止 fan-out。
+
+##### P4. Spec Integrator fan-in
+
+全部 shard report 都 `DONE`、各自 input revision 一致且无 unresolved blocking question 后，串行调 `spec-integrator`：
+
+```text
+subagent_type: spec-integrator
+Worktree slug / 绝对路径: <...>
+Planning manifest: <absolute-path>
+Draft files: <全部绝对路径>
+Worker reports: <全部绝对路径>
+Expected revision: <revision>
+按 spec-integrator agent contract 发布唯一正式 spec。
+```
+
+返回路由：
+
+- `INTEGRATED` → Read 正式 spec，回到「正式 spec 自检」步骤 1–5，再让用户拍板。
+- `NEEDS_USER_INPUT` → 回 P3；用户决策同步后重跑 Integrator。
+- `STALE_CONTEXT` → 重验 manifest/global 与 shard input revisions，只重跑 input revision 失配的 shard 后再集成。
+- `FAILED` → 不发布半份 spec；让用户选择强 Planner `force_serial` 重规划或暂停。
 
 #### 阶段 1.5: 用户决策后必须调 planner 同步 spec（强制闸口）
 
@@ -201,7 +287,7 @@ Codex 命中简单确认词行时，把上方模板的 `subagent_type` 改为 `p
 
 #### 自检 checklist（每次准备调 generator 前过一遍）
 
-- [ ] 我的上一个 tool call 是 planner 返回？→ 如果是，下一步**绝不能**直接调 generator
+- [ ] 我的上一个 tool call 是 Planner / Spec Integrator 返回正式 spec？→ 如果是，下一步**绝不能**直接调 generator
 - [ ] 我向用户展示了 spec 路径 + 摘要？
 - [ ] 我用 AskUserQuestion 问过用户「是否开始实现」？
 - [ ] 用户给了**明确同意词**？（不是「嗯」「ok」之外的模糊词）
@@ -516,7 +602,7 @@ Agent({
 - `review_subagent_status == success`（executor 在正常 PASS 时跑过）→ review 已跑，直接走下面 `success` 路由展示，**不重跑**。
 - `review_subagent_status == skipped:flag_off` → review-fix 后的 retry 状态；沿用主 agent 保存的上一份 `review_file`，跳过 Step P2，直接进 Step P3 / P4。
 - `review_subagent_status == failed` → 不自动重跑，走下面 `failed` 路由让用户决定。
-- `review_subagent_status == skipped:verdict_fail`，或经 lint 快速路径 / 外部 generator 到达 PASS / 本轮没调 executor → 主 agent 按共享 contract 的 `embedded-review` 模式补跑一次（Claude Opus / Codex Sol xhigh；`base_ref=origin/dev`、`report_suffix` 为空、`cleanup_result=none`），输出到 `.reviews/<branch>-<ts>.md`。**不得运行 simplify**。
+- `review_subagent_status == skipped:verdict_fail`，或经 lint 快速路径 / 外部 generator 到达 PASS / 本轮没调 executor → 主 agent 按共享 contract 的 `embedded-review` 模式补跑一次（Claude Opus / Codex Sol xhigh；`base_ref` 取项目 PR base 或远端默认 ref、`report_suffix` 为空、`cleanup_result=none`），输出到 `.reviews/<branch>-<ts>.md`。**不得运行 simplify**。
 
 确认 review 已跑（或刚补跑完）后，按 `review_subagent_status`（或主 agent 本轮补跑的结果）路由：
 
@@ -924,7 +1010,7 @@ bypass 必须**用户主动说**。主 agent **不能**自己判断「这个简�
 - `use-worktree` skill：本 rule 的阶段 0 仍按它执行；其 step 5-9 配置与初始化在本流程里丢后台（阶段 0 ⚡）、join 在阶段 2 前提 2 —— 「第一次 Edit 前初始化完成」约束不变
 - `spec-before-code.md`：本 rule 的阶段 1 (planner) 是它的具体执行者；现有 PreToolUse hook 卡 generator 的 Edit（generator 阶段如果 spec 不存在仍会被 hook 拦下）
 - `iteration-checkpoint.md`：planner 的 AskUserQuestion 是它的具体落地；generator 的「不确定流程」也是
-- `parallel-subagents.md`：本 rule 的并行模式（阶段 2B / 3B / 3C / 5）是 parallel-subagents 的具体执行路径之一 —— planner 在 spec 第 2 节标注多个 `parallel-N` 组、用户审 spec 未删除即视同「拆分方案过审」。用户也可以**显式发令**「拆开并行跑」直接 bypass 三段式走 parallel-subagents。两条入口共用 parallel-subagents 的核心约束（文件边界严格不重叠 / sub-worktree 隔离 / 主 agent 集成验证）。
+- `parallel-subagents.md`：本 rule 的实现并行模式（阶段 2B / 3B / 3C / 5）是 parallel-subagents 的具体执行路径之一。阶段 1P 的 Planner fan-out 不改代码、不建 sub-worktree，单独遵守 `references/planner-fanout.md` 的 draft 单写者契约。
 - `cleanup-and-exit` skill：阶段 3C 删除 sub-worktree 后复用其脚本清理对应的 Xcode DerivedData；worktree 内 `build/`、local `DerivedData`、Swift Package `.build` 随目录删除。
 - `post-change-verify.md`：generator 阶段遵守（只跑 build）；executor 阶段额外跑 lint
 - `architecture-first` skill：generator 阶段必 invoke；executor 阶段做 review 时再 invoke 一次

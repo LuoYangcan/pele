@@ -86,7 +86,7 @@ NEXT_STEPS_FOR_AGENT: 用 Read 工具逐帧看 frame-001 ... frame-NNN，对照 
 ```bash
 WORKTREE_SLUG=<slug> CASE_SLUG=<case> DEVICE_UDID=<udid> \
   EXPECTED_DURATION_SECONDS=<3> FRAME_COUNT=<10> PLATFORM=<ios|android> \
-  bash ~/.Codex/skills/record-ui-animation/scripts/prepare.sh
+  bash ~/.claude/skills/record-ui-animation/scripts/prepare.sh
 ```
 
 输出 `RECORDING_PATH=` / `FRAMES_DIR=` / `META_PATH=` 等 KEY=VALUE，caller `eval $(...)` 或自行 parse。目录约定 `.reviews/ui-<slug>-<ts>/animation/<case-slug>/` 与 executor 截图同 base —— `/ship` 流程的清理逻辑会覆盖到。
@@ -100,7 +100,7 @@ WORKTREE_SLUG=<slug> CASE_SLUG=<case> DEVICE_UDID=<udid> \
 ```bash
 # 1. 起录（脚本后台 fork simctl + 等 0.4s first frame + 返回 REC_PID）
 eval "$(DEVICE_UDID=$DEVICE_UDID RECORDING_PATH=$RECORDING_PATH \
-  bash ~/.Codex/skills/record-ui-animation/scripts/record-xcrun.sh)"
+  bash ~/.claude/skills/record-ui-animation/scripts/record-xcrun.sh)"
 
 # 2. caller 把 app 走到动画起点（如果需要）
 sim-use tap --label "<目标按钮/入口>" --device "$DEVICE_UDID"
@@ -118,7 +118,7 @@ sleep "$(echo "$EXPECTED_DURATION_SECONDS + 0.3" | bc)"
 
 # 5. 收尾（SIGINT + wait + 校验 mp4 是否完整）
 REC_PID=$REC_PID RECORDING_PATH=$RECORDING_PATH \
-  bash ~/.Codex/skills/record-ui-animation/scripts/stop-xcrun.sh
+  bash ~/.claude/skills/record-ui-animation/scripts/stop-xcrun.sh
 ```
 
 为什么用 SIGINT 而不是 SIGTERM/KILL：simctl 收到 SIGINT 才会 finalize mp4 写 moov atom；其它信号产物会损坏。这层细节都封在 `stop-xcrun.sh` 里、caller 不用记。
@@ -136,7 +136,7 @@ REC_PID=$REC_PID RECORDING_PATH=$RECORDING_PATH \
 ```bash
 RECORDING_PATH=$RECORDING_PATH FRAMES_DIR=$FRAMES_DIR META_PATH=$META_PATH \
   FRAME_COUNT=10 SCALE=0.5 \
-  bash ~/.Codex/skills/record-ui-animation/scripts/extract.sh
+  bash ~/.claude/skills/record-ui-animation/scripts/extract.sh
 ```
 
 输出 `FRAMES_DIR=` / `FRAMES=<实际数>` / `RECORDING_DURATION_SECONDS=` / `META_PATH=`。
@@ -161,7 +161,7 @@ for _,ds in d['devices'].items():
 
 eval "$(WORKTREE_SLUG=chat-send-morph CASE_SLUG=chat-send-fly DEVICE_UDID=$UDID \
   EXPECTED_DURATION_SECONDS=3 \
-  bash ~/.Codex/skills/record-ui-animation/scripts/prepare.sh)"
+  bash ~/.claude/skills/record-ui-animation/scripts/prepare.sh)"
 # → 现在 env 里有 RECORDING_PATH / FRAMES_DIR / META_PATH
 ```
 
@@ -169,7 +169,7 @@ Step B：
 
 ```bash
 eval "$(DEVICE_UDID=$UDID RECORDING_PATH=$RECORDING_PATH \
-  bash ~/.Codex/skills/record-ui-animation/scripts/record-xcrun.sh)"
+  bash ~/.claude/skills/record-ui-animation/scripts/record-xcrun.sh)"
 
 # 走到 chat sheet（如不在）
 sim-use tap --label "Chat" --device "$UDID"
@@ -181,7 +181,7 @@ sim-use tap --label "Send" --device "$UDID"
 sleep 3.3   # 等动画 + buffer
 
 REC_PID=$REC_PID RECORDING_PATH=$RECORDING_PATH \
-  bash ~/.Codex/skills/record-ui-animation/scripts/stop-xcrun.sh
+  bash ~/.claude/skills/record-ui-animation/scripts/stop-xcrun.sh
 ```
 
 Step C: extract
@@ -189,7 +189,7 @@ Step C: extract
 ```bash
 RECORDING_PATH=$RECORDING_PATH FRAMES_DIR=$FRAMES_DIR META_PATH=$META_PATH \
   FRAME_COUNT=10 \
-  bash ~/.Codex/skills/record-ui-animation/scripts/extract.sh
+  bash ~/.claude/skills/record-ui-animation/scripts/extract.sh
 # → FRAMES_DIR 里 frame-001.png ... frame-010.png
 # → caller 用 Read 工具逐帧看，对照 spec 写 pass/fail
 ```

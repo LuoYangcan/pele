@@ -67,7 +67,7 @@
 
 - spec §6 freeze 列表全部守住：`<是 | 否；如否，列出被破的项>`
 - spec §6 「不在 scope 的事」未被扩：`<是 | 否；如否，列出顺手扩的范围>`
-- 落地位置（`git diff --name-only origin/dev..HEAD`）全部在 spec §6 圈定范围内：`<是 | 否>`
+- 落地位置（`git diff --name-only <base-ref>..HEAD`）全部在 spec §6 圈定范围内：`<是 | 否>`
 
 ### 整体 notes
 

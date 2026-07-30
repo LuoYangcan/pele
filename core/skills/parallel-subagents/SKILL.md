@@ -1,14 +1,15 @@
 ---
 name: parallel-subagents
-description: 并行 subagent 拆开独立任务同时跑的 SOP。触发——用户显式说 拆开并行跑 / 派 subagent 改 B / 同时跑，或 dispatch-pipeline 并行模式（planner 在 spec 标多个 parallel-N 组、用户过审）。不触发——主 agent 自主判断是否并行。
+description: 并行 subagent 拆开独立任务同时跑的 SOP。触发——用户显式说拆开并行跑 / 派 subagent 改 B / 同时跑，或 dispatch-pipeline 阶段 1P Planner fan-out / 已过审的实现并行模式。不触发——主 agent 自主判断是否并行。
 ---
 
 # 并行 subagent：拆开独立任务同时跑
 
-主 agent 可以用 `Agent` 工具派 subagent 并发执行独立子任务，但**入口受限**——只有以下两种情况可触发：
+主 agent 可以用 `Agent` 工具派 subagent 并发执行独立子任务，但**入口受限**——只有以下三种情况可触发：
 
 1. **用户显式发令**：「拆开并行跑 / 你改 A，派 subagent 改 B / 同时跑」这类切话题
 2. **dispatch-pipeline 并行模式**：planner 在 `.specs/<slug>.md` 第 2 节「并行分组」表里标注了**多个 `parallel-N` 组**，且用户在阶段 1 末尾审 spec 时**未删除**该分组 → 视同用户已过审拆分方案，主 agent 按 `dispatch-pipeline.md` 阶段 2B / 3B / 3C / 5 跑
+3. **dispatch-pipeline 阶段 1P**：Lead Planner 按 `planning-manifest.yaml` 扇出 2–3 个只写独立 draft 的 `planner-worker`。这是已授权 pipeline 的规划内部步骤，不改代码、不发布正式 spec，不另加一次用户拆分闸口。
 
 **不允许的入口**：主 agent 自主判断「这俩任务好像独立、并行一下」。判断权要么在用户、要么在 planner。
 
@@ -22,6 +23,8 @@ description: 并行 subagent 拆开独立任务同时跑的 SOP。触发——�
 - 共享的接口 / 类型 / 数据模型：**先在主 agent 里定稿**，再派发 subagent
 
 用户点头后再派。
+
+阶段 1P 例外：Lead 必须先冻结 shared contracts、shard scope、独占 draft 路径和 forbidden decisions；Root 校验 manifest 后即可派 worker。正式 spec 仍由 `spec-integrator` 单写，随后走原用户拍板。
 
 ## 三条硬约束
 
@@ -53,7 +56,7 @@ subagent 有独立 context，**拿不到**当前对话、TodoList、memory、pla
 
 ### 3. 工作区物理隔离
 
-用 `Agent(isolation: "worktree")` 让 subagent 在独立 worktree 跑。`run_in_background: true` 让 subagent 后台跑，主 agent 继续做另一半；完成时系统通知。
+实现代码的 subagent 用 `Agent(isolation: "worktree")` 在独立 worktree 跑。阶段 1P 的 planner-worker 不改代码，共享当前 worktree，但每个 worker 只能写自己的 `drafts/<shard-id>.md`、`reports/<shard-id>.yaml` 和 question 前缀。`run_in_background: true` 让 subagent 后台跑，主 agent 继续做另一半；完成时系统通知。
 
 ## 集成联调
 

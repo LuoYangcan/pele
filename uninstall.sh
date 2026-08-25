@@ -108,6 +108,6 @@ log "Notes:"
 if [ "$MODE" = "global" ]; then
   log "  • settings.json hooks were NOT modified — edit manually or restore from ~/.claude.backup-*/settings.json.before-merge"
 else
-  log "  • ${PROJECT_PATH}/CLAUDE.md and ${PROJECT_PATH}/AGENTS.md were NOT modified — remove the '@.claude/rules/index.md' line manually if you added it"
+  log "  • ${PROJECT_PATH}/CLAUDE.md and ${PROJECT_PATH}/AGENTS.md were NOT modified — remove the '@.claude/pele-index.md' line manually if you added it"
 fi
 log "  • Backups of pre-existing files are still in ${CLAUDE_DIR}.backup-* — restore manually as needed"

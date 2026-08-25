@@ -2,7 +2,7 @@
 # record-ui-animation / Step A: prepare
 #
 # Inputs (env, required):
-#   WORKTREE_SLUG    spec slug / worktree 名（caller 从主 agent 拿）
+#   WORKTREE_SLUG    task slug / worktree 名（caller 从 Root 拿）
 #   CASE_SLUG        动画用例短名（kebab-case，决定 frame 子目录）
 #   DEVICE_UDID      iOS Simulator UDID 或 Android adb device id
 #

@@ -1,6 +1,6 @@
 ---
 name: lean-diff
-description: Lean-diff judgment standard covering comment noise, patchwork bloat, over-abstraction, and defensive code patterns. Use in write mode before edits and in review mode when tagging issues. Skip typo, format, rename, comment-only doc, and lint-only diffs.
+description: Lean-diff judgment standard covering comment noise, patchwork bloat, over-abstraction, and defensive code patterns. Use in write mode before edits and in review mode when tagging issues. This skill owns local copy/paste, TODO, fallback, silent-catch, and premature-abstraction signals; they do not trigger architecture-first unless diagnosis requires an unresolved durable boundary change. Skip typo, format, rename, comment-only doc, and lint-only diffs.
 ---
 
 # lean-diff
@@ -11,15 +11,17 @@ description: Lean-diff judgment standard covering comment noise, patchwork bloat
 2. 堆 patch 不删旧 / 不复用现有
 3. 过度防御性代码（吞错 / 多余 unwrap / 假 fallback）
 
-generator 在写代码前用 **write 模式**自检；executor / `/review` 在审代码时用 **review 模式**列 issue。两边走同一份判断标准、同一套 issue_type 命名 —— 单一真相源避免漂移。
+implementation owner 在写代码前用 **write 模式**自检；verifier 或 `/review` 在审代码时用 **review 模式**列 issue。两边使用同一套 issue_type。
+
+这些局部 anti-patch 信号由本 skill 直接处理，不因为出现分支、flag、copy/paste、fallback 或 TODO 自动升级成架构选型。
 
 ## 使用方式
 
-### Write 模式（generator 在 Step 3 invoke）
+### Write 模式
 
 每次 Edit / Write 前过一遍 §自检清单（write）。命中任何一条 → 改回去再落地。
 
-### Review 模式（executor 在 Step 5 / `/review` subagent invoke）
+### Review 模式
 
 扫被 review 的 diff，按 §issue_type 表给每个命中点产出结构化 issue：
 
@@ -54,26 +56,25 @@ generator 在写代码前用 **write 模式**自检；executor / `/review` 在�
 | issue_type | 触发 | 例子 |
 |---|---|---|
 | `verbose-comment` | 解释 what（紧邻代码做的事） | `// 把 user 加进 list` 紧跟 `users.append(user)` |
-| `task-bound-comment` | 引用当前任务 / spec 章节 / AMD / fix 编号 / caller | `// 用于 X 流程`、`// 为修 #123`、`// spec §4 要求...`、`// 按 AMD-3 实现`、`// task-7` |
+| `task-bound-comment` | 引用当前任务、plan 章节、issue/fix 编号或临时 checklist | `// 为修 #123`、`// plan 要求...`、`// task-7` |
 | `removal-marker` | 删除残留 | `// removed`、`// renamed from X` |
 | `stale-todo` | 没截止 / 没责任人的 TODO | `// TODO: 之后优化` |
 
 #### 例外（**不算 issue**）
 
 - `// MARK: -`（Swift 章节切片，IDE 友好）
-- `// PLANNER-FEEDBACK iter-N: 待澄清`（generator 留给 planner 的占位标记）
 - 引用项目 doc / 引用第三方 issue 链接的 `// see docs/x.md` 类指针注释
 
 #### 对照：写 why、不写 trace
 
-`task-bound-comment` 禁的是「**trace**：当时为什么动这行代码」—— spec / AMD / task / PR / fix 编号都是过程引用，spec 提交后被删、PR 编号将来没人查、注释就是死链。
+`task-bound-comment` 禁的是“当时为什么动这行代码”的过程 trace。plan、task、PR 和 fix 编号会漂移或消失，注释应改写成长效因果。
 
 但**why 注释是鼓励的**，前提是写**不随时间漂移的因果**：业务约束 / 系统行为 / 历史 bug / 性能取舍。判别：把这条注释拿给 1 年后、不知道当前任务存在的人看 —— 还能看懂吗？
 
 | 禁止（trace，会死链） | 鼓励（why，长效） |
 |---|---|
-| `// spec §4 要求 UTC` | `// server 端按 UTC 存储，本地转换在 presenter 层做` |
-| `// 按 AMD-3 加的 retry` | `// iOS 17.4 NWConnection 首次握手有概率 ECONNRESET，retry 一次` |
+| `// plan 要求 UTC` | `// server 端按 UTC 存储，本地转换在 presenter 层做` |
+| `// 本任务加的 retry` | `// iOS 17.4 NWConnection 首次握手有概率 ECONNRESET，retry 一次` |
 | `// 为修 #1234 加的 guard` | `// pendingAttachments 在 dismiss 动画中可能被外部清空，nil check 不可省` |
 | `// task-7 要求隐藏` | `// composer 在 picker 之上视觉错位，hide 由 caller-side scope 控制` |
 | `// 用户在 review 里要求` | `// 主线程 layout 重入会触发 SnapKit 重算 → 必须 async` |
@@ -92,7 +93,7 @@ generator 在写代码前用 **write 模式**自检；executor / `/review` 在�
 - 已有方法能扩参数达成吗？
 - 已有类型加字段能达成吗？
 - 已有 helper / extension 能复用吗？
-- 三段相似分支能合成一段吗？（不要为 DRY 强行抽象，参考 architecture-first 的 premature abstraction 红线）
+- 三段相似分支能合成一段吗？不要为了 DRY 建没有真实变化轴的抽象。
 
 减 1 行比加 1 行优先。非加不可时，宁可在已有处加而不是新建。
 
@@ -100,15 +101,15 @@ generator 在写代码前用 **write 模式**自检；executor / `/review` 在�
 
 | issue_type | 触发 | severity |
 |---|---|---|
-| `patchwork-bloat` | 新建方法 / 类型 / 文件，但 grep 显示已有可复用入口；非 spec 第 6 节硬约束要求新建 | warning |
-| `over-abstraction` | 引入新 protocol / Manager / Service / 配置参数 / feature flag / **单调用方包装类**，但 spec 没要求、当前调用方只有 1-2 处 | warning |
+| `patchwork-bloat` | 新建方法 / 类型 / 文件，但 grep 显示已有可复用入口；用户/最终 plan 未要求新建 | warning |
+| `over-abstraction` | 引入新 protocol / Manager / Service / 配置参数 / feature flag / **单调用方包装类**，但用户/最终 plan 没要求、当前调用方只有 1-2 处 | warning |
 
 「单调用方包装类」识别要点：一个新类（常见命名 `XxxCoordinator` / `XxxService` / `XxxManager` / `XxxHelper`）只是把另一个已有 API 转一手 —— init 只存依赖、方法只 forward 调用、本身**没**额外逻辑（重试 / 状态转换 / 跨调用 state / 多依赖编排），且 grep 显示只一处调用方。这种包装层既不为单测带来 seam（因为反正只一处用），也不复用，纯增加跳转层 → over-abstraction。例：`VoiceMessageUploadCoordinator { init(service); upload(data) { try service.upload(data) } }` 在唯一调用点只是 `coord.upload(data)` 一次就丢 —— 直接 `service.upload(data)` 即可。
 
 #### 例外
 
-- spec 第 6 节硬约束**明确要求**新建（例：spec 写「在 X 模块新增 FooService 协议」）→ 跳过
-- architecture-first skill 已经评估并选了「拆函数 / 引入新模式」→ 跳过（前置已有更高优先级判断）
+- 用户或最终 plan 的硬约束明确要求新建 → 跳过
+- authoritative final plan 已批准 material architecture change，且当前抽象是该决策的必要落地 → 跳过
 - 包装类**有**额外逻辑（重试策略 / 状态机 / 跨调用 cache / 多个依赖的编排）→ 不是 over-abstraction，跳过
 
 ### 3. 过度防御代码类
@@ -123,28 +124,28 @@ generator 在写代码前用 **write 模式**自检；executor / `/review` 在�
 
 | issue_type | 触发 | severity |
 |---|---|---|
-| `silent-catch` | `try?` / `catch { }` 静默吞错（除非 spec 明确要求容错） | **blocking** |
+| `silent-catch` | `try?` / `catch { }` 静默吞错（除非用户/最终 plan 明确要求容错） | **blocking** |
 | `defensive-unwrap` | 验证不可能发生的情况（framework 保证 non-optional 还 `guard let` 早 return） | warning |
 | `defensive-fallback` | 加 fallback / default 值掩盖错误根因（例：网络失败默默返回空数组而不是向上抛） | warning |
 
 #### `silent-catch` 为何 blocking
 
-吞错让 bug 隐身 —— 下次同一个根因以另一种症状出现，调试成本指数上升。如果 spec 明确要求「失败时静默 / 失败时降级」（例：埋点上报失败不影响主流程），generator 必须在代码处加注释说明出处（`// silent by spec §X`），否则 review 标 blocking。
+吞错让根因以其他症状出现。如果需求明确要求失败静默或降级（如埋点失败不影响主流程），implementation owner 应写长效因果注释，而不是引用 plan 章节。
 
 #### 例外
 
-- spec 第 6 节硬约束 / 第 4 节测试用例**显式要求**容错路径
+- 用户、最终 plan 或测试用例显式要求容错路径
 - 框架钩子要求实现的 default 值（`Equatable.==` 之类的协议 witness）
-- 注释里显式标了 `// silent by <出处>` —— 视为 generator 已经意识到、且有据可查
+- 注释写明稳定的业务原因和失败边界
 
 ## §自检清单（write 模式）
 
-generator 在 Edit / Write 前过一遍：
+implementation owner 在写入前过一遍：
 
-- [ ] 我加的注释属于「why 非显然」吗？还是在解释 what / 引用 spec 章节 / AMD / task / fix 编号 / 留 stale TODO？（1 年后没 spec 时还能看懂吗？）
+- [ ] 我加的注释属于非显然 why，还是在解释 what / 引用 plan、task、fix 编号 / 留 stale TODO？一年后还能看懂吗？
 - [ ] 这段新代码对应的功能，能否扩 / 改已有方法 / 类型 / helper 达成？
 - [ ] 我引入的抽象（protocol / Manager / Service / 配置参数 / flag）当前真有 ≥3 处调用方吗？还是为「未来扩展」准备？
-- [ ] 我写的 `try?` / `catch { }` 是否吞错？spec 真要求静默吗？
+- [ ] 我写的 `try?` / `catch { }` 是否吞错？需求真要求静默吗？
 - [ ] 我的 `guard let / else { return }` 是 framework 保证 non-optional 还硬验证？
 - [ ] 我的 fallback / default 值是不是在掩盖错误根因？
 
@@ -152,12 +153,12 @@ generator 在 Edit / Write 前过一遍：
 
 ## §issue 输出契约（review 模式）
 
-executor / `/review` 把命中条目放进 `issues` 数组，每条按上方 §使用方式 的格式。**issue_type 严格用本 skill 表里的字段名** —— 主 agent 在 review-fix 阶段可以按 type 一键归类（「全部修注释类」/「只修 blocking 的 silent-catch」）。
+verifier 或 `/review` 把命中条目放进 `issues` 数组，每条按上方格式。`issue_type` 严格使用本 skill 表里的字段名，Root 可按 type 路由修复。
 
 ## 与其他 skill / rule 的关系
 
-- **architecture-first**：管「选模式 / 选边界」（不写代码）。本 skill 是 architecture-first 之后的一道补充判断 —— architecture-first 决定要不要新建抽象、本 skill 检查实际落地是否过度。两者正交。
-- **cleanup backend**：Claude 用 `/simplify`；Codex 用 `codex-simplify`。cleanup 自动 fix；本 skill 只产判断 + issue 列表。可以串：cleanup 后 executor 用本 skill 再扫一遍。
+- **architecture-first**：只解决未决 durable boundary；本 skill 处理局部 anti-patch/reuse hygiene。代码坏味道本身不升级，只有诊断证明修复必须改变 boundary 时才进入架构决策。
+- **cleanup backend**：Claude 用 `/simplify`；Codex 用 `codex-simplify`。cleanup 自动 fix；本 skill 只产判断和 issue 列表。
 - **dead-code**：dead-code 管"无人调用"（孤儿符号）；本 skill 管"该不该写"（写之前 / 写之后的判断）。两者正交。
 - **post-change-verify** rule：本 skill 不跑 build / lint。lint 工具能抓的格式问题（空格 / 缩进 / 行长）属于 swift-formatting 的领域，本 skill 重点放在工具抓不到的语义级问题。
 
@@ -165,13 +166,13 @@ executor / `/review` 把命中条目放进 `issues` 数组，每条按上方 §�
 
 - ❌ 不写代码（review 模式只产 issue 列表；write 模式只产自检结论）
 - ❌ 不替代 swift-formatting / SwiftLint 的格式检查
-- ❌ 不替代 architecture-first 的模式选型决策
-- ❌ 不在 spec 第 6 节硬约束有冲突时硬扛 —— spec 是法律，spec 显式要求的容错 / 防御 / 多余抽象不算 issue
+- ❌ 不替代真正的 material boundary 决策；局部坏味道仍由本 skill 收敛
+- ❌ 不与用户或最终 plan 的硬约束冲突；显式要求的容错、防御或抽象不算 issue
 - ❌ 不替主 agent 决定 review-fix 是否采纳 —— 那是用户挑
 
 ## Why（核心）
 
-- 单一真相源：generator 写 + executor 审用同一份 issue_type 表
-- 新增 issue type 改 1 处：本 skill 加一条，generator / executor SOP 不动
+- implementation owner 与 reviewer 使用同一份 issue_type 表
+- 新增 issue type 只改本 skill
 - 跨 agent / `/review` 复用：未来别的 review 工具直接 invoke
 - issue_type 命名一致：主 agent review-fix 按 type 归类操作可行

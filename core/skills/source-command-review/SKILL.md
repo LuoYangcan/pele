@@ -1,6 +1,6 @@
 ---
 name: source-command-review
-description: Claude Code backend for the migrated `/review` workflow. Use in Claude when the user invokes `/review` or asks for branch cleanup plus correctness review. Runs Claude `/simplify` followed by Claude `/code-review`; does not apply to Codex, PR-comment review, shipping, or merging.
+description: Claude backend for `/review`-style branch cleanup plus report-only correctness review. Runs `/simplify`, captures structured `/code-review` output, and renders the shared report; not for Codex, PR comments, shipping, or merging.
 ---
 
 # source-command-review
@@ -11,11 +11,11 @@ If the host cannot invoke Claude `/simplify` and `/code-review`, stop and report
 
 ## Claude Backend
 
-1. Inspect the target and create the report/snapshot paths from the shared contract.
-2. Resolve `base_ref` from the project or remote default, then invoke Claude `/simplify` on `<base_ref>...HEAD plus staged, unstaged, and untracked working-tree changes`. Require the shared cleanup result schema.
+1. Freeze the fingerprint, changed paths, relevant untracked product paths, and pre-cleanup snapshot. Create the report path from the shared contract.
+2. Invoke Claude `/simplify` on `dev...HEAD plus staged, unstaged, and untracked working-tree changes`. Require the shared cleanup result schema.
 3. If cleanup changed code, start the shared build verification.
-4. Invoke Claude `/code-review` with high effort. Pass a self-contained prompt containing the shared reviewer input and cleanup result. Add the hard constraint `report-only; do not post PR comments`.
-5. Join build verification, calculate the shared verdict, write the shared report, and return the compact summary.
+4. Recompute the post-cleanup fingerprint. Invoke Claude `/code-review` with Opus high effort; use highest effort only for a contract risk gate. Pass the frozen scope, applicable latest plan/ExecPlan and rules, cleanup result, reviewer checklist, scanner/cache/network prohibitions, and `review-result.schema.json`. Add `report-only; return raw JSON only; do not edit or post PR comments`.
+5. Capture the final JSON in the contract's `$temp_result`. Apply the contract's 30-minute hard timeout, one transport retry, and one repair-only JSON retry. Validate and publish through `review-result.sh publish active ...`; the backend—not `/code-review`—writes Markdown and the JSON sidecar. Join build verification and return metadata plus cleanup/build counts.
 
 Do not let `/code-review` edit the working tree or use its default GitHub-comment behavior.
 

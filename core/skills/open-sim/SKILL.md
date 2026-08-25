@@ -33,7 +33,7 @@ bash ~/.claude/scripts/run-ios.sh --target sim
   bash ~/.claude/scripts/run-ios.sh --target sim --no-build
   ```
 
-脚本会 build → 定位 `Debug-iphonesimulator/*.app` → 从产物 `Info.plist` 读 bundle id → 经 `worktree-sim.sh ensure` 拿 per-worktree sim（非 worktree 自动 fallback）→ `simctl install` + `launch` → `open -a Simulator`，最后打印 `----- run-ios result -----` 结果块。
+脚本会 build → 定位产物（扫 `Build/Products/*-iphonesimulator/`，取最新的 `.app`；configuration 名由项目定义且会变，不写死 `Debug-`） → 从产物 `Info.plist` 读 bundle id → 经 `worktree-sim.sh ensure` 拿 per-worktree sim（非 worktree 自动 fallback）→ `simctl install` + `launch` → `open -a Simulator`，最后打印 `----- run-ios result -----` 结果块。
 
 ## 报告给用户
 

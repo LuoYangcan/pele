@@ -1,56 +1,54 @@
 # Architecture
 
-Pele's center is a gated planner → generator → executor pipeline. The main agent coordinates roles and user decisions but does not write implementation code unless the user explicitly bypasses the pipeline.
+Pele's center is plan-first delivery with model tiering. Native Plan mode turns a request into a decision-complete plan; the same Root — a strong planning-tier model — then owns decisions, integration, and verification in Default mode, while code writing is delegated by default to the `implementer` subagent running a general implementation-tier model. Roles are orthogonal gates, not a fixed pipeline.
 
 ## Control flow
 
 ```text
-user request
+user request (code-writing)
   ↓
-main agent: create worktree when required
+Plan mode (or a read-only planning turn): Root explores, clarifies,
+produces the final plan — the single source of requirement truth
+  ↓ explicit execute authorization
+Root: create isolated worktree .worktrees/<slug> from origin/<base>
   ↓
-Lead Planner
-  ├─ serial: publish canonical spec
-  └─ fan-out: publish planning manifest
-       ↓
-     2–3 planner-workers write isolated drafts/reports
-       ↓
-     Spec Integrator publishes one canonical spec
+Root freezes decision-complete units → implementer writes the code
+  (Root writes directly only for micro-edits, integration fixes, narrow repairs)
   ↓
-main agent: present spec and wait for explicit approval
+Root reviews the returned diff, integrates, commits each verified feature unit
   ↓
-Generator: implement spec and run build verification
+post-change verify: cheap lint/check → build → targeted tests when required
   ↓
-Executor: read-only review, build/lint verification, PASS or FAIL
-  ├─ PASS → report to user
-  └─ FAIL → generator retry, at most three rounds
+orthogonal gates (zero or more per task):
+  ├─ needs_independent_review → verifier (fresh, read-only semantic acceptance)
+  ├─ needs_ui_review          → ui-reviewer (static + motion acceptance vs design)
+  └─ needs_parallel_write     → multiple implementer instances, exclusive ownership
+  ↓
+Root reports: observable behavior, verification results, decision audit, docs disposition
 ```
 
-Fan-out is only a planning optimization. Workers never write the canonical spec; the Spec Integrator is its single initial writer. Small or coupled work stays serial.
+## Model tiering
+
+| Role | Tier | Owns |
+|---|---|---|
+| Root (session) | strong planning tier (e.g. `/model fable`) | plan, decisions, diff review, integration, verification, user interaction |
+| `implementer` | general implementation tier (`core/agents/implementer.md`) | code writing inside frozen ownership; returns diff + open questions |
+| `verifier` / `ui-reviewer` | mid tier | independent acceptance when their gate hits |
+| `command-runner` | small tier | mechanical command execution with trimmed logs |
+
+The implementer never commits, never runs final verification, and returns material decisions to the Root instead of deciding them.
 
 ## File contracts
 
-```text
-.specs/<slug>.md                         canonical index
-.specs/<slug>/
-  tasks/task-N.md                        implementation task details/status
-  risks/risk-N.md                        risk details/status
-  amendments/AMD-N.md                    approved changes after initial spec
-  planning-manifest.yaml                 fan-out control plane, when used
-  drafts/<shard-id>.md                   planner-worker proposal
-  reports/<shard-id>.yaml                planner-worker persisted result
-  questions/Q-*.yaml                     structured callback to the main agent
-```
-
-The canonical index plus child files are the implementation and review source of truth. Planning drafts and questions are control-plane artifacts; generator and executor consume only the integrated canonical spec.
+- Final plan lives in the Plan-mode conversation. A single-file ExecPlan (`templates/exec-plan-template.md`) is written only for cross-session/host, multi-writer, irreversible, or audited work.
+- `.reviews/` holds local delivery artifacts (decision audit, frozen review snapshots); never committed or shipped.
+- `.specs/<slug>-assets/` holds frozen design-input artifacts (measurement HTML, PNG, preview.html) for strict Figma tasks; rebuilt only when the design input itself changes.
 
 ## Enforcement
 
-1. `PreToolUse` hooks block edits on protected branches and require `.specs/<slug>.md` or `.specs/<slug>.skip` in task worktrees.
-2. `dispatch-pipeline` defines sequencing, user gates, retry routing, and role boundaries.
-3. Agent definitions constrain read/write scope and structured results.
-
-The main agent may create worktrees, relay decisions, inspect specs, and integrate approved results. It must not silently replace a planner, generator, executor, worker, or integrator.
+1. A `PreToolUse` hook blocks Edit/Write on protected branches (main / master / dev); changes go through `.worktrees/` isolation.
+2. `plan-first-delivery` defines the state machine, orthogonal gates, delegation, and failure routing; `post-change-verify` defines the verification ladder and receipt invalidation.
+3. Agent definitions constrain read/write scope and structured returns.
 
 ## Installed layout
 

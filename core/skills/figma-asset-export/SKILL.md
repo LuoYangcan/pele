@@ -33,7 +33,7 @@ description: 从 Figma 切图（导出图标 / 插画 / logo 资源）进 iOS �
 ## 切图机制（怎么拿到文件）
 
 1. `get_design_context({nodeId})` → 返回里含**资源下载 URL**（exportable 节点 / image fill 节点）。figma 给的是 **SVG / PNG** URL，**不直接给 PDF**（PDF 是 iOS 侧 SVG→PDF 转换）。
-2. `curl -sL "<asset_url>" -o .specs/<slug>/assets/<语义名>.<svg|png>` 下载导出文件。
+2. `curl -sL "<asset_url>" -o .specs/<slug>-assets/<语义名>.<svg|png>` 下载导出文件。
 3. **导出 box = 外框、不是裁剪 path**：figma 图标常是固定外框裹更小字形 + 光学留白；导出要带外框留白（否则资源被裁到字形 bbox、渲染偏大 / 破对齐）。已知 MCP bug 会把 SVG 裁到 path bbox → 拿到后核对尺寸，必要时按 metadata 外框尺寸显式设 box。
 
 ## 第二步：格式选型（iOS）
@@ -49,21 +49,25 @@ description: 从 Figma 切图（导出图标 / 插画 / logo 资源）进 iOS �
 
 ## 别从几何重画
 
-拿到导出文件就**用它**，不要看 `get_design_context` 的 path data 自己在代码里重画 `Path` / 拼 shape —— 重画必丢光学细节 + 偏差。复杂图形重画 = 切图漂移高发区。planner 烘焙的冻结 HTML（见 `~/.claude/skills/figma-precise-extract/SKILL.md`）里若含 inline `<svg>` path，generator 同样**不从它几何重画** —— 图标只接 §4「切图清单」导出的资源文件。
+拿到导出文件就**用它**，不要看 `get_design_context` 的 path data 自己在代码里重画 `Path` / 拼 shape。冻结 HTML（见 `figma-precise-extract`）里即使含 inline `<svg>` path，implementation owner 也不从它几何重画；图标只使用最终 plan 列出的导出资源。
 
-## 在三段式（dispatch-pipeline）里的位置
+## 在 plan-first delivery 里的位置
 
-- **planner**（切图 + 冻结）：Step 3.1 b 步对需导出的节点按本 skill 切图、下载到 `.specs/<slug>/assets/`、写进 §4「切图清单」（含格式 + render mode + tint token 建议）。切图与 codify 烘焙 HTML（见 `~/.claude/skills/figma-precise-extract/SKILL.md`）**并列、互不替代**：HTML 给布局测量、切图给二进制资源（HTML 不携带 SVG/PNG 二进制）。planner 无 Skill 工具 → 按需 Read 本文件。
-- **generator**（接入）：把冻结的切图资源拷进 Xcode asset catalog（`.imageset` / vector），按清单设 render mode（template / original）+ tint token + Preserve Vector Data；**不重新切图**（切图是 planner 写域，资源更新走 planner 重抓 + AMD）。
-- **ui-reviewer**：视觉验收时核对图标渲染尺寸 / 颜色 / 清晰度（对冻结 PNG）。
+- **Root/source prep**：在 Default mode、源码写入前冻结导出资源到 `.specs/<slug>-assets/`，把格式、render mode 和 tint token 写入最终 plan 或 ExecPlan。切图与 measurement HTML 并列：前者给二进制资源，后者给布局测量。
+- 把 file/node/version（可用时）与每个导出资源 SHA-256 纳入 design binding；无 immutable version 时只按冻结 bundle 验收，不在 review 期间重新下载 latest。
+- 导出结果若引出新的行为、scope、架构或验收决策，Root 先回 DISCOVER/PLAN_READY 更新 authoritative plan，再继续实现。
+- **implementation owner**：把冻结资源接入 asset catalog，设置 template/original、tint token 和 Preserve Vector Data；设计源变化时由 Root 重新冻结，不在实现中临时换资源。
+- **ui-reviewer**：可运行 build PASS 后，对冻结 PNG 核对尺寸、颜色和清晰度。
 
 ## 硬约束
 
 - ❌ 不用 `get_screenshot` 当切图（那是整节点栅格、不是资源文件）
 - ❌ 不从 path 几何在代码里重画自定义图标 / 插画
 - ❌ 单色图标不烤死十六进制颜色 —— template + token tint
-- ❌ generator 不重新切图（planner 写域）
+- ❌ implementation worker 不重新切图；冻结资源和共享清单由 Root 管理
 - ✅ 自定义资源走 `get_design_context` 资源 URL（figma 给 SVG / PNG）导出；导出 box = 外框
 - ✅ 单色可缩放→SVG（Xcode 直接用或转 PDF）template + token tint；多色→original；位图→@1x/2x/3x
 
-<!-- Why 核心：planner 冻结原始资源，generator 只接入，避免几何重画、裁剪 bbox 和硬编码颜色造成漂移。 -->
+## Why（核心）
+
+切图漂移两大根因是代码重画丢光学细节，以及导出裁到 glyph bbox 或烤死颜色。资源先冻结，implementation owner 只负责接入。

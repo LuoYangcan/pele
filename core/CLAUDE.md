@@ -1,52 +1,48 @@
-# 全局规则索引（渐进式披露）
+# 全局规则索引（按需加载）
 
-下列规则是**按需加载**的指针，不预先注入正文。遇到匹配的触发信号时，用 `Skill(<name>)`（形态为 skill 的）或 `Read`（形态为 rule 的）加载对应正文再应用；不匹配就不必读。
+## 编码回合入口
 
-## 每轮自检（写代码请求适用）
+- **原生 Plan mode**：由当前 Root 只读调研、澄清并产出最终 plan；不加载 `plan-first-delivery`，不写代码或计划文件。最终 plan 是同一任务后续实现的需求真相源。
+- **Default mode 写代码**：第一步加载 `Skill(plan-first-delivery)`。同一任务已有最终 plan 时直接执行，不重写计划或增加固定 checkpoint；没有 plan 时按 skill 的入口路由处理。
+- **代码改动一律 worktree**：任何要落地 Edit/Write 的编码任务，第一次写入前加载 `Skill(use-worktree)` 在仓库 `.worktrees/` 建隔离 worktree；编码任务不得在主仓 checkout 写入（meta 配置按下一条路由）。不主动切换主仓分支、不清理其 dirty 状态；主仓不在基线分支或不干净时保持原样，worktree 一律从 `origin/<基线>` 创建、不依赖主仓 HEAD。延续当前任务（worktree 内迭代）、已在 worktree、纯问答/只读诊断不触发。
+- **Meta 配置**：rule / skill / agent / hook / settings 不走 `plan-first-delivery` 或 ExecPlan，但不豁免 protected-branch、dirty tree 和外部写入权限。repo-backed meta 在 main/master/dev 上先切任务分支或 worktree；非 Git 全局配置可在确认 live target 后直接改。写前检查 symlink/hook 实际目标，写后按触达类型运行 JSON/TOML parse、`bash -n`、Markdown/local-link check、installer dry-run/idempotency；除非配置直接影响 app，不跑 app build。
+- **回合 checkpoint**：同一需求连续超过 3 回合仍未收敛时读 `rules/iteration-checkpoint.md`。
 
-收到会落地 Edit / Write / NotebookEdit 的请求时，按下面顺序自检：
+纯问答、读代码、查状态以及 meta 配置不走编码交付流程；仍执行上面的目标化安全与验证步骤。
 
-0) **加载调度 SOP**（写代码请求第一动作）—— 主 agent 不亲自写代码。先 `Skill(dispatch-pipeline)` 加载三段式调度 SOP，之后按它委派 planner / generator / executor。Codex（Desktop / CLI）如无字面量 `Skill` / `Agent` 工具，按 dispatch-pipeline 的「Codex 工具映射（Desktop / CLI）」翻译成当前会话可用的 subagent 工具。下面 A/B/C 是其前置自检摘要、完整流程在 skill 里。（用户显式 bypass「你直接改 / 跳过 planner」时跳过本步。）
+## Workflow
 
-A) **澄清**（请求已经够清楚就跳过）—— 用 AskUserQuestion 问清：① 目标 ② 硬约束（落地位置 / 栈 / 不能动什么）③ 任何自己没理解 / 存疑的点
+- [plan-first-delivery](skills/plan-first-delivery/SKILL.md) — Default mode 的写代码主流程：Root（规划档强模型）规划、集成与统一验证，实现默认委派 implementer（实现档模型），按需记录轻量自作主张审计，独立 verifier / UI reviewer / 并行 worker 按正交 gate 触发。
+- [exec-plan](skills/exec-plan/SKILL.md) — 仅跨会话、跨 host、多 writer、不可逆迁移或审计交接时，把最终 plan 持久化成单文件 ExecPlan。
+- [use-worktree](skills/use-worktree/SKILL.md) — 代码改动一律从最新目标分支创建隔离 worktree（`scripts/worktree-bootstrap.sh` 一键创建+初始化，符合条件的旧 worktree 可复用），主仓 checkout 保持只读。
+- [parallel-subagents](skills/parallel-subagents/SKILL.md) — 只读调研可并行；写任务仅在写域互斥且能明显提速时并行，Root 统一集成和最终验证。
+- [post-change-verify](rules/post-change-verify.md) — 最终候选先跑相关 cheap lint/check，再 build，并按需求或风险跑 targeted tests；源码变化使旧证据失效。
+- [agent-readable-docs](skills/agent-readable-docs/SKILL.md) — 创建或修改 agent-consumed operational Markdown 时内联压缩并保持语义合同；只读应用、普通人类文档和纯格式/链接修改不触发。
+- [cleanup-and-exit](skills/cleanup-and-exit/SKILL.md) — 用户要求清理当前 worktree 或退出时使用。
+- [commit-message](rules/commit-message.md) — 写 commit message 时使用 conventional commit 单行格式，并按仓库归属决定 trailer。
 
-B) **新话题进 worktree**（「新任务 / 另一个 / 接下来做 X」类信号）—— 第一次 Edit 前基于最新远端默认分支建 worktree，**不要**用 `EnterWorktree(name=...)`（会继承当前 HEAD）：
-  ```
-  git fetch origin
-  BASE_REF="$(git symbolic-ref --quiet --short refs/remotes/origin/HEAD)"
-  git worktree add .worktrees/<slug> -b <type/scope-slug> "$BASE_REF"
-  EnterWorktree(path=.worktrees/<slug>)
-  # 项目特定：跑 worktree 初始化（生成 xcodeproj / npm install / build 等）
-  ```
+## 设计与代码质量
 
-C) **回合 checkpoint**：同一需求卡 >3 回合用户仍不满 → 停下用 AskUserQuestion 问清；>7 回合 → 从头对齐方向（不要自动抛弃现有代码）。
+- [architecture-first](skills/architecture-first/SKILL.md) — 仅用户明确要求架构评审，或最终 plan/项目规则未解决的模块 ownership、依赖方向、公共契约、状态真相源或副作用边界决策触发；局部抽象、分支、坏味道和 lint 不触发。
+- [scan-trigger-docs](skills/scan-trigger-docs/SKILL.md) — 改源码前扫描项目 AGENTS/CLAUDE 的 trigger-on-touch 文档并读取命中项。
+- [lean-diff](skills/lean-diff/SKILL.md) — 非平凡代码写入前检查 patchwork、过度抽象、注释噪声和防御式膨胀。
+- [lint-repair-strategy](skills/lint-repair-strategy/SKILL.md) — 修 lint 时按类别选结构性修法，不用无语义拆文件绕阈值。
+- [swift-formatting](rules/swift-formatting.md) — 修改 Swift 时遵守项目 lint/format 约定。
+- [ios-list-ui-container](rules/ios-list-ui-container.md) — 写或重构 iOS 同类滚动列表时选择虚拟化容器。
 
-**不触发**：纯问答 / 读代码 / 查状态 / 改 meta 配置（rule、memory、hook、settings）。完整规则见下方索引、按需 Read。
+## 专用操作
 
-## Workflow 规则
+- [open-sim](skills/open-sim/SKILL.md) — 用户要求编译并在 iOS Simulator 打开时使用。
+- [run-device](skills/run-device/SKILL.md) — 用户要求安装或运行到真实 iPhone 时使用。
+- [figma-precise-extract](skills/figma-precise-extract/SKILL.md) — Figma→code 需要精确尺寸、间距或 token 时使用。
+- [figma-asset-export](skills/figma-asset-export/SKILL.md) — 从 Figma 导出自定义图标、插画或 logo 进 iOS 时使用。
 
-- [dispatch-pipeline](skills/dispatch-pipeline/SKILL.md) — **形态：skill**，用 `Skill(dispatch-pipeline)` 加载（`rules/dispatch-pipeline.md` 已变 stub；无 Skill 工具的 subagent 按需 Read SKILL.md）。**触发：用户提了写代码需求**（落地 Edit/Write/NotebookEdit）—— 主 agent 第一动作加载本 SOP，再三段式调度：Lead Planner（大需求按需 fan-out `planner-worker` → `spec-integrator`）→ 用户拍板 → generator → executor；FAIL 自动重调 generator 最多 3 次。Codex（Desktop / CLI）按 skill 内工具映射调度；本条视作 delegation 授权，主 agent 不写代码。不触发：纯问答 / 改 meta 配置 / 用户明确 bypass。角色定义在 `~/.claude/agents/`。
-- [use-worktree](skills/use-worktree/SKILL.md) — **形态：skill（不是 rule 文件）**，用 `Skill(use-worktree)` 加载，不要 Read（`rules/use-worktree.md` 已变 stub 指针，仅给历史引用兜底）。触发：用户切到新话题（「新任务/另一个/接下来做 X」）且本轮要写代码；第一次 Edit 前基于最新远端默认分支建 worktree、跑项目初始化、cp gitignored 本地配置。不触发：延续当前任务、已在 `.worktrees/` 里、纯问答、改 meta 配置（rule / memory / hook / settings）。
-- [spec-before-code](skills/spec-before-code/SKILL.md) — **形态：skill**，用 `Skill(spec-before-code)` 加载（planner 按需 Read SKILL.md；`rules/spec-before-code.md` 已变 stub）。触发：进了 `.worktrees/<slug>/` 准备落地 Edit/Write 但 `.specs/<slug>.md` 还不存在；先澄清 → 写 spec（模板 `~/.claude/templates/spec-template.md`）→ 再 Edit。PreToolUse hook 硬卡。在 dispatch-pipeline 流程下由 planner 阶段产出 spec；hook 同时为 generator 兜底（spec 不存在则 generator 也写不动）。Bypass：`touch .specs/<slug>.skip`。
-- [iteration-checkpoint](rules/iteration-checkpoint.md) — 触发：同一需求连续对话 >3 回合用户仍不满 → 停下问清；>7 回合 → 从头对齐方向。
-- [architecture-first](skills/architecture-first/SKILL.md) — **形态：skill（不是 rule 文件）**，用 `Skill(architecture-first)` 加载，不要 Read。触发：选设计模式 / UI 架构 / 系统架构边界，或 review 含此类决策的 diff —— 包括引入新抽象、在已有函数里加 if-else / boolean flag、复制粘贴相似逻辑、用 try-catch / default 值掩盖症状、写 TODO 遗留账、重构 fat ViewController / Service / Manager、引入 state 管理。不触发：typo / 单行 fix / 格式调整 / rename / 在已有逻辑里做窄域追加。覆盖范围：GoF 经典对象级模式 + UI 架构（MVC/MVP/MVVM/VIPER + 单向数据流 Redux/TCA/Elm/Reducer）+ 系统架构（Clean/Hexagonal/Functional Core）+ 反补丁。和 cleanup backend（Claude `/simplify`；Codex `codex-simplify`）正交：architecture-first 管**选模式 / 选边界**，cleanup 管改完后清理。
-- [parallel-subagents](skills/parallel-subagents/SKILL.md) — **形态：skill**，用 `Skill(parallel-subagents)` 加载（`rules/parallel-subagents.md` 已变 stub）。触发：用户显式说「拆开并行跑」「派 subagent 改 B」「同时跑」，或 dispatch-pipeline 并行模式。不自主判断是否并行。
-- [cleanup-and-exit](skills/cleanup-and-exit/SKILL.md) — **形态：skill**，用 `Skill(cleanup-and-exit)` 加载。触发：用户调用 `/cleanup-and-exit` / `/clean-and-exit`，或要求退出前删除 / 保留任务 worktree。删除 worktree 后同步清理与其精确绑定的 Xcode DerivedData；嵌套 `.subworktrees/` 按最深路径优先处理。
-- [post-change-verify](rules/post-change-verify.md) — 触发：代码改完收尾验证；只跑编译，不主动跑项目的 lint / test / format-fix 命令（由 CI 和 PreToolUse hook 兜底）。
-- [commit-message](rules/commit-message.md) — 触发：写 commit message；conventional commits 单行简短。Co-Authored-By 尾巴**按仓库区分**：个人 / 公开作品仓加，公司 / 协作私仓不加，不确定则不加（`git remote get-url origin` 看 owner）。
-- [agent-readable-docs](skills/agent-readable-docs/SKILL.md) — **形态：skill**，用 `Skill(agent-readable-docs)` 加载（`rules/agent-readable-docs.md` 已变 stub）。触发：写 / 改 `~/.claude/{rules,agents,skills,templates,commands}/*.md` 或项目 AGENTS.md / CLAUDE.md / docs/*.md（被 trigger-on-touch 引用的）。不触发：写 spec / 改代码注释 / commit message。原则：以 agent 为目标读者，删 Why 整段叙事 / 设计取舍 / 历史 / 类比 / 重复修辞 / 给文档维护者的元说明；保留触发条件 / SOP / 路由表 / prompt 模板 / 字段定义 / 硬约束 / Why 核心一句。
+## Apple 平台知识（Xcode 提供）
 
-## 语言/栈规则
-
-- [swift-formatting](rules/swift-formatting.md) — 触发：改 Swift 代码；遵守 SwiftLint / SwiftFormat，冲突时以项目的 lint-fix 命令为准。
-- [ios-list-ui-container](rules/ios-list-ui-container.md) — 触发：写 / 重构 iOS list UI（滚动的同类条目集合）；重复同类条目集合默认虚拟化容器（collectionView / tableView / List / LazyVStack），stackView 只给 cell 内组合 / tag 流 / 固定异构详情表单；判据按形态、不用有界无界。
-- [open-sim](skills/open-sim/SKILL.md) — **形态：skill**，用 `Skill(open-sim)` 加载，不要 Read。触发：用户说「打开模拟器 / open simulator / 跑模拟器 / 在模拟器看效果 / 编译跑一下 / build 跑模拟器」。SOP：调 `~/.claude/scripts/run-ios.sh --target sim`（共享脚本：build → 定位 `.app` → 从产物读 bundle id → per-worktree sim（非 worktree fallback）→ install/launch → `open -a Simulator`）；不用 build 时加 `--no-build`。不触发：macOS app / **真机（用 `run-device`）** / 改 meta 配置。
-- [run-device](skills/run-device/SKILL.md) — **形态：skill**，用 `Skill(run-device)` 加载，不要 Read。触发：用户说「装真机 / 真机跑一眼 / install on device / run on my iPhone / 部署到手机 / 真机调试」。SOP：调 `~/.claude/scripts/run-ios.sh --target device`（与 open-sim 共享脚本：自动选唯一 paired 设备的 CoreDevice `identifier` → `<IOS_BUILD_DESTINATION>=platform=iOS,id=<id> just build-ios` → 定位 `Debug-iphoneos/*.app` → `devicectl install/launch`）；多台设备加 `--device-id <id>`，不用 build 加 `--no-build`。前置：设备插线+解锁+信任、签名已在 `Local.xcconfig`。不触发：模拟器（用 `open-sim`）/ macOS / release。
-- [figma-precise-extract](skills/figma-precise-extract/SKILL.md) — **形态：skill**，用 `Skill(figma-precise-extract)` 加载（planner 无 Skill 工具时按需 Read）。触发：figma→code 拿精确图标尺寸 / 间距 / token、figma px→iOS pt 换算、排查「按 figma 实现但图标/间距对不齐」。核心：planner 把 get_design_context 结构骨架 + get_metadata 精确尺寸 + get_variable_defs token **烘焙**成 measurement-grade 冻结 HTML（数值按设计基准倍率换成 pt、覆盖被框架刻度吸附的近似值），generator 实现时直接 Read 冻结 HTML 取数、不再 live 拉 figma。三段式：planner 冻 PNG（视觉真相）+ 烘焙 HTML（测量真相），generator Read 两份工件（尺寸/间距以 HTML 为准、颜色/阴影以 PNG 为准）。不触发：无 figma / 非 UI 改动 / loose 严格度。
-- [figma-asset-export](skills/figma-asset-export/SKILL.md) — **形态：skill**，用 `Skill(figma-asset-export)` 加载（planner 无 Skill 工具时按需 Read）。触发：从 figma 切图 / 导出图标 / 插画 / logo 进 iOS、判该切图还是用设计系统还原、定切图格式。核心：自定义资源用 get_design_context 资源下载 URL（figma 给 SVG/PNG、不给 PDF）导出、别从几何重画；单色可缩放→SVG（Xcode 直接用或转 PDF）template + token tint，多色/位图→@1x/2x/3x .imageset；导出 box = 外框非裁剪 path。三段式：planner Step 3.1 切图冻进 assets/，generator 接进 asset catalog + 设 render mode / tint。不触发：无自定义资源（图标全走设计系统 / SF Symbol）/ 非 iOS。
+这组 skill 不随 Pele 发布：安装后运行 `scripts/sync-xcode-skills.sh` 从本机 Xcode 导出到 `skills/`（Xcode 升级后重跑该脚本或 `install.sh`，正文不手改）。导出的 skill 与 `xcode` MCP（build / run / test、crash 与 field performance 日志、String Catalog、target 与 build setting）同源，MCP 未注册时 device-interaction 不可用。典型包括 swiftui-specialist、swiftui-whats-new、uikit-app-modernization、app-intents-specialist、device-interaction、audit-xcode-security-settings、adopt-c-bounds-safety、modernize-tests 等，触发条件见各自 description。
 
 ## 加载约定
 
-- 每条规则首行描述已列出**触发信号 / 不触发场景**。本轮匹配时再 Read 正文，别一次性全读。
-- 规则之间正交，读一条不必读其他条。若多条同时匹配，按相关度顺序读。
-- 不确定是否适用时，优先 Read + 自行判断，而不是按索引描述推断。
+- 只加载本轮触发的正文；skill 引用的额外 reference 也只按路由读取。
+- 用户点名 skill 时必须加载；不确定是否命中时，先读其 description 再判断。
+- 规则冲突时，用户指令和项目级 AGENTS/CLAUDE 高于本全局索引。

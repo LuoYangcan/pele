@@ -1,0 +1,4 @@
+interface:
+  display_name: "Ship PR"
+  short_description: "Push a branch and open a PR safely"
+  default_prompt: "Use $source-command-ship to push the current branch and open a PR."

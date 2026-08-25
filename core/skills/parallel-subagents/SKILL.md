@@ -1,74 +1,56 @@
 ---
 name: parallel-subagents
-description: 并行 subagent 拆开独立任务同时跑的 SOP。触发——用户显式说拆开并行跑 / 派 subagent 改 B / 同时跑，或 dispatch-pipeline 阶段 1P Planner fan-out / 已过审的实现并行模式。不触发——主 agent 自主判断是否并行。
+description: 将独立的只读调研或互斥写域并发交给 subagent。触发：用户显式要求并行，或 Root 判断并行能显著提速且任务边界已决策完整。写任务必须互不依赖、文件 ownership 不重叠。
 ---
 
-# 并行 subagent：拆开独立任务同时跑
+# 并行 subagent
 
-主 agent 可以用 `Agent` 工具派 subagent 并发执行独立子任务，但**入口受限**——只有以下三种情况可触发：
+并行是执行策略，不是固定流程阶段。Root 始终负责用户交互、最终 plan、共享决策、主 worktree 集成和最终汇报。
 
-1. **用户显式发令**：「拆开并行跑 / 你改 A，派 subagent 改 B / 同时跑」这类切话题
-2. **dispatch-pipeline 并行模式**：planner 在 `.specs/<slug>.md` 第 2 节「并行分组」表里标注了**多个 `parallel-N` 组**，且用户在阶段 1 末尾审 spec 时**未删除**该分组 → 视同用户已过审拆分方案，主 agent 按 `dispatch-pipeline.md` 阶段 2B / 3B / 3C / 5 跑
-3. **dispatch-pipeline 阶段 1P**：Lead Planner 按 `planning-manifest.yaml` 扇出 2–3 个只写独立 draft 的 `planner-worker`。这是已授权 pipeline 的规划内部步骤，不改代码、不发布正式 spec，不另加一次用户拆分闸口。
+## 何时并行
 
-**不允许的入口**：主 agent 自主判断「这俩任务好像独立、并行一下」。判断权要么在用户、要么在 planner。
+- 有两个以上相互独立、耗时的 repo/docs 调研问题：可并发 explorer。
+- 实现决策已经完整，存在两个以上互不依赖的写域，且并发能明显缩短时间：可并发 worker。
+- 用户显式指定并行或某个 subagent：按用户要求拆分，但仍校验安全边界。
 
-## 触发前：先拆分方案过审
+以下情况串行：共享 API 仍在演化、一个任务消费另一个的新结果、会改同一文件、合并成本高于并发收益、单个 Root 足以快速完成。
 
-收到"并行跑"指令后，**不要直接派 subagent**。先给用户拆分方案让他过审：
+## 分派前冻结
 
-- 哪些子任务可以并行、依据是什么（物理文件边界 / 模块边界 / 平台边界）
-- 哪些必须串行
-- 各 subagent 的 prompt 概要（目标 / 约束 / 验收标准）
-- 共享的接口 / 类型 / 数据模型：**先在主 agent 里定稿**，再派发 subagent
+Root 在 prompt 中写清：
 
-用户点头后再派。
+- 目标、可观察完成条件和相关约束；
+- 独占文件或模块 ownership、禁止触达范围；
+- 已冻结的共享接口和依赖；
+- 必须读取的项目文档；
+- 返回格式与允许执行的窄域检查。
 
-阶段 1P 例外：Lead 必须先冻结 shared contracts、shard scope、独占 draft 路径和 forbidden decisions；Root 校验 manifest 后即可派 worker。正式 spec 仍由 `spec-integrator` 单写，随后走原用户拍板。
+每个 worker 都要知道：它不是仓库里唯一的 writer，不得回滚或覆盖他人改动；发现并发变化时应适配当前文件状态，冲突则停下报告。
 
-## 三条硬约束
+分派写任务前还要冻结交接机制：共享 worktree 的互斥文件直接 fan-in，或独立 worktree 的 diff handoff。不能等 worker 写完才决定用 commit、patch 还是复制文件。
 
-### 1. 任务必须互不依赖
+## 隔离与 ownership
 
-两个 subagent 改的**文件不能重叠**、**类型不能相互依赖**。
+- 只读 explorer 可共享 worktree，不写文件。
+- host 能把独立 worktree 的未提交 diff 完整交回 Root 时，写 worker 优先使用独立 worktree；Root 记录其绝对路径和 `base_ref`。
+- 共享 worktree 时，必须保证一文件一 owner；worker 直接写其 ownership，Root 不同时编辑这些文件。
+- 共享清单、公共接口、canonical plan、项目级配置和最终合并文件只由 Root 写。
+- 不为机械的 task 编号反复新建 fresh agent；只有真实并行边界或独立性要求才创建实例。
 
-**适合**：
+## Worker handoff
 
-- iOS 端 vs macOS 端同名功能
-- 实现 vs 测试（测试基于已冻结的 API）
-- UI 还原度调整 vs 无关的 lint 清理
-- 多个互相独立的 feature 组件
+每个写 worker 返回：worktree 绝对路径、`base_ref`/当前 HEAD、`git status --short`、完整 changed/untracked paths、ownership 内的 diff、窄域检查及结果、未解决项。不得自行 commit、merge、push 或开 PR。
 
-**不适合**：
+- 共享 worktree：Root 复核当前文件与返回清单即可；任何越界路径先停下处理。
+- 独立 worktree：优先用 host-native 未提交 diff handoff。共享本地磁盘时，Root 可从记录的 worktree 读取 `git diff --binary <base_ref> -- <owned paths>` 并单独核对 untracked/binary 文件，再应用到主 worktree。
+- 若 host 只能靠 commit/cherry-pick 保真交接，必须先取得用户对该 Git mutation 的明确授权；未授权就不要选这种隔离方式。无法无损交接未跟踪或二进制文件时，改用共享 worktree 的互斥 ownership。
+- Root 确认主 worktree 已完整集成后才能清理 worker worktree；不得先删唯一副本。
 
-- 共享数据模型还在演化
-- A 要消费 B 新定义的 API
-- 都要改同一个 ViewController / Service
+## 集成
 
-### 2. subagent 的 prompt 必须自包含
+1. Root 收集每个 handoff，核对 `base_ref`、changed paths、越界、冲突和共享契约。
+2. Root 按冻结的机制把 diff 集成进主 worktree，逐项确认 untracked/binary 文件，并完成必要的集成修正。
+3. 只对 fan-in 后的最终候选执行一次 `rules/post-change-verify.md` 中冻结的验证。
+4. 最终源码变化会使对应验证和 review 失效；authoritative plan 或设计输入变化会使语义/UI review 失效。只重跑受影响 gate。
 
-subagent 有独立 context，**拿不到**当前对话、TodoList、memory、plan，不能反问主 agent。主 agent 的 prompt 必须一次性写清：
-
-- 需求目标 + 验收标准
-- 具体的文件路径（别让它猜）
-- 硬约束（能改哪些不能改哪些）
-- 项目约定里和这个任务相关的部分
-
-### 3. 工作区物理隔离
-
-实现代码的 subagent 用 `Agent(isolation: "worktree")` 在独立 worktree 跑。阶段 1P 的 planner-worker 不改代码，共享当前 worktree，但每个 worker 只能写自己的 `drafts/<shard-id>.md`、`reports/<shard-id>.yaml` 和 question 前缀。`run_in_background: true` 让 subagent 后台跑，主 agent 继续做另一半；完成时系统通知。
-
-## 集成联调
-
-所有 subagent 完成后：
-
-1. 合并 subagent 的改动回主工作区（merge 它们的分支 / cherry-pick）
-2. 跑**编译**验证整体能不能过（按 `.claude/rules/post-change-verify.md`）
-3. 冒烟级 review：检查跨任务的交互点（被 freeze 的接口是不是双方对齐使用）
-4. **不做**深度 code review —— 那走 `/review` 的旗舰 reviewer 路径
-
-## 不做什么
-
-- ❌ agent 自主决定是否并行
-- ❌ 把并行 subagent 用于有依赖的任务（A 的结果喂给 B 用）
-- ❌ 用集成阶段的冒烟 review 替代 `/review`
+worker 可以执行为安全合并所需的窄域检查，但不替代最终集成验证，也不自行做广泛 review。

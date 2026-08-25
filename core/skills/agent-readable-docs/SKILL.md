@@ -1,68 +1,52 @@
 ---
 name: agent-readable-docs
-description: 写 / 改 agent-readable 文档的原则（以 agent 为目标读者精简文档、索引行回头合并不 append-only）。触发——写 / 改 ~/.claude/{rules,agents,skills,templates,commands}/*.md 或项目 AGENTS.md / CLAUDE.md / docs/*.md（被 trigger-on-touch 引用的）。不触发——写 spec / 改代码注释 / commit message。
+description: "Compact agent-consumed operational Markdown without changing its behavioral contract. Use when creating or modifying AGENTS.md/CLAUDE.md; rule, agent, skill, template, or command Markdown under ~/.claude or project equivalents; or a new/existing knowledge document indexed for agents. Apply inline after content decisions to canonicalize prose and indexes. Skip read-only discovery/application of existing docs, format/link/rename-only edits, generated docs, ordinary README/API/user-facing docs, ExecPlan/spec, code comments, and commit/PR/release text. skill-creator owns skill functionality/frontmatter/resources/evals; scan-trigger-docs owns read-only discovery."
 ---
 
-# Agent-Readable 文档原则
+# Agent-readable docs
 
-写或改 `~/.claude/` 下的 rule / agent / skill / template 文件、项目 AGENTS.md / CLAUDE.md / docs/*.md 时，文档以 **agent 为目标读者**，不为人类阅读优化。
+把本 skill 当作同一 Root 的内联、语义保持压缩步骤。不要创建独立阶段、subagent、artifact 或确认回合。
 
-## 触发
+## 先判文档角色
 
-满足**任一**即触发：
+| 角色 | 保留形态 |
+| --- | --- |
+| Always-load 索引（AGENTS/CLAUDE） | 只保留入口、优先级和按需链接；SOP 下沉 |
+| On-demand 执行文档（rule/agent/skill/command/template） | 入口假设、输入、步骤、输出、失败路由和验证 |
+| 长期知识/trigger-on-touch 文档 | 稳定事实、invariant、owner、适用范围和失效条件 |
+| 双受众文档或 UI metadata | 保留必要的人类说明；只压缩 agent 执行片段 |
 
-- 写 / 改 `~/.claude/{rules,agents,skills,templates,commands}/*.md`
-- 写 / 改项目根 `AGENTS.md` / `CLAUDE.md`（user-level 或 project-level）
-- 写 / 改项目 `docs/*.md` 里被 AGENTS.md / CLAUDE.md 引用的「trigger-on-touch」类知识文档
+目标并非 agent-consumed operational Markdown 时，返回 `agent_docs: not_needed`，不要套本规则。
 
-## 不触发
+## 原地改写
 
-- 写 `.specs/<slug>.md`（spec 本来就 agent-targeted，遵循 spec-template）
-- 改代码注释 / commit message / PR 描述
-- 用户自己的笔记 / 一次性临时文档
+1. 完整读取目标、直接入口索引，以及定义同一合同的直接引用；确定唯一 canonical owner。
+2. 冻结不得静默改变的语义：
+   - trigger、skip、scope、precedence 和 authority；
+   - 权限/安全边界、输入输出/schema、状态转移；
+   - failure、retry、rollback、verification；
+   - 命令、路径、工具契约和会改变 agent 决策的非显然因果。
+3. 通读全文后把新内容并入所属章节与既有结构，不得只在文末追加本次改动的记录；在原位置合并重复规则和相邻说明。删除历史叙事、任务 trace、类比、重复强调、解释代码 what 的段落，以及不影响决策的展开 Why。
+4. 不按“设计意图”“风险”“兜底”等标题机械整段删除；把仍影响执行的约束并入对应步骤、失败路由或验证。
+5. 同一事实只保留一个 canonical 定义，其他位置改为短指针。来源冲突时先暴露冲突，不按篇幅擅自选边。
+6. UI 尺寸、间距、颜色、token 等数值以真实代码为唯一真相源：项目文档不记录设计稿（Figma 等）标注值，需要时引用代码常量 / token 定义的路径；设计值只存在于任务期冻结工件与最终 plan。
+7. 只有能降低 always-load 成本时才下沉 reference；保持一层直达，不创建索引套索引。
 
-## 删什么
+## 索引修改
 
-- **「Why」段的展开叙事**（保留 1-2 句核心因素，删整段论述）
-- **「设计取舍」/「设计意图」/「Why 这套设计」**整段
-- **「风险与兜底」整段叙事**（边角约束放进相应 SOP 步骤里，不单列段落）
-- **历史 / 废弃说明 / 「曾经 X 后来改成 Y」**
-- **类比 / 比喻 / 故事化叙述**（「就像 / 等于 / 同源于 / 跟 X 一样」）
-- **重复修辞 / 强调语气**（同一约束反复写多次只留一次；过量 ⚠️ / ❗ / **强调** 删）
-- **给文档维护者的元说明**（「这个判断由你自己列清楚」「install.sh 后会从 X symlink 过来」）
-- **解释 Why 是为读者好处**（「这样你能 X」「让你 Y 时不被打扰」）
+- 先更新已有条目，避免 append-only 新增近义入口。
+- 每个条目只表达一个路由决策：触发条件、用途、链接；实现细节留在目标文档。
+- 新建 agent 知识文档时，同一修改里加入入口索引；移动或删除时同步所有直接链接。
 
-## 保留什么
+## 收尾
 
-- 触发条件 / 不触发条件（agent 决策入口）
-- SOP 步骤（agent 执行流程）
-- 决策路由表（用户反馈 → 处理路径 / 状态 → 下一步）
-- prompt 模板 / Agent({}) 调用模板
-- 字段定义 / 结构化结论 schema / YAML / JSON 例
-- 硬约束（禁止 / 必须 / ❌ / ✅ 列表）
-- 工具调用方式 / 命令 / 路径
-- 「Why」的核心一句话（agent 推理 edge case 时需要的因果链）
-- 跨 rule / agent / skill 的关系链接（导航用）
+重新通读改后合同，确认上述冻结语义与适用项目规则未漂移。格式、frontmatter、local links 和 installer 等机械验证沿 host/meta 配置流程执行；本 skill 不新增 app build 或第二次文档验收。
 
-## 索引/触发行：回头精简，不 append-only
+已经紧凑且 canonical 时返回 `agent_docs: no_change_required`。否则直接更新目标文档，不另写总结文件。
 
-改或加「索引行」（docs 索引、rules 索引、trigger-on-touch 表行）时，**先回头看现有条目能否合并 / 精简，再决定加新条** —— 不要在已有行后无脑接龙。硬约束：
+## 职责边界
 
-- 索引行 / 触发表行保持**单行**（触发条件 + 一句话 + 链接）；详情属于它指向的 doc，不在索引行展开
-- 一个 doc 索引 bullet 越接龙越长（把多个 feature 的实现细节、类型名、子指针塞进一行）= 反模式；超长就拆条或把细节下沉到它指向的 doc
-- always-load 文件（项目 AGENTS.md）每加一个子系统，优先在它指向的 on-demand 索引文件（如 `docs/SUBSYSTEMS.md`）加一行，而不是在 always-load 正文加一整段
-
-## 自检（写完每段问一遍）
-
-- [ ] 这段如果删了，agent 还能正确执行规则吗？能 → 删
-- [ ] 这段是给文档维护者 / 用户看的吗？是 → 删
-- [ ] 这段是同一约束的第 2+ 次重复吗？是 → 删
-- [ ] 这段用类比 / 比喻 / 故事化语气吗？是 → 重写成直接约束
-- [ ] 这段超过 5 行但只表达 1 个规则吗？是 → 压缩成 1-2 行
-- [ ] 我在「加索引行 / 触发表行」吗？是 → 先回头看现有条目能否合并 / 精简；新行保持单行、详情下沉到它指向的 doc，不在索引行接龙
-
-## 与现有 rule 的关系
-
-- `spec-before-code.md`：spec 文件不属本 rule 范围，按 spec-template 走
-- `commit-message.md`：commit message 不属本 rule 范围
-- 所有其他 rule / agent / skill 的更新都属本 rule 范围
+- `skill-creator`：决定 skill 功能、frontmatter、资源布局、验证与 eval；本 skill 只压缩其 agent-facing prose/index。
+- `scan-trigger-docs`：只读发现并应用项目知识；本 skill 只在创建或修改正文时使用。
+- `plan-first-delivery`：决定产品改动是否需要长期文档更新；本 skill 不为普通改动强制留痕。
+- `exec-plan`：一次性交接计划不属本 skill 范围。

@@ -1,5 +1,5 @@
 ---
-description: 代码 review + 质量 fix — 先调 cleanup backend，再做 report-only review
+description: 代码 review + 质量 fix — /simplify 后收集结构化 report-only findings，由 backend 生成报告
 ---
 
 Use the source-command-review skill:

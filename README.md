@@ -1,8 +1,8 @@
 # Pele
 
-> Volcanic harness for Claude Code — opinionated rules, agents, and workflow that turn the main model into a dispatcher.
+> Volcanic harness for Claude Code — opinionated rules, agents, and workflow that put a strong model in charge of planning and a general model in charge of typing.
 
-Pele is a set of global Claude Code rules, subagents, slash commands, and hooks distilled from real day-to-day use. Its **three-stage dispatch pipeline** keeps the main agent as a coordinator: a Lead Planner publishes the spec (optionally through planner fan-out), then generator and executor implement and verify it in independent contexts.
+Pele is a set of global Claude Code rules, subagents, slash commands, and hooks distilled from real day-to-day use. Its **plan-first, model-tiered delivery** keeps a strong planning-tier model as the Root: native Plan mode produces a decision-complete plan, a general-model `implementer` subagent writes the code inside frozen boundaries, and the Root reviews the diff, integrates, verifies, and commits each feature unit — with independent verifier / UI-review gates when risk warrants.
 
 Named after [Pele](https://en.wikipedia.org/wiki/Pele_(deity)), the Hawaiian volcano goddess: she controls the eruption.
 
@@ -13,13 +13,13 @@ Drop-in install adds the following under `~/.claude/`:
 | Layer | Contents |
 |---|---|
 | **CLAUDE.md** | Top-level index that progressively discloses rules / skills / agents on demand |
-| **rules/** | Workflow stubs and policies, plus portable Swift/iOS guidance |
-| **agents/** | `planner` · `planner-worker` · `spec-integrator` · `generator` · `executor` · `ui-reviewer` |
-| **commands/** | `/openpr` · `/review` · `/pr-review` · `/cleanup-and-exit` (`/clean-and-exit` alias) |
-| **skills/** | Dispatch/spec/worktree orchestration, architecture/review helpers, optional iOS UI and Figma workflows |
-| **scripts/** | `run-ios.sh` · `worktree-sim.sh` · `trust-dir.sh` and hook helpers |
-| **templates/** | `spec-template.md` (the structure planner writes) |
-| **hooks/** | Protected-branch guard · `spec-before-code` enforcement · per-prompt clarification reminder |
+| **rules/** | Workflow policies (verification ladder, iteration checkpoints, commit style) plus portable Swift/iOS guidance |
+| **agents/** | `implementer` · `verifier` · `ui-reviewer` · `command-runner` |
+| **commands/** | `/openpr` · `/ship` · `/review` · `/pr-review` · `/cleanup-and-exit` (`/clean-and-exit` alias) |
+| **skills/** | `plan-first-delivery` and worktree orchestration, architecture/review helpers, optional iOS UI and Figma workflows |
+| **scripts/** | `run-ios.sh` · `worktree-sim.sh` · `worktree-bootstrap.sh` · `validation-receipt.sh` · `trust-dir.sh` and hook helpers |
+| **templates/** | `exec-plan-template.md` (single-file ExecPlan for cross-session / multi-writer / audited work) |
+| **hooks/** | Protected-branch guard · per-prompt clarification reminder |
 | **permissions/** | `settings.permissions.json` — conservative starter policy; **not auto-merged** by `install.sh` |
 
 Optional extras (gated by install flags):
@@ -79,10 +79,10 @@ Symlinks `core/` into `<path>/.claude/`. Pele's rules / agents / skills only app
 After install, **manually add this line** to the end of `<path>/CLAUDE.md` (or `<path>/AGENTS.md`):
 
 ```
-@.claude/rules/index.md
+@.claude/pele-index.md
 ```
 
-Pele installs `<path>/.claude/rules/index.md` as the entry point — but `install.sh` deliberately does **not** modify your `CLAUDE.md` / `AGENTS.md`. Without that one `@` line, Claude Code won't pick up the index automatically.
+Pele installs `<path>/.claude/pele-index.md` as the entry point — but `install.sh` deliberately does **not** modify your `CLAUDE.md` / `AGENTS.md`. Without that one `@` line, Claude Code won't pick up the index automatically.
 
 Pass `--figma` only in global mode; project mode deliberately does not merge global hooks.
 
@@ -100,7 +100,7 @@ Pass `--figma` only in global mode; project mode deliberately does not merge glo
 - `git`, `jq` (for hook merging — optional but recommended)
 - [Claude Code](https://docs.anthropic.com/claude/docs/claude-code) installed
 
-## The three-stage pipeline
+## Plan-first delivery
 
 The default behavior changes when you have a code-writing request:
 
@@ -108,42 +108,47 @@ The default behavior changes when you have a code-writing request:
 You: "implement feature X"
    │
    ▼
-[main agent]  not a coder anymore — just a dispatcher
+[Plan mode]   the Root — a strong planning-tier model (e.g. /model fable) —
+              explores read-only, clarifies, produces the final plan:
+              the single source of requirement truth
+   │
+   ▼ you approve and switch back to Default mode
+[Root]        creates an isolated worktree (.worktrees/<slug>) from
+              origin/<base>, freezes decision-complete units with
+              explicit file ownership
    │
    ▼
-[Lead Planner] reads rules and repository context
-            ├─ small/coupled work: writes the canonical spec
-            └─ large independent work: writes a planning manifest
-                 → planner-workers write isolated drafts
-                 → Spec Integrator publishes one canonical spec
+[implementer] a general implementation-tier model writes the code inside
+              its frozen boundary; returns the diff + open questions —
+              never commits, never decides material questions
    │
    ▼
-[main agent] presents spec path to user → "ready to implement?"
-   │
-   ▼ user says yes
-[generator] independent context, reads spec + writes code,
-            stops + asks user when unsure (and flags spec-update)
+[Root]        reviews the actual diff, integrates, commits each verified
+              feature unit, runs post-change verify
+              (cheap lint/check → build → targeted tests)
    │
    ▼
-[executor]  independent context, reads spec + reviews code,
-            runs build + lint; UI review is a separate opt-in role
+   orthogonal gates when they hit:
+     independent [verifier] for risky diffs
+     [ui-reviewer] for Figma / animation / complex UI
+     parallel implementers for mutually exclusive write domains
    │
    ▼
-   PASS → main agent reports to user, you /openpr when ready
-   FAIL → main agent loops back to generator with the issue list
-          (max 3 retries, then escalates back to user)
+   PASS → Root reports; you /ship or /openpr when ready
+   FAIL → narrow repair by the Root, or re-dispatch to the implementer
+          with the failure evidence; repeated failures escalate to you
 ```
 
-Each subagent runs in its own context window. They communicate through the canonical `.specs/<slug>.md` index, its child task/risk/amendment files, planning artifacts, and structured messages relayed by the main agent. Generator and executor consume only the integrated canonical spec.
+Micro-edits, integration fixes, and narrow repairs stay with the Root — spawning a worker for a one-line change costs more than it saves. Everything else is typed by the cheaper implementation tier under the strong model's plan, and the Root remains the only writer of shared interfaces and final merges.
 
-See `core/skills/dispatch-pipeline/SKILL.md` for the full contract.
+See `core/skills/plan-first-delivery/SKILL.md` for the full contract.
 
 ## Customize
 
 Pele uses **symlinks**, so you customize by editing the source files in `<pele-checkout>`:
 
 - Add a new rule → `core/rules/<name>.md` + add an entry to `core/CLAUDE.md` index
-- Add a new subagent → `core/agents/<name>.md`, then reference it from a rule (e.g. `dispatch-pipeline.md`)
+- Add a new subagent → `core/agents/<name>.md`, then reference it from a skill (e.g. `plan-first-delivery`)
 - Add a slash command → `core/commands/<name>.md`
 - Add project-specific hooks → edit `~/.claude/settings.json` directly (your edits are preserved across re-installs as long as you don't touch the `.hooks` key Pele manages)
 - Add recommended permissions → edit `core/permissions/settings.permissions.json`, then copy entries into your `~/.claude/settings.json`'s `permissions.allow` (this file is not auto-merged by `install.sh`)
@@ -207,12 +212,16 @@ pele/
 ├── LICENSE
 ├── install.sh / uninstall.sh
 ├── scripts/
-│   ├── bootstrap.sh         # used by the curl one-liner
-│   ├── check-before-push.sh # optional project pre-push check helper
-│   ├── check-spec.sh        # PreToolUse hook helper
-│   ├── run-ios.sh           # generic simulator/device runner
-│   ├── trust-dir.sh         # pre-seed Claude Code folder trust
-│   └── worktree-sim.sh      # per-worktree iOS Simulator lifecycle
+│   ├── bootstrap.sh              # used by the curl one-liner
+│   ├── check-before-push.sh      # optional project pre-push check helper
+│   ├── run-ios.sh                # generic simulator/device runner
+│   ├── trust-dir.sh              # pre-seed Claude Code folder trust
+│   ├── worktree-sim.sh           # per-worktree iOS Simulator lifecycle
+│   ├── worktree-bootstrap.sh     # one-shot task-worktree create + init
+│   ├── validation-receipt.sh     # fingerprint-bound verification receipts
+│   ├── review-input-snapshot.sh  # freeze the diff a reviewer will judge
+│   ├── review-result.sh          # structured review verdict helper
+│   └── sync-xcode-skills.sh      # export Apple platform skills from local Xcode
 ├── core/                    # always installed
 │   ├── CLAUDE.md
 │   ├── rules/
@@ -225,14 +234,15 @@ pele/
 ├── figma-extras/            # --figma
 │   └── hooks/settings.hooks.json
 └── docs/
-    └── architecture.md
+    ├── architecture.md
+    └── sync-from-local.md
 ```
 
 ## Design notes
 
 - **Globals over per-project**: Rules / agents / hooks live in `~/.claude/`, not in each repo. Project-specific overrides go in `<repo>/.claude/` as usual.
 - **Progressive disclosure**: `CLAUDE.md` is an *index*, not a manual. Each entry has a one-line trigger description so the model only `Read`s the body when it actually applies. Keeps context small.
-- **Hard constraints via hooks**: Things that *must* happen (no Edit on `main`/`dev`, spec must exist before Edit in worktrees) are enforced as `PreToolUse` hooks — not as rule text the model can talk itself out of.
+- **Hard constraints via hooks**: Things that *must* happen (no Edit/Write on protected branches — changes go through `.worktrees/` isolation) are enforced as `PreToolUse` hooks — not as rule text the model can talk itself out of.
 - **Independent contexts for subagents**: roles share files and structured results, never implicit conversation memory.
 - **Portable by construction**: Pele ships no real project names, private paths, credentials, or mandatory project-specific build commands. Optional platform guidance remains generic and opt-in.
 - **Agent-readable docs**: Files under `core/` are written for the next agent that reads them, not for humans browsing the repo. Narrative examples, Why-essays, analogies, and historical context are stripped; trigger conditions, SOP steps, route tables, prompt templates, structured output schemas, and hard constraints are kept. See the `agent-readable-docs` rule for the keep/delete checklist.

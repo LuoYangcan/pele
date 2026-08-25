@@ -1,6 +1,6 @@
 ---
 name: find-ios-build-artifact
-description: Locate the just-built iOS Simulator `.app` bundle for a project + resolve the per-worktree Simulator UDID — output `APP_PATH` (absolute) + `BUNDLE_ID` + `SIMULATOR_UDID` so callers can `simctl install -d <udid>` / `simctl launch <udid>` / sim-use (which takes a `--device` flag). Walks up from cwd to find a `.xcworkspace`, runs `xcodebuild -showBuildSettings`, verifies the `.app` exists, then invokes `~/.claude/scripts/worktree-sim.sh ensure` to lazy-create + boot the worktree's dedicated sim. Use when an executor / open-sim / similar caller has just built iOS with `just build-ios` (or equivalent) and now needs the build artifact paths. Skip when the caller already knows all three values, when there's no `.xcworkspace` ancestor (project uses bare xcodeproj — caller must adapt), or when targeting macOS / device (this skill is iOS Simulator only).
+description: Locate a just-built iOS Simulator `.app` and the per-worktree Simulator UDID. Output `APP_PATH`, `BUNDLE_ID`, and `SIMULATOR_UDID` for UI review/open-sim callers. Skip when all values are already known, no `.xcworkspace` ancestor exists, the app has not been built, or the target is macOS/device.
 ---
 
 # find-ios-build-artifact
@@ -13,7 +13,7 @@ description: Locate the just-built iOS Simulator `.app` bundle for a project + r
 
 caller SOP 里需要 `APP_PATH` / `BUNDLE_ID` / `SIMULATOR_UDID` 三个值，且当前已经跑过 iOS Simulator build。常见场景：
 
-- **executor**：spec 第 4 节有 iOS UI 改动专项 → Step 4.5.1 拿 build artifact 准备装启
+- **ui-reviewer**：UI gate 已有 build 证据，定位产物准备装启
 - **open-sim** skill：用户说"打开模拟器" → Step 2 拿 build artifact 装启
 - 任意 caller 想把已 build 的 iOS Simulator app 装到模拟器跑
 
@@ -128,7 +128,7 @@ echo "SCHEME=$SCHEME"
 |---|---|---|
 | 找不到 `.xcworkspace` 祖先 | `BUILD_ARTIFACT_NOT_FOUND: 找不到 .xcworkspace 祖先` | caller 自检 cwd 是不是在仓库内；裸 xcodeproj / SPM-only 项目改用其他方式 |
 | `-showBuildSettings` 返回空 / 字段缺失 | `BUILD_ARTIFACT_NOT_FOUND: 无法解析 build settings` | 多半是 scheme 名错；caller 用 `xcodebuild -list` 核对 |
-| `.app` 不存在 | `BUILD_ARTIFACT_NOT_FOUND: <path> 不存在` | 提示用户先跑 build；executor 应降级 `ui_verified: degraded` + `ui_degradation_reason: build_artifact_not_found` |
+| `.app` 不存在 | `BUILD_ARTIFACT_NOT_FOUND: <path> 不存在` | caller 返回 `DEGRADED build_artifact_not_found`；不要在本 skill 里补 build |
 | `SIMULATOR_UDID` 为空且 caller 跑在 worktree 内 | 不在结构化输出报错，只在 stderr 留 WARN | review-mobile-ui 等 caller 自检 cwd / 落到旧的「booted 数量判断」fallback |
 
 **不要**自己跑 `xcodebuild build` 去补 —— build 是 caller / 用户的责任，本 skill 只定位产物。
@@ -136,13 +136,13 @@ echo "SCHEME=$SCHEME"
 
 ## Caller 集成示例
 
-### Executor 4.5.1（iOS UI 改动专项）
+### UI reviewer
 
 ```
 Skill(find-ios-build-artifact)   # 入参：scheme = <YourApp>iOS
 # 输出：APP_PATH=/path/to/<YourApp>.app, BUNDLE_ID=<your.bundle.id>, SIMULATOR_UDID=A1B2-...
 
-# build artifact 失败 → 标 ui_verified: degraded + reason: build_artifact_not_found
+# build artifact 失败 → 返回 DEGRADED build_artifact_not_found
 # SIMULATOR_UDID 空（非 worktree / simctl 失败）→ 走 review-mobile-ui Step 2 fallback
 # 成功 → simctl install -d $SIMULATOR_UDID $APP_PATH; simctl launch $SIMULATOR_UDID $BUNDLE_ID
 ```

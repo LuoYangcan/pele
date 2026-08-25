@@ -26,9 +26,9 @@ description: Build, install, and launch the iOS app on a connected real iPhone. 
 bash ~/.claude/scripts/run-ios.sh --target device
 ```
 
-脚本会：自动选**唯一 paired 物理设备**的 CoreDevice `identifier`（按 `hardwareProperties.reality == physical` 过滤，排除注册成 CoreDevice 的模拟器；`identifier` 是 UUID，如 `25CC377B-...`）→ `<IOS_BUILD_DESTINATION>="platform=iOS,id=<id>" just build-ios` → 定位 `Debug-iphoneos/*.app` → 从产物 `Info.plist` 读 bundle id → `devicectl device install app` + `process launch` → 打印 `----- run-ios result -----` 结果块。
+脚本会：自动选**唯一可达物理设备**的 CoreDevice `identifier`（先按 `hardwareProperties.reality == physical` 排除注册成 CoreDevice 的模拟器，再按可达性收窄；`identifier` 是 UUID，如 `25CC377B-...`）→ `<IOS_BUILD_DESTINATION>="platform=iOS,id=<id>" just build-ios` → 定位产物（扫 `Build/Products/*-iphoneos/`，取最新的 `.app`；configuration 名由项目定义且会变，不写死 `Debug-`） → 从产物 `Info.plist` 读 bundle id → `devicectl device install app` + `process launch` → 打印 `----- run-ios result -----` 结果块。
 
-- 接了**多台** paired 物理设备 → 脚本报错列出候选（已排除模拟器），让用户挑，再传 id：
+- 接了**多台可达**物理设备 → 脚本报错只列可达候选，让用户挑，再传 id：
   ```bash
   bash ~/.claude/scripts/run-ios.sh --target device --device-id <identifier>
   ```
@@ -46,12 +46,21 @@ bash ~/.claude/scripts/run-ios.sh --target device
 
 | 退出码 | 含义 | 怎么办 |
 |---|---|---|
-| 1 | 没 paired 设备 / 多台需指定 / `devicectl` 没就绪 | 让用户插线+解锁+信任，或按提示传 `--device-id` |
+| 1 | 没 paired 设备 / 多台可达需指定 / 多台 paired 但全不可达 / `devicectl` 没就绪 | 让用户插线+解锁+信任，或按提示传 `--device-id` |
 | 2 | 真机 build 失败 | 多半设备没连好 / 锁屏 / 没信任 / 签名问题；原样报 xcodebuild 错误 |
 | 3 | 找不到 `.app` | 仅 `--no-build` 时可能；让用户去掉 `--no-build` 重跑 |
 | 4 | devicectl install / launch 失败 | 设备插着+解锁+信任？install 成功 launch 才有意义 |
 
-设备选择只认物理机（`reality == physical`）；wired 连着的机器即使 `tunnelState` 显示 `disconnected` 也照跑（tunnel 由 devicectl 到用时才建）。仅当链路**非 wired 且未 connected**（无线休眠 / 拔线 / 锁屏）才先 `WARN:` 但仍尝试，让真实的 xcodebuild / devicectl 错误兜底。
+设备选择只认物理机（`reality == physical`），再按**可达性**收窄：wired 即可达（即使 `tunnelState` 仍显示 `disconnected`，tunnel 由 devicectl 到用时才建），无线要真的 `connected`。手机拔走后仍长期留在 CoreDevice 配对记录里，所以只按 paired 判定会天天逼出 `--device-id`。
+
+收窄后的分支：
+
+| paired 物理设备 | 可达 | 行为 |
+| ---- | ---- | ---- |
+| 1 | 任意 | 选它；不可达时先 `WARN:` 仍尝试，让真实的 xcodebuild / devicectl 错误兜底 |
+| N | 恰好 1 | **自动选中**，并打印 `— only reachable one of N paired` 说明理由 |
+| N | ≥2 | 报错，只列可达候选 |
+| N | 0 | 报错「无可达设备」，列出全部候选 |
 
 ## 不做的事
 

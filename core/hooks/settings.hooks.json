@@ -8,12 +8,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "b=$(git branch --show-current 2>/dev/null); case \"$b\" in main|master|dev) printf '{\"hookSpecificOutput\":{\"hookEventName\":\"PreToolUse\",\"permissionDecision\":\"deny\",\"permissionDecisionReason\":\"On protected branch %s, direct Edit/Write is blocked. Create a task branch first (e.g. `git checkout -b <type/scope-desc>`), then retry.\"}}' \"$b\";; esac"
-          },
-          {
-            "_comment": "Enforce spec-before-code: requires .specs/<slug>.md (or .specs/<slug>.skip) to exist when cwd is in a worktree. See rules/spec-before-code.md.",
-            "type": "command",
-            "command": "bash $HOME/.claude/scripts/check-spec.sh"
+            "command": "b=$(git branch --show-current 2>/dev/null); case \"$b\" in main|master|dev) printf '{\"hookSpecificOutput\":{\"hookEventName\":\"PreToolUse\",\"permissionDecision\":\"deny\",\"permissionDecisionReason\":\"On protected branch %s, direct Edit/Write is blocked. Isolate the change first: load Skill(use-worktree) to create .worktrees/<slug> from origin/<base> (or switch to a task branch), then retry there.\"}}' \"$b\";; esac"
           }
         ]
       }

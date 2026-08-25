@@ -24,6 +24,11 @@ iOS 端「重复的同类条目集合」（滚动列表 / 表格）一律默认�
 - ❌ 用 `UIStackView` 全量 `addArrangedSubview` 渲染滚动同类列表，再手动加 cap / collapse「为了渲染不卡」—— 这等于坐实了它该是列表容器（纯 IA 的 top-N 摘要预览除外）
 - ❌ 用「现在数据不多 / 有界」论证 stackView —— 界会随需求漂移、client 代码不动就能从有界变无界，没人会回头重选容器
 
+## Why（核心）
+
+成本不对称：upfront 用虚拟化容器只多点模板；猜成 stackView 猜错 = 线上 perf cliff + 事后迁移（还要补 diffable / cell 复用）。一开始就为性能考虑、把成本放第一版。
+
 ## 关联
 
 - reviewer 的性能反模式检查（`~/.claude/commands/review.md` 正确性 reviewer 第 7 条 iOS 性能反模式，建议层 / 非阻断）按本规则 flag
+- 反例参考：<TasksModule> `TasksDoneVC`（翻页累积进 stackView + collapse-5 压不住 section 张数膨胀）

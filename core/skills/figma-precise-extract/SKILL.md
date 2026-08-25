@@ -1,17 +1,17 @@
 ---
 name: figma-precise-extract
-description: 从 Figma 设计稿提取 measurement-grade 精确尺寸 / 间距 / token，避免 figma→code 图标大小和间距对不齐。Use when：planner 跑 dispatch-pipeline 烘焙 figma 设计稿、任何 figma→code 任务要拿精确尺寸 / 间距、排查「按 figma 实现但图标 / 间距对不齐」。Skip when：无 figma 设计稿 / 非 UI 改动 / loose 严格度（只要骨架 + 颜色 token）。
+description: 从 Figma 设计稿提取 measurement-grade 精确尺寸、间距和 token。Use when：strict Figma→code 任务要冻结实现输入，或排查图标/间距偏差。Skip when：无 Figma 设计稿、非 UI 改动、用户选择 loose 严格度。
 ---
 
 # figma-precise-extract
 
-figma→code 图标大小、间距对不齐，根因是**取数取错了「面」**：只信 `get_design_context` 一次返回的近似 HTML/CSS，没用精确工具校正。本 skill 把「哪个数字从哪个工具拿」钉死：**planner 把四个工具的输出烘焙成一份 measurement-grade 冻结 HTML**（结构来自 get_design_context、精确数值来自 get_metadata + get_variable_defs、按设计基准倍率换成 pt），generator 实现时直接 `Read` 这份 HTML、不再 live 取数。
+本 skill 把四个工具的输出烘焙成 measurement-grade 冻结 HTML：结构来自 `get_design_context`，精确数值来自 `get_metadata` 和 `get_variable_defs`，并按设计基准倍率换成 pt。implementation owner 读取冻结工件，不在写码时重新 live 取数。
 
 ## 触发 / 不触发
 
 触发：
 
-- planner 在 dispatch-pipeline Step 3.1 烘焙 figma 设计稿（有 figma URL + iOS UI 改动）
+- strict Figma→code 任务在 Default mode 开始实现前冻结设计输入
 - 任何 figma→code 任务要拿精确图标尺寸 / 间距 / token
 - 排查「按 figma 实现但图标 / 间距 / 控件大小对不齐」
 
@@ -32,9 +32,7 @@ figma→code 图标大小、间距对不齐，根因是**取数取错了「面�
 
 烘焙 = **拿 get_design_context 的结构骨架，把里面被吸附的数值用 get_metadata（尺寸）+ get_variable_defs（间距/token）覆盖、按倍率换成 pt**。别指望一个工具全给：结构 ← design_context，精确像素 ← metadata，token ← variable_defs。
 
-## 烘焙 SOP（planner 在 Step 3.1 跑，产出冻结 HTML）
-
-> 无 `Skill` 工具的 planner 按本 SOP 跑前先 `Read` 本文件。
+## 烘焙 SOP
 
 1. **选准节点**：先对目标节点 `get_metadata` 看层级树，确认抓的是**可见组件本体**、不是带 padding 的 wrapper / 热区。URL 的 node-id 选错（指到 page / 父节点）会拿到整屏几何。
 
@@ -47,7 +45,7 @@ figma→code 图标大小、间距对不齐，根因是**取数取错了「面�
    - 间距 / 圆角 ← `get_variable_defs` token 为先（token 化的精确无歧义）+ design_context Auto Layout 的 itemSpacing / padding **属性值**核对（不是生成代码 class）；metadata x/y 差只当交叉验证（SPACE_BETWEEN / padding / stroke 外溢会让它与声明值不符）
    - token ← `get_variable_defs`（变体在精确变体节点上调）：size / spacing / radius / color 变量名 → 值，不只颜色
 
-5. **烘焙成冻结 HTML** → `.specs/<slug>/assets/figma-<nodeId-safe>.html`（`<nodeId-safe>` = nodeId 把 `:` 替换成 `-`）：把 step 3 的结构骨架 + step 4 覆盖后的精确数值写成一份自包含 HTML/CSS，**数值一律存 pt（倍率已应用）**，token 用值 + 注释标 token 名。generator `Read` 这一份即拿到全部测量真相，无需再 live 取数、无需再 px→pt。
+5. **烘焙成冻结 HTML** → `.specs/<slug>-assets/figma-<nodeId-safe>.html`（`<nodeId-safe>` = nodeId 把 `:` 替换成 `-`）：把 step 3 的结构骨架 + step 4 覆盖后的精确数值写成自包含 HTML/CSS，数值一律存 pt，token 同时保留值和名称。implementation owner 只读该工件。
 
 6. **截图只做视觉参考** ← `get_screenshot({nodeId, maxDimension: 4096})` 冻成 PNG：描边（outside/center）、阴影、模糊画在布局框外 → 不算尺寸。**PNG = 视觉真相**（颜色 / 阴影 / 渐变 / 渲染观感），**HTML = 测量真相**（尺寸 / 间距 / pt）。
 
@@ -55,20 +53,20 @@ figma→code 图标大小、间距对不齐，根因是**取数取错了「面�
 
 ## 大节点退化兜底（design_context 返回稀疏数据时）
 
-设计稿过大时 `get_design_context` 退化：返回稀疏数据（只剩 `<frame>`/`<text>` 标签没样式）或仅回 metadata（无结构骨架 / 无资源下载 URL）。对本烘焙流程，丢的不只是样式（数值本来就不信），关键是丢了**结构骨架 + 切图资源 URL** —— 直接手写骨架救不回资源 URL，generator 拿不到切图 → 被逼 SF Symbol 凑形（「图标不对」高发根因）。
+设计稿过大时 `get_design_context` 可能只返回稀疏标签或 metadata。关键缺失是结构骨架和资源 URL；直接手写无法恢复资源，implementation owner 会被迫用近似图标。
 
 **阻塞，不在稀疏态进下一步**。对退化节点 N 逐子节点分级重抓：
 
 1. `get_metadata(N)` 枚举 N 的一级子节点 id + 各自相对根的 x/y/w/h。
 2. 对每个一级子节点单独 `get_design_context({nodeId, forceCode: true})` —— 子节点更小、多半不再退化，拿回各自的结构 + 资源 URL。
 3. 仍退化的子节点再往下拆一层（递归），**深度上限 3 层**（或累计子节点数上限），防 MCP 调用爆炸。
-4. 超上限仍稀疏的子树 → 退回手写骨架 + §7 记 OPEN risk，标明哪个子树没拿到资源 URL（可能漏切图，generator 实现前需人工补）。
+4. 超上限仍稀疏的子树 → 退回手写骨架，并在最终 plan 的风险/未决项中标明缺失资源 URL；实现前需要用户或 Root 决定是否接受。
 
 **坐标对齐陷阱（合并必做）**：单独重抓的子节点，其结构 / 坐标可能相对**自身原点 (0,0)**、不是父 frame。合并回冻结 HTML 时**必须**用 step 1 metadata 里每个子节点**相对根的 x/y** 做偏移，否则子节点全堆在 (0,0) —— 静默毁掉版面、肉眼 + 压缩图自测都看不出（同倍率陷阱那类）。
 
-成本只在 planner 烘焙期一次性付；冻进 HTML 后 generator 只读、不受影响。
+烘焙只执行一次；设计源未变化时实现和 UI 验收都复用冻结工件。
 
-## 冻结 HTML 的内容（planner 烘焙时建）
+## 冻结 HTML 的内容
 
 烘焙后的 HTML 等价于这张逐元素精确表（直接编码进 HTML/CSS，数值已是 pt）：
 
@@ -79,22 +77,22 @@ figma→code 图标大小、间距对不齐，根因是**取数取错了「面�
 | title | 高 22 | baseline 与 icon 居中 | `text/title 17pt semibold` | — |
 | primary button | 高 44 | — | `radius/md=8` | — |
 
-尺寸 = metadata 换 pt；间距 = variable_defs token 为先 + design_context itemSpacing 核对；token = variable_defs；对齐 / sizing 来自 design_context。**这张表的载体是冻结 HTML、不是 spec §4**（§4 只放 HTML/PNG 路径 + 倍率 + token 名 + 严格度 + 切图清单）。
+尺寸 = metadata 换 pt；间距 = variable_defs token 为先 + design_context itemSpacing 核对；token = variable_defs；对齐/sizing 来自 design_context。最终 plan 或 ExecPlan 只记录工件路径、倍率、token、严格度和切图清单，不内联逐元素表。
 
-## preview.html 还原度预览（planner 烘焙后建，strict 严格度 figma 任务）
+## preview.html 还原度预览（strict 任务）
 
-冻结 PNG（视觉真相）+ measurement HTML（测量真相）之外，planner 再产**第三份工件** `.specs/<slug>/assets/preview.html`：一份可在浏览器渲染的**视觉复刻**，给主 agent 在 dispatch-pipeline stage-1 review 打开、用户在 generator 写码**前**肉眼判还原度（measurement HTML 是 pt 数值表不可视、PNG 不可交互）。
+冻结 PNG 和 measurement HTML 之外，strict 任务默认在烘焙末尾生成第三份工件 `.specs/<slug>-assets/preview.html`，并连同冻结 PNG 一起 `open` 给用户在浏览器判还原度，再等实现授权。PNG 仍是颜色、阴影和图标观感的真相源。
 
 触发：strict figma→code 任务。loose 跳过（只要骨架 + 颜色 token、无需复刻）。
 
-生成规范（planner Write，每 slug **一份合并文件**、非每 node 一份）：
+生成规范（每 slug 一份合并文件）：
 
 - 自包含单文件：完整 `<!DOCTYPE html>` + 内联 CSS/JS、**无任何外部资源**（CDN / 外链字体 / 远程图都不行，CSP 与离线都要能开）。字体用系统栈 `-apple-system,"SF Pro",system-ui`（macOS 上即 SF Pro）。
 - 每个冻结 node 一个 native pt 宽手机框（倍率已应用，宽 = 设备点宽如 402），多 node **并排**（flex-wrap）+ 各框标 node-id + 态名。
 - 几何来自 measurement HTML（间距 / 尺寸 / 圆角 / 字号 pt 1:1）；颜色 / 玻璃 / 渐变来自 PNG（玻璃用 `backdrop-filter: blur` 近似）；图标用内联 SVG 近似（SF Symbol 不可用）。
 - 有状态变体（折叠↔展开 / 选中切换 / 空↔满态）→ 加最小内联 JS 点击切换，默认展示主态。
 - 顶部一条 caveats banner：「近似复刻：judge 版式 / 间距 / 结构；PNG = 视觉真相（玻璃 / 色 / 图标更精细）；agentName 等占位已用运行时值替换」。
-- 文件名固定 `preview.html`。二次调用更新 figma 时一并重建（同 PNG / measurement HTML 走 §9 AMD 影响范围）。
+- 文件名固定 `preview.html`。烘焙时一次性生成；只有设计源（file/node/version）或选中 node 集合变化才重建，且只更新受影响 node 的手机框并同步对应 PNG/measurement HTML 与最终 plan。实现迭代、code review 和验证轮次不重建、不改写该文件。
 
 ## 硬约束
 
@@ -102,14 +100,19 @@ figma→code 图标大小、间距对不齐，根因是**取数取错了「面�
 - ❌ `get_design_context` 返回稀疏数据（仅 metadata / 无资源 URL）时直接手写骨架进下一步 —— 必走「大节点退化兜底」逐子节点分级重抓（手写救不回切图资源 URL）；合并子节点必按 metadata 相对根 x/y 偏移
 - ❌ 不从 `get_metadata` 找 Auto Layout / 对齐 / strokeAlign / effects（它只有位置 / 尺寸）；间距别只信它的 x/y 差
 - ❌ 不拿 `get_screenshot` 栅格目测像素下结论
-- ❌ generator 不 live 拉 figma 测量、不 re-bake HTML —— HTML 是 planner 写域；HTML 缺失 / 过期 → 触发 generator Step 4 让 planner 重烘焙
+- ❌ implementation worker 不 live 拉 Figma 测量或重烘焙共享工件；缺失/过期时交回 Root 更新
+- ❌ 设计稿标注值不写进项目文档（AGENTS/CLAUDE/knowledge/README）—— 文档以真实代码数据为准，引用代码常量 / token 定义路径；设计值只留在 `.specs/` 冻结工件与最终 plan
 - ✅ HTML 数值一律 pt（倍率烘焙时应用一次）；尺寸 ← metadata，间距 ← variable_defs token + design_context itemSpacing，结构 ← design_context
 - ✅ 图标按外框尺寸定 box；有 Code Connect 优先解析到真实组件
 
-## 在三段式（dispatch-pipeline）里的位置
+## 在 plan-first delivery 里的位置
 
-- **planner**（烘焙）：Step 3.1 对每个冻结 nodeId 跑本烘焙 SOP，产出两份冻结工件到 `.specs/<slug>/assets/`：`figma-<nodeId-safe>.png`（视觉真相）+ `figma-<nodeId-safe>.html`（measurement-grade、含精确 pt）。§4 只写 HTML/PNG 路径 + 倍率 + token 名 + 严格度 + 切图清单，不内联测量表。planner 无 Skill 工具 → 按需 Read 本文件。
-- **generator**（读 HTML 实现）：`Read` 冻结 HTML 拿全部测量值直接实现（不再 live 拉 get_metadata / 不再自己 px→pt），`Read` 冻结 PNG + sim-use 实拍做视觉对照。冲突裁决：**尺寸 / 间距以 HTML 为准、颜色 / 阴影 / 渲染观感以 PNG 为准**；实拍偏离冻结工件超容差 = figma 漂移 → 触发 Step 4 让 planner 重烘焙。
-- **ui-reviewer**（视觉验收）：按冻结 PNG + 严格度做视觉 diff 判 `ui-figma-mismatch`；需要精确数时参考冻结 HTML。
+- **Root/source prep**：在 Default mode、源码写入前，为最终 plan 选定的 node 生成 `.specs/<slug>-assets/figma-*.png` 与 `figma-*.html`。
+- 同时记录 Figma file/node/version（provider 提供时）和全部冻结工件 SHA-256；没有 immutable version 时，以这组冻结工件的 bundle digest 作为 UI review 的 design identity，验收期间不再拉 mutable latest。
+- 工件若暴露新的可观察行为、scope、架构或验收决策，Root 必须回到 DISCOVER/PLAN_READY 更新 authoritative plan；不能让后生成的 HTML/PNG 静默覆盖最终 plan。
+- **implementation owner**：读取冻结 HTML/PNG 实现，不 live 拉取设计测量。
+- **ui-reviewer**：可运行 build PASS 后按冻结 PNG、严格度和用例做视觉对照；精确尺寸参考 HTML。
 
-<!-- Why 核心：planner 用 metadata/token 校正 design_context 并冻结 pt 数值，generator 才能直接消费稳定测量真相。 -->
+## Why（核心）
+
+`get_design_context` 生成代码里的数值可能被框架刻度吸附；精确像素用 `get_metadata`，token 用 `get_variable_defs`，冻结时统一换成 pt。

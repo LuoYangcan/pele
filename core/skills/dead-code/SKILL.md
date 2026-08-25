@@ -1,6 +1,6 @@
 ---
 name: dead-code
-description: Scan recent code changes for "zombie code" — newly-added or modified symbols (helpers, types, files, enum cases) that no caller references. Use when the user says "扫一下僵尸代码 / clean dead code / find unused / 检查是不是有没人调的方法 / 看看这次改动有没有遗弃代码", and especially after a generator subagent finishes a large iteration. Skip when there are no Swift changes in the current diff, or when the user is mid-implementation and explicitly said "稍后再清理".
+description: Scan recent code changes for "zombie code" — newly-added or modified symbols that no caller references. Use when the user explicitly asks for dead-code cleanup, preferably once after the final implementation diff is stable. Skip when there are no Swift changes or implementation is still in progress.
 ---
 
 # dead-code
@@ -9,7 +9,7 @@ Agent 反复迭代后，常常留下**僵尸代码**——存在于仓库里、�
 
 > 当前实现仅支持 **Swift** 项目（依赖 [Periphery](https://github.com/peripheryapp/periphery) 的 SourceKit 索引）。其他语言生态可参考相同的「扫描 → 过滤到改动范围 → 分级 → 用户拍板」骨架，换底层工具（如 TypeScript: `ts-prune`、Python: `vulture`、Go: `unused`、Kotlin: `detekt --baseline` + `unused` rule）。
 >
-> 一个**例外角色 override**：当本 skill 由三段式调度的 `generator` subagent 在 review 前自动调用时（见 `agents/generator.md` Step 4.5），它可以在严格闸口下**自动删除本轮自己刚写出来的私域孤儿**。其他场景（用户显式调用 / `executor` 调用 / 手动跑）都遵守「报告 + 等用户挑」契约。
+> `/review` 的 report-only reviewer 不调用本 skill；它只按 `review-contract.md` 对 changed paths 做窄域 `rg` 引用核对。
 
 ## 触发条件
 
@@ -18,7 +18,7 @@ Agent 反复迭代后，常常留下**僵尸代码**——存在于仓库里、�
 - 「扫一下僵尸代码」「清理一下没人用的方法」
 - 「这次改动有没有遗弃代码」「dead code check」
 - 「跑一下 dead-code skill」
-- generator subagent 完事后，主 agent 想做一轮 cleanup
+- 最终实现 diff 稳定后，Root 想做一次集中 cleanup
 - PR 推之前想 self-review unused code
 
 **不触发**：
@@ -281,7 +281,7 @@ rg -n -w "<symbol>" --type swift
 ## 下一步
 
 请挑：
-- **(A) 我帮你删 high-confidence 全部 K 项** —— 我会用 Edit 工具把每个 symbol 删掉，并跑 build 确认编译通过
+- **(A) 我帮你删 high-confidence 全部 K 项** —— 一次删除后对最终候选跑相关 build
 - **(B) 你点名删哪些** —— 列编号给我，比如「1, 3, 5」
 - **(C) 仅给删除命令清单**，你自己手动改
 - **(D) 全部不动**，先这样
@@ -293,11 +293,9 @@ rg -n -w "<symbol>" --type swift
 
 用户选 A / B 后：
 
-1. 对每个要删的符号用 `Edit` 工具删除其声明（连带相邻的注释、空行清理）
-2. 删完每改 3-5 个就跑一次项目的 build 命令（`just build-ios` / `xcodebuild` / `swift build` 等，按项目实际），**早发现编译错** —— 别一次删 20 个再 build，错了不知道是哪个删错了
-3. 编译过了再继续；编译错了把那条改动 revert（用 git 或重新写回去），降级到 low-confidence 列表
-4. 全部删完跑最终一次 build 确认整体绿
-5. **不要 commit**——把 diff 留给用户审，commit 是用户的事
+1. 一次性删除用户选中的 high-confidence 声明，并清理相邻注释/空行；不要顺带重构。
+2. 按 `post-change-verify` 对最终候选运行一次相关 build。失败时根据编译证据恢复或调整具体误删项，再只重跑失效 gate。
+3. 不 commit；把 diff 和验证证据留给用户审。
 
 ## 已知限制
 
@@ -314,14 +312,14 @@ rg -n -w "<symbol>" --type swift
 - ❌ **不替代 SwiftLint / 项目级 lint** —— 那些查的是另一类问题（风格、复杂度），本 skill 只查「无人调用」
 - ❌ **不替代 `/review`** —— `/review` 是综合 code review；本 skill 只看 dead code 这一维度
 - ❌ **不删非 Swift 代码** —— 不扫 `.m` / `.mm` / `.cpp` / `.ts`；项目要扩到其他语言时单独写 skill
-- ❌ **不在没拍板时改文件**（默认契约） —— 报告 + 等用户挑。**唯一例外**：generator subagent 在 review 前自动调用本 skill（见 `agents/generator.md` Step 4.5），可在严格闸口下自动删本轮自产的私域孤儿
+- ❌ **不在没拍板时改文件** —— 报告 + 等用户挑
 
 ## 与其他 skill / rule 的关系
 
-- **`architecture-first` skill**：`architecture-first` 管事**前**预防（选模式 / 别造重复轮子）；本 skill 管事**后**清理（已经造出来的孤儿砍掉）。两条正交、不冲突。
-- **cleanup backend**：Claude 用 `/simplify`；Codex 用 `codex-simplify`。cleanup 自动 fix；本 skill 是单维度（unused），且**不自动 fix**（generator override 例外见上）。可以串行：cleanup 后再跑本 skill。
-- **`dispatch-pipeline` rule**：`generator` Step 4.5 在 review 前自动调本 skill 做自检；主 agent 阶段 2.5 review-fix 循环里也可以让用户选「再跑一轮 dead-code 扫描」作为 review 的一种形式。
-- **`post-change-verify` rule**：本 skill 的删除阶段会跑 build —— 这是 post-change-verify 的一个具体应用（只跑编译、不主动跑 lint / test / format-fix）。
+- **`architecture-first`**：只解决未决 durable boundary；新增 helper/type 本身不触发它。本 skill 在实现稳定后识别无人引用的 changed symbol。
+- **cleanup backend**：Claude 用 `/simplify`；Codex 用 `codex-simplify`。cleanup 自动 fix；本 skill 只看 unused，先报告、用户选中后才删除。
+- **`plan-first-delivery`**：用户显式要求时，在最终实现 diff 稳定后集中扫描一次；Root 采纳删除并集成。
+- **`post-change-verify`**：本 skill 不替代最终验证；删除后由 Root 或 command-runner 验证最终候选。
 
 ## Why（核心）
 

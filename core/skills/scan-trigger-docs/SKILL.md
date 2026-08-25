@@ -1,96 +1,68 @@
 ---
 name: scan-trigger-docs
-description: Scan project AGENTS.md and CLAUDE.md for trigger-on-touch documentation markers, then Read every referenced doc whose scope intersects the current task. Use before planning, implementation, or review. Skip for meta-only work or when neither project instruction file exists.
+description: 扫描项目 AGENTS.md/CLAUDE.md 中的 trigger-on-touch 文档索引，并全文读取与本轮计划、写入或 review 范围相交的文档。项目没有索引或范围明确无交集时跳过。
 ---
 
-# scan-trigger-docs
+# Scan trigger-on-touch docs
 
-Read project instruction files and follow every documentation trigger that may intersect the current scope.
+普通 Markdown 链接不会自动把目标正文注入 context。任何负责规划、实现或 review 的 agent 都要按自己的实际范围独立执行本流程。
 
-## Trigger
+## 1. 定位项目根
 
-- Planner: before freezing hard constraints, risks, or acceptance cases.
-- Generator: after choosing the current task and before editing code.
-- Executor: before judging the changed files.
-- Any agent that needs project-specific invariants not present in its current context.
-
-Skip when the task only changes agent/tool configuration or documentation, or the project has neither `AGENTS.md` nor `CLAUDE.md`.
-
-## Procedure
-
-### 1. Find the project root
-
-Walk upward from `cwd` to the nearest ancestor containing either instruction file:
+从 cwd 向上找最近的 `AGENTS.md` 或 `CLAUDE.md`。在 worktree 中使用 worktree 自己的文件，不跳回主仓库。
 
 ```bash
-ROOT="$PWD"
-while [[ "$ROOT" != "/" && ! -f "$ROOT/AGENTS.md" && ! -f "$ROOT/CLAUDE.md" ]]; do
-  ROOT="$(dirname "$ROOT")"
+project_root="$PWD"
+while [[ "$project_root" != "/" \
+  && ! -f "$project_root/AGENTS.md" \
+  && ! -f "$project_root/CLAUDE.md" ]]; do
+  project_root="$(dirname "$project_root")"
 done
-[[ -f "$ROOT/AGENTS.md" || -f "$ROOT/CLAUDE.md" ]] || exit 0
 ```
 
-Use the files inside the active worktree, not another checkout.
+两者都不存在则结束。
 
-### 2. Read instruction files in full
+## 2. 读取索引
 
-Read every existing file:
+host 已把 always-load 文件注入 context、或项目自带专用 scan skill 时，以注入内容与项目版为准，不重复 Read；否则完整读取存在的 `AGENTS.md` 和 `CLAUDE.md`。查找以下形式及语义等价写法：
 
-- `$ROOT/AGENTS.md`
-- `$ROOT/CLAUDE.md`
+- “改动以下任一范围前先读该文档”；
+- “trigger-on-touch / touch 前必读”；
+- 指向子系统索引的普通 Markdown 链接。
 
-Follow any delegated trigger index they name, such as `docs/SUBSYSTEMS.md`. Do not assume a Markdown link was injected into context.
+若 always-load 文件把触发表委托给另一个索引文件，完整读取该索引后再判断。
 
-### 3. Build the trigger table
+## 3. 匹配本轮范围
 
-For each “read this doc before changing …” marker, record:
+对每个 trigger 记录 doc 路径和触发路径/类型/模块/概念。用本轮计划触达路径、当前 ownership、实际 changed paths 或 review scope 匹配：
 
-- referenced doc path;
-- listed paths, modules, types, or concepts;
-- source instruction file and section.
+| 信号 | 处理 |
+| --- | --- |
+| 文件直接位于触发路径 | 读取 |
+| 类型、函数或模块名命中 | 读取 |
+| 功能语义与 doc 主题相关 | 读取 |
+| 明确跨平台/跨模块且无交集 | 跳过 |
+| 边界不确定 | 读取 |
 
-Accept project-specific marker wording; do not require one exact heading.
+范围在执行中扩大时重新匹配新增部分；无需重复读取同一版本的文档。
 
-### 4. Match the current scope
+## 4. 读取并应用
 
-Read a referenced doc when any condition holds:
+全文读取所有命中文档，不用 `grep/head` 片段替代。文档内若有递归 trigger，按同样规则继续。
 
-- a planned or changed file is inside its listed path;
-- the task names a listed type, function, module, or behavior;
-- the task is semantically related to the doc topic;
-- the boundary is uncertain.
+- 规划：把会改变实现或验收的约束写入最终 plan。
+- 实现：遵守 invariant；若它与 plan 冲突，暂停写入并回到决策层。
+- review：以文档为证据检查最终 diff，只报告当前 diff 的偏离。
 
-Skip only when the current scope is provably unrelated.
+项目存在 `.cursor/rules/*.mdc` 时，仅在文件名/前言显示与本轮范围相关时全文读取。
 
-### 5. Read matched docs in full
+## 输出
 
-Read each matched document, then repeat the same check for nested trigger references. Do not use grep/head excerpts as a substitute for the full document.
-
-Optionally inspect project-specific IDE rule files when their names indicate a direct match:
-
-```bash
-ls "$ROOT/.cursor/rules/" 2>/dev/null
-```
-
-### 6. Apply the constraints
-
-- Planner: write matched invariants into spec constraints/risks and cite the doc.
-- Generator: implement against those invariants; route uncovered ambiguity through the feedback flow.
-- Executor: verify the diff against them and cite violations.
-
-## Output
-
-This skill does not require a standalone result. A caller may include:
+调用方可在结构化结果中附：
 
 ```yaml
 trigger_docs_read:
-  - docs/example.md
+  - <repo-relative path>
 ```
 
-## Prohibited
-
-- Do not edit project trigger markers.
-- Do not reuse a previous agent's scan without rereading current worktree files.
-- Do not scan unrelated global docs or changelogs.
-
-<!-- Why core: independent agent contexts must rediscover the same project-specific invariants before acting. -->
+本 skill 不修改 marker、不缓存跨 session 结果，也不替代规划、实现或 review。

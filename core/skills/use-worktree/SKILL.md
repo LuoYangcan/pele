@@ -1,96 +1,41 @@
 ---
 name: use-worktree
-description: 新话题切换时进 git worktree 物理隔离，让每个需求独立从干净的远端默认分支起步。触发：用户切到新话题且本轮要写代码，在第一次 Edit 前建 worktree。不触发：延续当前任务、纯问答、读代码、查状态、改 meta 配置、当前已在 .worktrees/。拿不准时先问用户。
+description: 代码改动一律用独立 git worktree 隔离，主仓 checkout 只做只读操作。触发：任何要落地 Edit/Write 的编码任务且当前不在 .worktrees/。不触发：已在 worktree 内延续当前任务、纯问答、读代码、查状态；meta 配置不自动加载本 skill，但仍服从 AGENTS 的 protected-branch 路由。
 ---
 
-# 新话题进 git worktree 隔离
+# 代码改动一律使用独立 worktree
 
-用户**明显切到新话题**时，在开始写代码前进 worktree 隔离，每个需求物理独立、不互相干扰。
+在第一次源码写入前创建 worktree。不要从当前可能含 WIP 的 HEAD 隐式派生，不在主仓 checkout 直接改代码。
 
-## 触发信号
+## 入口判断
 
-"新任务 / 另一个 / 接下来做 X / 开始搞 Y / 下一个需求 / 现在改 Z" 这类**切话题信号**时触发。
+- 任何要落地 Edit/Write 的编码任务（新需求、bugfix、重构、补测试等）：触发，无论是否切换话题。
+- 当前路径已含 `.worktrees/`：不新建，继续使用当前 worktree。
+- 修改 rule、skill、hook、settings 等 agent harness：不自动触发本 skill；若 repo-backed meta 位于 main/master/dev，仍须按 AGENTS 先切任务分支或选择 worktree。
+- 项目规则禁止创建分支且未给 worktree 例外时：先问用户，不静默回退到主仓直改。
+- 主仓存在用户未提交改动或停在非基线分支时：先与用户确认再创建；只读确认这些改动，不移动或回滚。
 
-**不触发**的场景：
+## 复用
 
-- 延续当前任务（修 bug / 调样式 / 基于同一需求追加 / 来回迭代）
-- 纯问答 / 读代码 / 查状态
-- 改配置 / 改 rule / 改 memory
-- 当前已经在 worktree 里（路径含 `.worktrees/`）—— 继续用当前 worktree
+创建前先 `git worktree list`。`.worktrees/` 下已有 worktree 满足「工作区干净且其分支已合并进基线（`git merge-base --is-ancestor <branch> origin/<基线>`）」时，可在其中 `git fetch` 后从 `origin/<基线>` 直接 `git switch -c <新分支>` 复用（连同依赖解析与构建缓存）；旧分支留在原处，是否删除交用户。分支未合并或有未提交改动的 worktree 不得自动复用，须经用户明确授权。
 
-拿不准是不是切话题时，**问用户一句**再决定，别自作主张建 worktree。
+## 创建与初始化
 
-## 建 worktree 流程（必须基于最新远端默认分支）
+1. 读项目 `AGENTS.md` 确认默认基线分支；未指定时使用项目约定，不能假定所有仓库都是 `dev`。
+2. 一键 bootstrap（fetch、worktree add、复制 gitignored 配置、SPM artifacts symlink、目录信任、可选项目初始化）：
 
-**不要**直接 `EnterWorktree(name=...)`—— 那会从当前 HEAD 起步，可能继承前一个需求的 WIP。
-
-正确流程（标记 `<project-specific>` 的步骤要按你的项目改）：
-
-1. `git fetch origin`
-2. 读取 `BASE_REF="$(git symbolic-ref --quiet --short refs/remotes/origin/HEAD)"`。为空时列出 `git branch -r` 并询问用户默认基线，不猜 `main` / `master` / `dev`。
-3. 决定分支名 `<type>/<scope>-<slug>`，`type ∈ {feat, fix, chore, refactor, docs, test, perf, style}`；执行 `git worktree add .worktrees/<slug> -b <type>/<scope>-<slug> "$BASE_REF"`。
-4. `EnterWorktree(path=.worktrees/<slug>)` —— 进入已创建的 worktree（cwd 切到该 worktree 目录），然后预写 Claude Code 目录信任（folder trust 按精确路径存储、不从主仓库继承，Claude Code ~2.1.x 存在 worktree 内接受后不持久化的 bug，不预写则该 worktree 每次新 session 都弹 trust 对话框）：
    ```bash
-   ~/.claude/scripts/trust-dir.sh "$PWD"
-   ```
-5. **从主仓库 cp `.claude/settings.local.json`**（gitignored、个人 bypass permission 配置，新 worktree 不会继承）——缺了这一步 worktree 会 fallback 到项目共享 `.claude/settings.json`（多数项目是 `acceptEdits`），全局 `bypassPermissions` 被盖掉，非 allowlisted Bash 会意外弹权限提示：
-   ```bash
-   MAIN_REPO="${PWD%/.worktrees/*}"
-   if [[ -f "$MAIN_REPO/.claude/settings.local.json" ]]; then
-     mkdir -p .claude
-     cp "$MAIN_REPO/.claude/settings.local.json" .claude/settings.local.json
-   fi
-   ```
-   注意：只对**未来** session 生效——当前 session 的权限 mode 是内存态，cp 完不会立刻切换，需要 Shift+Tab 手动切一次（或等下个 session 自动读到）。
-
-6. **`<project-specific>` 从主仓库 cp 其他 gitignored 的本地配置文件**（如 `Local.xcconfig` / `.env.local` / 凭证文件等，新 worktree 没有这些）：
-   ```bash
-   MAIN_REPO="${PWD%/.worktrees/*}"
-   # 例：cp "$MAIN_REPO/<your-local-config>" ./<your-local-config>
-   ```
-7. **`<project-specific>` symlink 共享 SPM binary artifact**（iOS+macOS 双平台 monorepo 适用、单平台项目跳过）：worktree 用 `just build-ios` 等 `-project` 模式 build 时只下 iOS-only artifact，Xcode 打开 workspace 会缺 macOS-only artifact（Sparkle / CLibOpus 等）。symlink artifacts/ 到主仓库一次性根治，artifact 是 SHA256 hash 寻址的近 read-only cache、多 worktree 共享不打架：
-   ```bash
-   MAIN_REPO="${PWD%/.worktrees/*}"
-   if [[ -d "$MAIN_REPO/build/DerivedData/SourcePackages/artifacts" ]]; then
-     mkdir -p build/DerivedData/SourcePackages
-     ln -sfn "$MAIN_REPO/build/DerivedData/SourcePackages/artifacts" build/DerivedData/SourcePackages/artifacts
-   else
-     echo "WARN: main repo artifacts/ missing; build the required target in main, then re-symlink"
-   fi
-   ```
-   主仓库 artifacts/ 不存在时跳过并提示用户。只 symlink `artifacts/`；`checkouts/`、`repositories/`、`workspace-state.json` 由各 worktree 独立维护。
-8. **`<project-specific>` cp 锁文件 / 已解析依赖**：如果项目里它在 `.gitignore` 但是新 worktree 解析依赖时需要它，必须在初始化前 cp。新 worktree 没 lock 时 SPM / npm 等会从零 resolve，可能产生版本漂移（症状：`Missing package product '<SomeProduct>' / '<AnotherProduct>'`）。
-
-   `<project-specific>` 例子（每个项目按自己 .gitignore 排除的 lock 列出具体路径）：
-   ```bash
-   MAIN_REPO="${PWD%/.worktrees/*}"
-   # 某 iOS monorepo 项目（Package.resolved 被 .gitignore 排除）：
-   if [[ -f "$MAIN_REPO/<YourApp>.xcworkspace/xcshareddata/swiftpm/Package.resolved" ]]; then
-     mkdir -p <YourApp>.xcworkspace/xcshareddata/swiftpm
-     cp "$MAIN_REPO/<YourApp>.xcworkspace/xcshareddata/swiftpm/Package.resolved" \
-        <YourApp>.xcworkspace/xcshareddata/swiftpm/Package.resolved
-   fi
-   # 其他项目按需补：yarn.lock / pnpm-lock.yaml / Cargo.lock / poetry.lock ...
+   ~/.claude/scripts/worktree-bootstrap.sh <slug> --base <基线分支> \
+     [--type feat] [--copy <相对路径>]... [--init "<命令>"]
    ```
 
-9. **`<project-specific>` 跑项目的初始化命令**（例如生成 xcodeproj / 安装依赖 / build 一次）。如果产物在 `.gitignore`，每个 worktree 都要单独生成。
-10. **`<project-specific>` 按需打开 IDE / workspace（默认跳过）**：命令行 build 已能验编译；仅在用户明确要求调试、看 UI 或打开 IDE 时执行。
+   脚本默认复制主仓存在的 `.claude/settings.local.json`；SPM 只 symlink `build/DerivedData/SourcePackages/artifacts`，不共享 `checkouts`、`repositories` 或 `workspace-state.json`；复制的文件内容不在输出中暴露。`--init` 只运行让仓库可编辑所必需的初始化（codegen、依赖安装、项目生成）。脚本不可用时手动执行同等步骤（`git fetch` + `git worktree add .worktrees/<slug> -b <type>/<slug> origin/<基线>` + `trust-dir.sh "$PWD"`）。
+3. 分支类型通常为 `feat | fix | refactor | chore | docs | test | perf | style`；遵守项目或 host 的分支命名约定。
 
-若 step 7 (symlink) 主仓库 artifacts/ 缺：跳过、提示用户、不阻塞后续 step。
-若 step 9 (初始化命令) 失败：报告失败原因、**不要**强行进 step 10，等用户决定。常见 fail：忘了 step 5/6 的本地配置或 step 8 的锁文件。
-
-若用户事前说"不跑 build / 不解析依赖"：跳过 8、9。但 step 5/6 的本地配置与 step 7 的 symlink 仍要做。
-
-## `<project-specific>` 命令行 build 的注意点
-
-新 worktree 第一次跑工程级 build 时（如 `xcodebuild -workspace`、`turbo build`）可能会重新解析依赖。锁文件 / `<your-resolved-deps-file>` 没 cp 到位时会失败 —— 看错误信息确认是依赖解析问题再补上。
-
-可能的兜底：build 单个子项目而不是 workspace 级别，绕开 workspace 里其他平台 / target 的包污染（例：iOS workspace 含 macOS-only binary target 时）。
+初始化阶段不做 baseline build、不预热 Simulator、不自动打开 IDE；最终候选统一按 `rules/post-change-verify.md` 验证。初始化失败时先区分本地配置、依赖和环境问题，不把环境失败当成源码失败；用户明确要求不解析依赖时跳过相关初始化。
 
 ## 生命周期
 
-- 走 `/openpr` push + 开 PR 之后：可以 `ExitWorktree(action="keep")` 保留，等后续 PR 改动回来继续用；或让 session 退出时由 harness 提示清理
-- 若 worktree 做到一半发现不需要、无改动：`ExitWorktree(action="remove")` 干净退出
-- 有未提交改动又想删：需要 `ExitWorktree(action="remove", discard_changes=true)`，**先跟用户确认**
-
-<!-- Why 核心：worktree 让每个需求从干净基线物理隔离，避免分支和工作目录互相污染。 -->
+- PR 或后续迭代仍需该分支：保留 worktree。
+- 无改动且任务取消：可移除 worktree。
+- 有未提交改动时，未经用户明确授权不得丢弃或强制移除。

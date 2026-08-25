@@ -15,7 +15,7 @@
 #   project — symlink the same dirs into <path>/.claude/.
 #             Does NOT touch <path>/CLAUDE.md or <path>/AGENTS.md.
 #             Does NOT merge hooks (hooks live in ~/.claude/settings.json globally).
-#             Prints manual instruction to add `@.claude/rules/index.md` to <path>/CLAUDE.md.
+#             Prints manual instruction to add `@.claude/pele-index.md` to <path>/CLAUDE.md.
 #
 # Idempotent: re-running updates symlinks; existing files are backed up to ~/.claude.backup-<timestamp>/
 
@@ -81,7 +81,7 @@ Modes (--global and --project are mutually exclusive):
   project — symlink the same dirs into <path>/.claude/.
             Does NOT touch <path>/CLAUDE.md or <path>/AGENTS.md.
             Does NOT merge hooks (hooks live in ~/.claude/settings.json globally).
-            Prints manual instruction to add `@.claude/rules/index.md` to <path>/CLAUDE.md.
+            Prints manual instruction to add `@.claude/pele-index.md` to <path>/CLAUDE.md.
 EOF
       exit 0
       ;;
@@ -231,7 +231,7 @@ if [ "$FORCE" != 1 ] && [ "$DRY_RUN" != 1 ]; then
     echo "  • merge core hooks into ${CLAUDE_DIR}/settings.json (backup taken)"
   else
     echo "  • leave ${PROJECT_PATH}/CLAUDE.md and ${PROJECT_PATH}/AGENTS.md untouched"
-    echo "  • print manual instruction to add '@.claude/rules/index.md' after install"
+    echo "  • print manual instruction to add '@.claude/pele-index.md' after install"
   fi
   echo "  • back up any conflicting files to ${BACKUP_DIR}/"
   echo ""
@@ -243,10 +243,13 @@ if [ "$FORCE" != 1 ] && [ "$DRY_RUN" != 1 ]; then
   esac
 fi
 
-# ----------------------- core: top-level CLAUDE.md (global only) -----------------------
+# ----------------------- core: top-level index -----------------------
 if [ "$MODE" = "global" ]; then
   log "Installing CLAUDE.md..."
   link_file "${PELE_ROOT}/core/CLAUDE.md" "${CLAUDE_DIR}/CLAUDE.md"
+else
+  log "Installing pele-index.md (project index)..."
+  link_file "${PELE_ROOT}/core/CLAUDE.md" "${CLAUDE_DIR}/pele-index.md"
 fi
 
 # ----------------------- core: rules / agents / commands / templates -----------------------
@@ -344,7 +347,7 @@ if [ "$MODE" = "project" ]; then
   echo "${C_BOLD}Next step (project mode):${C_RESET}"
   echo "  Add this line to ${PROJECT_PATH}/CLAUDE.md (or ${PROJECT_PATH}/AGENTS.md):"
   echo ""
-  echo "      ${C_BOLD}@.claude/rules/index.md${C_RESET}"
+  echo "      ${C_BOLD}@.claude/pele-index.md${C_RESET}"
   echo ""
   echo "  Without it, the pele rules are installed but Claude will not auto-load the index."
   echo "  (The @ syntax recursively injects file contents into the agent's context.)"

@@ -9,13 +9,13 @@ The maintainer-local `scripts/sync-from-local.sh` performs the copy and token-re
 | Local content | Sync? | Constraint |
 |---|---:|---|
 | `CLAUDE.md` | Yes | Keep the index portable and all links resolvable |
-| `agents/{planner,planner-worker,spec-integrator,generator,executor,ui-reviewer}.md` | Yes | Preserve role write boundaries and structured contracts |
-| Workflow rules and stubs | Yes | No private paths or project-only assumptions |
+| `agents/{implementer,verifier,ui-reviewer,command-runner}.md` | Yes | Preserve role write boundaries and structured contracts; Codex `.toml` twins stay local |
+| Workflow rules | Yes | No private paths or project-only assumptions |
 | Portable platform rules, including Swift/iOS rules | Yes | Optional, generic, and usable outside the maintainer's projects |
 | `templates/*.md` | Yes | Keep referenced paths inside the public install |
 | Universal commands | Yes | Use `~/.claude/` public install paths |
-| Listed skills and required helper files | Yes | Include every file referenced by a shipped skill |
-| `scripts/{trust-dir,worktree-sim}.sh` | Yes | Synced helper scripts |
+| Listed skills and required helper files | Yes | Include every file referenced by a shipped skill; project-bound skills (e.g. monorepo SPM fixups) stay local |
+| `scripts/{trust-dir,worktree-sim,worktree-bootstrap,validation-receipt,review-input-snapshot,review-result,sync-xcode-skills,check-before-push}.sh` | Yes | Synced helper scripts |
 | `scripts/run-ios.sh` | Manual | Keep Pele's environment-configurable public implementation |
 | `skills/*/evals/` | No | Local fixtures may contain private data |
 | Project rules, commands, credentials, hooks, or build recipes | No | Keep in the private harness or project repo |

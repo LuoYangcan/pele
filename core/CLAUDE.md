@@ -2,8 +2,8 @@
 
 ## 编码回合入口
 
-- **原生 Plan mode**：由当前 Root 只读调研、澄清并产出最终 plan；不加载 `plan-first-delivery`，不写代码或计划文件。最终 plan 是同一任务后续实现的需求真相源。
-- **Default mode 写代码**：第一步加载 `Skill(plan-first-delivery)`。同一任务已有最终 plan 时直接执行，不重写计划或增加固定 checkpoint；没有 plan 时按 skill 的入口路由处理。
+- **原生 Plan mode**：由当前 Root 只读调研、澄清并产出最终 plan；不加载 `plan-first-delivery`，不写代码或计划文件。最终 plan 是同一任务后续实现的需求真相源。产出最终 plan 后、调 `ExitPlanMode` 前，先用 `Skill(visual-brief)` 出一张图（widget 在 Plan mode 内不被 gate）；步骤 ≥3、跨 ≥2 个模块或存在方案取舍时才出图，小改动 plan 不出图。
+- **Default mode 写代码**：第一步加载 `Skill(plan-first-delivery)`。同一任务已有最终 plan 时直接执行，不重写计划或增加固定 checkpoint；没有 plan 且命中未决决策时，Root 主动调用 `EnterPlanMode` 切入规划（不等用户手动切换），其余按 skill 的入口路由处理。
 - **代码改动一律 worktree**：任何要落地 Edit/Write 的编码任务，第一次写入前加载 `Skill(use-worktree)` 在仓库 `.worktrees/` 建隔离 worktree；编码任务不得在主仓 checkout 写入（meta 配置按下一条路由）。不主动切换主仓分支、不清理其 dirty 状态；主仓不在基线分支或不干净时保持原样，worktree 一律从 `origin/<基线>` 创建、不依赖主仓 HEAD。延续当前任务（worktree 内迭代）、已在 worktree、纯问答/只读诊断不触发。
 - **Meta 配置**：rule / skill / agent / hook / settings 不走 `plan-first-delivery` 或 ExecPlan，但不豁免 protected-branch、dirty tree 和外部写入权限。repo-backed meta 在 main/master/dev 上先切任务分支或 worktree；非 Git 全局配置可在确认 live target 后直接改。写前检查 symlink/hook 实际目标，写后按触达类型运行 JSON/TOML parse、`bash -n`、Markdown/local-link check、installer dry-run/idempotency；除非配置直接影响 app，不跑 app build。
 - **回合 checkpoint**：同一需求连续超过 3 回合仍未收敛时读 `rules/iteration-checkpoint.md`。
@@ -14,6 +14,7 @@
 
 - [plan-first-delivery](skills/plan-first-delivery/SKILL.md) — Default mode 的写代码主流程：Root（规划档强模型）规划、集成与统一验证，实现默认委派 implementer（实现档模型），按需记录轻量自作主张审计，独立 verifier / UI reviewer / 并行 worker 按正交 gate 触发。
 - [exec-plan](skills/exec-plan/SKILL.md) — 仅跨会话、跨 host、多 writer、不可逆迁移或审计交接时，把最终 plan 持久化成单文件 ExecPlan。
+- [visual-brief](skills/visual-brief/SKILL.md) — 讲多步计划、实现方案、方案取舍或调查/架构结论时，用一张 inline 图承载结构、3–5 条要点承载结论，替代长段落。
 - [use-worktree](skills/use-worktree/SKILL.md) — 代码改动一律从最新目标分支创建隔离 worktree（`scripts/worktree-bootstrap.sh` 一键创建+初始化，符合条件的旧 worktree 可复用），主仓 checkout 保持只读。
 - [parallel-subagents](skills/parallel-subagents/SKILL.md) — 只读调研可并行；写任务仅在写域互斥且能明显提速时并行，Root 统一集成和最终验证。
 - [post-change-verify](rules/post-change-verify.md) — 最终候选先跑相关 cheap lint/check，再 build，并按需求或风险跑 targeted tests；源码变化使旧证据失效。

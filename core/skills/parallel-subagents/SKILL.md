@@ -22,6 +22,7 @@ Root 在 prompt 中写清：
 - 目标、可观察完成条件和相关约束；
 - 独占文件或模块 ownership、禁止触达范围；
 - 已冻结的共享接口和依赖；
+- `plan-first-delivery` 冻结的 `validation_fallback_contract`；
 - 必须读取的项目文档；
 - 返回格式与允许执行的窄域检查。
 
@@ -39,7 +40,7 @@ Root 在 prompt 中写清：
 
 ## Worker handoff
 
-每个写 worker 返回：worktree 绝对路径、`base_ref`/当前 HEAD、`git status --short`、完整 changed/untracked paths、ownership 内的 diff、窄域检查及结果、未解决项。不得自行 commit、merge、push 或开 PR。
+每个写 worker 返回：worktree 绝对路径、`base_ref`/当前 HEAD、`git status --short`、完整 changed/untracked paths、ownership 内的 diff、`validation_fallback_contract` 对账、窄域检查及结果、未解决项。不得自行 commit、merge、push 或开 PR。
 
 - 共享 worktree：Root 复核当前文件与返回清单即可；任何越界路径先停下处理。
 - 独立 worktree：优先用 host-native 未提交 diff handoff。共享本地磁盘时，Root 可从记录的 worktree 读取 `git diff --binary <base_ref> -- <owned paths>` 并单独核对 untracked/binary 文件，再应用到主 worktree。
@@ -48,7 +49,7 @@ Root 在 prompt 中写清：
 
 ## 集成
 
-1. Root 收集每个 handoff，核对 `base_ref`、changed paths、越界、冲突和共享契约。
+1. Root 收集每个 handoff，核对 `base_ref`、changed paths、越界、冲突、共享契约和 `validation_fallback_contract` 对账。
 2. Root 按冻结的机制把 diff 集成进主 worktree，逐项确认 untracked/binary 文件，并完成必要的集成修正。
 3. 只对 fan-in 后的最终候选执行一次 `rules/post-change-verify.md` 中冻结的验证。
 4. 最终源码变化会使对应验证和 review 失效；authoritative plan 或设计输入变化会使语义/UI review 失效。只重跑受影响 gate。

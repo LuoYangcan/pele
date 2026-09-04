@@ -13,8 +13,8 @@ description: Default mode 的写代码交付主流程。收到会落地 Edit / W
 | --- | --- |
 | 原生 Plan mode | 不执行本 skill；保持只读，最终 plan 是同一任务的需求真相源 |
 | Default，用户明确要求执行同一任务的最终 plan | 直接进入执行；不重新规划、不复制成第二份计划文件 |
-| Default，目标窄且无会改变结果的决策 | 只读确认入口和影响面；多步任务用 `update_plan`，随后实现。无法确定是否存在下一行任一类决策时，按下一行处理 |
-| Default，仍有产品行为、scope、架构、硬约束或验收决策 | 先探索可发现事实；支持原生 Plan 的 host 请用户切到 Plan mode，无 Plan 的 host 由同一 Root 做只读 planning turn 并等明确执行授权 |
+| Default，目标窄且无会改变结果的决策 | 仅限微改动：单文件或少量行、无新可观察行为、实现唯一明确，或用户指令已具体到实现唯一确定且不引入新的可观察行为。只读确认入口和影响面；多步任务用 `update_plan`，随后实现。新功能、多文件改动、存在多种合理实现或行为变化，以及无法确定是否存在下一行任一类决策时，按下一行处理 |
+| Default，仍有产品行为、scope、架构、硬约束或验收决策 | 先用 `ToolSearch` 确认 `EnterPlanMode` 是否存在——它常是 deferred tool，不出现在已加载工具列表里，缺席不等于 host 不支持。存在则 Root 立即主动调用切入 Plan mode（用户拒绝后按只读 planning turn 处理），不要以「等用户手动切换」代替调用；确认不存在才由同一 Root 做只读 planning turn 并等明确执行授权 |
 | 用户明确要求 implementation worker | 把它视为实现委派；Root 仍负责边界、集成和最终验证 |
 
 纯问答、只读诊断、状态查询、修改全局 rule / skill / hook / settings，以及 `/ship`、`/review`、`/pr-review` 的内部流程不触发。
@@ -48,7 +48,8 @@ Root 始终拥有用户交互、最终 plan、共享决策、主工作区集成�
 3. 记录 `base_ref="$(git rev-parse HEAD)"`，检查 dirty tree，保护用户已有改动。
 4. 项目 AGENTS/CLAUDE 已在 context 时直接检查 trigger 标记，否则读取；存在 trigger-on-touch 标记时加载 `scan-trigger-docs`。
 5. 加载本次真正命中的架构、语言、Figma、文档或平台 skill。项目规则、precedent 或 authoritative final plan 已明确结构时不再加载 `architecture-first`；仅实施中出现未决的 material boundary surprise 时回到 discovery/Plan 决策。
-6. 只有命中 `exec-plan` 的持久化边界时才写单文件 ExecPlan；同一 Root、同一任务、一次可完成的实现不落计划文件。
+6. 非平凡代码写入，以及任意规模但拟新增或扩大 validation/error handling/fallback 的写入，都须在首次 Edit 前加载 `lean-diff` 并冻结 prompt 字段 `validation_fallback_contract`；只有已确认不触及这些语义的微改动可跳过。默认值为 `NONE`；新 validation 只有能由用户/最终 plan、项目规则、权威外部契约或复现证据证明必要时才能列入。fallback 还必须由用户/最终 plan、项目规则或权威产品契约明确授权；失败 trace 只能证明故障，不能授权降级。每项写 `site/kind`、`evidence`、`invariant_owner`；fallback 另写 `degraded_result` 与 `recovery_or_failure_owner`。只有故障证据而无授权时，停在首次 Edit 前，由 Root 向用户展示 `fallback_proposal`：触发证据、不兜底的结果、拟议降级、数据/语义损失、恢复或失败 owner；默认建议不加，只有用户明确选择才能更新合同，未回复不算授权。该字段不是新计划或落盘工件。
+7. 只有命中 `exec-plan` 的持久化边界时才写单文件 ExecPlan；同一 Root、同一任务、一次可完成的实现不落计划文件。
 
 ## 正交 gates
 
@@ -82,9 +83,9 @@ Plan 接受、切回 Default 或“Implement”只授权当前 scope 内的本�
 ### 默认：委派 implementer 实现
 
 1. 多步任务用 `update_plan` 维护 2–6 个结果导向步骤；单步改动不用计划 UI。
-2. decision-complete 的实现默认交给 `implementer`：prompt 写清目标与完成条件、独占 ownership 与禁止触达范围、已冻结共享接口、必读项目文档、返回格式和允许的窄域检查（同 `parallel-subagents` 分派前冻结）。
-3. Root 直接写的例外：单文件、无决策的微改动，集成级修正，验证失败的窄修，以及 host 无 subagent（此时 Root 串行实现）。共享清单、公共接口和最终合并文件始终由 Root 写。
-4. worker 返回后，Root 检查实际 diff、越界写入、共享接口和用户已有改动，完成必要集成修正，再进入统一验证；worker 的局部检查不能替代最终集成验证。
+2. decision-complete 的实现默认交给 `implementer`：prompt 写清目标与完成条件、独占 ownership 与禁止触达范围、已冻结共享接口、`validation_fallback_contract`、必读项目文档、返回格式和允许的窄域检查（同 `parallel-subagents` 分派前冻结）。
+3. Root 直接写的例外：单文件、无决策的微改动，集成级修正，验证失败的窄修，以及 host 无 subagent（此时 Root 串行实现）。Root 直接写也受同一 `validation_fallback_contract` 约束；共享清单、公共接口和最终合并文件始终由 Root 写。
+4. worker 返回后，Root 检查实际 diff、越界写入、共享接口、用户已有改动，以及新增 validation/fallback 与合同逐项一致；未列入的本任务新增代码必须移除，或带证据回到 discovery，Root 不得事后自行补授权。完成必要集成修正后再进入统一验证；worker 的局部检查不能替代最终集成验证。
 5. 用户追加局部实现细节时更新 execution checklist 后继续；不创建 amendment/status 文件。
 6. 用户改变可观察行为、scope、架构、硬约束或验收标准时，暂停 writer，保留当前 diff，回到 DISCOVER/PLAN_READY 产出替代 plan；不要擅自回滚用户改动。替代 plan 必须完整复述此前已积累的用户实质决策，不能只写增量；已有 ExecPlan 时按 `exec-plan` 更新规则同步。
 

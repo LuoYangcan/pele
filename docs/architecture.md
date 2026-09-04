@@ -1,6 +1,6 @@
 # Architecture
 
-Pele's center is plan-first delivery with model tiering. Native Plan mode turns a request into a decision-complete plan; the same Root — a strong planning-tier model — then owns decisions, integration, and verification in Default mode, while code writing is delegated by default to the `implementer` subagent running a general implementation-tier model. Roles are orthogonal gates, not a fixed pipeline.
+Pele installs onto Claude Code, Codex, or both; the workflow content is host-neutral and only the config layout differs (see the host support table in the README). Pele's center is plan-first delivery with model tiering. Native Plan mode turns a request into a decision-complete plan; the same Root — a strong planning-tier model — then owns decisions, integration, and verification in Default mode, while code writing is delegated by default to the `implementer` subagent running a general implementation-tier model. Roles are orthogonal gates, not a fixed pipeline.
 
 ## Control flow
 
@@ -35,6 +35,8 @@ Root reports: observable behavior, verification results, decision audit, docs di
 | `implementer` | general implementation tier (`core/agents/implementer.md`) | code writing inside frozen ownership; returns diff + open questions |
 | `verifier` / `ui-reviewer` | mid tier | independent acceptance when their gate hits |
 | `command-runner` | small tier | mechanical command execution with trimmed logs |
+
+Each agent ships twice: `core/agents/<name>.md` for Claude Code and `core/agents/<name>.toml` for Codex. `install.sh` links only the extension the target host reads, so the two never collide.
 
 The implementer never commits, never runs final verification, and returns material decisions to the Root instead of deciding them.
 

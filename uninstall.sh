@@ -7,14 +7,17 @@
 #   ./uninstall.sh                          # global mode (default): clean ~/.claude/
 #   ./uninstall.sh --global                 # explicit global mode
 #   ./uninstall.sh --project <path>         # project mode: clean <path>/.claude/
+#   ./uninstall.sh --host codex             # clean ~/.codex/ instead of ~/.claude/
+#   ./uninstall.sh --host both              # clean both host dirs
 #   ./uninstall.sh --dry-run                # show what would be removed
 #
-# --global and --project are mutually exclusive.
+# --global and --project are mutually exclusive. --host defaults to claude.
 
 set -euo pipefail
 
 DRY_RUN=0
 MODE=""
+HOST="claude"
 PROJECT_PATH=""
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -38,6 +41,18 @@ while [ $# -gt 0 ]; do
         exit 2
       fi
       PROJECT_PATH="$1"
+      shift
+      ;;
+    --host)
+      shift
+      if [ $# -eq 0 ] || [ -z "${1:-}" ]; then
+        echo "Error: --host requires a value (claude | codex | both)." >&2
+        exit 2
+      fi
+      case "$1" in
+        claude|codex|both) HOST="$1" ;;
+        *) echo "Error: --host must be claude, codex, or both (got '$1')." >&2; exit 2 ;;
+      esac
       shift
       ;;
     --dry-run)
@@ -69,8 +84,23 @@ else
   CLAUDE_DIR="${HOME}/.claude"
 fi
 
-if [ ! -d "$CLAUDE_DIR" ]; then
-  echo "[pele-uninstall] Nothing to do: $CLAUDE_DIR does not exist."
+CODEX_DIR="${CODEX_HOME:-${HOME}/.codex}"
+
+if [ "$MODE" = "project" ] && [ "$HOST" != "claude" ]; then
+  echo "Error: --host ${HOST} is incompatible with --project (Codex config is global only)." >&2
+  exit 2
+fi
+
+TARGET_DIRS=()
+if [ "$HOST" = "claude" ] || [ "$HOST" = "both" ]; then TARGET_DIRS+=( "$CLAUDE_DIR" ); fi
+if [ "$HOST" = "codex" ]  || [ "$HOST" = "both" ]; then TARGET_DIRS+=( "$CODEX_DIR" ); fi
+
+EXISTING_DIRS=()
+for d in "${TARGET_DIRS[@]}"; do
+  [ -d "$d" ] && EXISTING_DIRS+=( "$d" )
+done
+if [ "${#EXISTING_DIRS[@]}" -eq 0 ]; then
+  echo "[pele-uninstall] Nothing to do: none of ${TARGET_DIRS[*]} exist."
   exit 0
 fi
 
@@ -82,8 +112,9 @@ fi
 log() { echo "${C_DIM}[pele-uninstall]${C_RESET} $*"; }
 ok()  { echo "${C_GREEN}✓${C_RESET} $*"; }
 
+log "Host:   ${HOST}"
 log "Mode:   ${MODE}$([ "$MODE" = "project" ] && echo " (${PROJECT_PATH})")"
-log "Target: ${CLAUDE_DIR}"
+log "Target: ${EXISTING_DIRS[*]}"
 
 removed=0
 # Walk <claude-dir>/ and unlink any symlinks pointing into PELE_ROOT
@@ -100,7 +131,7 @@ while IFS= read -r -d '' lnk; do
       removed=$((removed+1))
       ;;
   esac
-done < <(find "${CLAUDE_DIR}" -type l -print0 2>/dev/null)
+done < <(find "${EXISTING_DIRS[@]}" -type l -print0 2>/dev/null)
 
 ok "Pele symlinks removed: ${removed}"
 echo ""
@@ -110,4 +141,6 @@ if [ "$MODE" = "global" ]; then
 else
   log "  • ${PROJECT_PATH}/CLAUDE.md and ${PROJECT_PATH}/AGENTS.md were NOT modified — remove the '@.claude/pele-index.md' line manually if you added it"
 fi
-log "  • Backups of pre-existing files are still in ${CLAUDE_DIR}.backup-* — restore manually as needed"
+for d in "${EXISTING_DIRS[@]}"; do
+  log "  • Backups of pre-existing files are still in ${d}.backup-* — restore manually as needed"
+done

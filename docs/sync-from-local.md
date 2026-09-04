@@ -2,13 +2,24 @@
 
 Pele is a curated public distribution of the maintainer's working harness. Sync only portable behavior: no private identifiers, absolute home paths, credentials, unpublished helpers, or project-specific commands.
 
-The maintainer-local `scripts/sync-from-local.sh` performs the copy and token-replacement pass. It is gitignored because its replacement dictionary contains private identifiers; every sync still requires manual diff review.
+## Language policy
+
+`core/` is **English and hand-maintained**. The maintainer's harness is Chinese. These are deliberately different languages, so prose is never copied between them — a copy would overwrite the English text.
+
+The helper therefore has two classes of file:
+
+| Class | Rule |
+|---|---|
+| Any upstream file containing Han characters | **Never copied.** The helper reports it as needing a hand port and you carry the *meaning* into the English file under `core/`. |
+| Language-neutral files (shell helpers, JSON schema, YAML) | Mirrored as before. |
+
+The maintainer-local `scripts/sync-from-local.sh` performs the mirror pass, the token replacement, and the port report. It is gitignored because its replacement dictionary contains private identifiers; every sync still requires manual diff review.
 
 ## Public boundary
 
 | Local content | Sync? | Constraint |
 |---|---:|---|
-| `CLAUDE.md` | Yes | Keep the index portable and all links resolvable |
+| `CLAUDE.md` | Port | Keep the index portable and all links resolvable |
 | `agents/{implementer,verifier,ui-reviewer,command-runner}.md` | Yes | Preserve role write boundaries and structured contracts; Codex `.toml` twins stay local |
 | Workflow rules | Yes | No private paths or project-only assumptions |
 | Portable platform rules, including Swift/iOS rules | Yes | Optional, generic, and usable outside the maintainer's projects |
@@ -44,7 +55,19 @@ Never sync directly on `main`.
 <pele-checkout>/scripts/sync-from-local.sh
 ```
 
-The helper copies allow-listed files, rewrites known private tokens, flags context-sensitive lines, and runs a privacy scan. Dry-run previews copy candidates; it cannot fully preview replacements before copied content exists.
+The helper mirrors language-neutral files, rewrites known private tokens, applies the paragraph-level rewrites, flags context-sensitive lines, and runs a privacy scan. Dry-run previews copy candidates; it cannot fully preview replacements before copied content exists.
+
+It then prints every upstream prose file whose content changed since the last accepted port. Nothing under `core/` is overwritten for those — port the change by hand into the English file.
+
+### 2b. Port prose changes, then accept
+
+For each reported file, read the upstream change, apply the equivalent edit to the English file under `core/`, and keep the public boundary (no private names, no project-specific commands). When the port is done:
+
+```bash
+<pele-checkout>/scripts/sync-from-local.sh --accept
+```
+
+That records the upstream hashes in the gitignored `.sync-port-state`, so the next run reports only what changed after this point. Run it only after the port is actually finished — accepting without porting silently drops the upstream change.
 
 ### 3. Review and re-decouple
 

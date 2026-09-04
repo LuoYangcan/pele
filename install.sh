@@ -5,9 +5,16 @@
 #   ./install.sh                          # global mode (default): install into ~/.claude/
 #   ./install.sh --global                 # explicit global mode (same as default)
 #   ./install.sh --project <path>         # project mode: install into <path>/.claude/
+#   ./install.sh --host codex             # install for Codex instead of Claude Code
+#   ./install.sh --host both              # install for both hosts
 #   ./install.sh --figma                  # also install figma-extras hooks (global mode only)
 #   ./install.sh --dry-run                # show what would be done, do not change anything
 #   ./install.sh --force                  # skip confirmation prompts (still backs up)
+#
+# Hosts (--host claude|codex|both, default claude):
+#   claude - ~/.claude/: CLAUDE.md index, .md agents, commands/, hooks merged.
+#   codex  - ~/.codex/:  AGENTS.md index, .toml agents, prompts/, no hooks.
+#            Global only; Codex has no per-project config dir.
 #
 # Modes (--global and --project are mutually exclusive):
 #   global  — symlink core/{rules,agents,skills,commands,templates}/* into ~/.claude/,
@@ -23,6 +30,7 @@ set -euo pipefail
 
 # -------------------------- args --------------------------
 WITH_FIGMA=0
+HOST="claude"        # claude | codex | both
 DRY_RUN=0
 FORCE=0
 MODE=""              # "" | "global" | "project"
@@ -51,6 +59,18 @@ while [ $# -gt 0 ]; do
       PROJECT_PATH="$1"
       shift
       ;;
+    --host)
+      shift
+      if [ $# -eq 0 ] || [ -z "${1:-}" ]; then
+        echo "Error: --host requires a value (claude | codex | both)." >&2
+        exit 2
+      fi
+      case "$1" in
+        claude|codex|both) HOST="$1" ;;
+        *) echo "Error: --host must be claude, codex, or both (got '$1')." >&2; exit 2 ;;
+      esac
+      shift
+      ;;
     --figma)
       WITH_FIGMA=1
       shift
@@ -71,9 +91,16 @@ Usage:
   ./install.sh                          # global mode (default): install into ~/.claude/
   ./install.sh --global                 # explicit global mode (same as default)
   ./install.sh --project <path>         # project mode: install into <path>/.claude/
+  ./install.sh --host codex             # install for Codex instead of Claude Code
+  ./install.sh --host both              # install for both hosts
   ./install.sh --figma                  # also install figma-extras hooks (global mode only)
   ./install.sh --dry-run                # show what would be done, do not change anything
   ./install.sh --force                  # skip confirmation prompts (still backs up)
+
+Hosts (--host claude|codex|both, default claude):
+  claude - ~/.claude/: CLAUDE.md index, .md agents, commands/, hooks merged.
+  codex  - ~/.codex/:  AGENTS.md index, .toml agents, prompts/, no hooks.
+           Global only; Codex has no per-project config dir.
 
 Modes (--global and --project are mutually exclusive):
   global  — symlink core/{rules,agents,skills,commands,templates}/* into ~/.claude/,
@@ -94,6 +121,13 @@ done
 
 # Default mode is global
 [ -z "$MODE" ] && MODE="global"
+
+# Codex reads its config from one place per machine; there is no per-project
+# equivalent of <path>/.claude, so Codex installs are global only.
+if [ "$MODE" = "project" ] && [ "$HOST" != "claude" ]; then
+  echo "Error: --host ${HOST} is incompatible with --project (Codex config is global only)." >&2
+  exit 2
+fi
 
 # In project mode, --figma is incompatible (hooks are global-only)
 if [ "$MODE" = "project" ] && [ "$WITH_FIGMA" = 1 ]; then
@@ -117,8 +151,13 @@ if [ "$MODE" = "project" ]; then
 else
   CLAUDE_DIR="${HOME}/.claude"
 fi
+CODEX_DIR="${CODEX_HOME:-${HOME}/.codex}"
 TS="$(date -u +%Y%m%dT%H%M%SZ)"
 BACKUP_DIR="${CLAUDE_DIR}.backup-${TS}"
+
+# Set per host pass; backup_if_exists and link helpers read these.
+CURRENT_TARGET="$CLAUDE_DIR"
+CURRENT_BACKUP="$BACKUP_DIR"
 
 # ANSI helpers (degrade gracefully without TTY)
 if [ -t 1 ]; then
@@ -133,6 +172,7 @@ err()  { echo "${C_RED}[pele] ✗${C_RESET} $*" >&2; }
 
 # ----------------------- preflight -----------------------
 log "Pele root: ${PELE_ROOT}"
+log "Host:      ${HOST}"
 log "Mode:      ${MODE}$([ "$MODE" = "project" ] && echo " (${PROJECT_PATH})")"
 log "Target:    ${CLAUDE_DIR}"
 log "Figma extras: $([ "$WITH_FIGMA" = 1 ] && echo "yes" || echo "no")"
@@ -165,8 +205,8 @@ backup_if_exists() {
       esac
     fi
     # Compute relative path under CLAUDE_DIR (handles both global ~/.claude and project <path>/.claude)
-    local rel="${p#${CLAUDE_DIR}/}"
-    local dest="${BACKUP_DIR}/${rel}"
+    local rel="${p#${CURRENT_TARGET}/}"
+    local dest="${CURRENT_BACKUP}/${rel}"
     mkdir -p "$(dirname "$dest")"
     if [ "$DRY_RUN" = 1 ]; then
       log "  would backup: $p → $dest"
@@ -207,16 +247,42 @@ link_dir_flat() {
   done
 }
 
+# Mirror only files with a given extension (agents/: .md for Claude, .toml for Codex)
+link_dir_ext() {
+  local src="$1" dst="$2" ext="$3"
+  mkdir -p "$dst"
+  local f base found=0
+  for f in "$src"/*."$ext"; do
+    [ -e "$f" ] || continue
+    base="$(basename "$f")"
+    link_file "$f" "${dst}/${base}"
+    found=1
+  done
+  [ "$found" = 0 ] && warn "  no .${ext} files in $(basename "$src")/ — nothing linked"
+  return 0
+}
+
+# Some skills are written for one host's tooling and are noise on the other.
+skill_is_compatible() {
+  case "$1:$2" in
+    claude:codex-simplify|claude:source-command-review-codex|codex:source-command-review)
+      return 1
+      ;;
+  esac
+  return 0
+}
+
 # Mirror a directory containing nested dirs (e.g. skills/<name>/)
 link_dir_recursive_top() {
   # Symlink each TOP-LEVEL entry in src (file or dir) into dst.
   # Top-level dirs are linked as a whole (one symlink), so updates inside the source repo are visible immediately.
-  local src="$1" dst="$2"
+  local src="$1" dst="$2" host="${3:-claude}"
   mkdir -p "$dst"
   local entry base
   for entry in "$src"/*; do
     [ -e "$entry" ] || continue
     base="$(basename "$entry")"
+    skill_is_compatible "$host" "$base" || { log "  skip: ${base} (not for ${host})"; continue; }
     link_file "$entry" "${dst}/${base}"
   done
 }
@@ -224,7 +290,12 @@ link_dir_recursive_top() {
 # ----------------------- confirm -----------------------
 if [ "$FORCE" != 1 ] && [ "$DRY_RUN" != 1 ]; then
   echo "${C_BOLD}This will:${C_RESET}"
-  echo "  • symlink ${PELE_ROOT}/core/{rules,agents,skills,commands,templates}/* into ${CLAUDE_DIR}/*"
+  if [ "$HOST" = "claude" ] || [ "$HOST" = "both" ]; then
+    echo "  • symlink ${PELE_ROOT}/core/{rules,agents,skills,commands,templates}/* into ${CLAUDE_DIR}/*"
+  fi
+  if [ "$HOST" = "codex" ] || [ "$HOST" = "both" ]; then
+    echo "  • symlink ${PELE_ROOT}/core/* into ${CODEX_DIR}/* (AGENTS.md index, .toml agents, prompts/)"
+  fi
   if [ "$MODE" = "global" ]; then
     echo "  • symlink ${PELE_ROOT}/core/CLAUDE.md to ${CLAUDE_DIR}/CLAUDE.md"
     [ "$WITH_FIGMA" = 1 ] && echo "  • merge ${PELE_ROOT}/figma-extras/hooks/settings.hooks.json into settings.json"
@@ -243,40 +314,71 @@ if [ "$FORCE" != 1 ] && [ "$DRY_RUN" != 1 ]; then
   esac
 fi
 
-# ----------------------- core: top-level index -----------------------
-if [ "$MODE" = "global" ]; then
-  log "Installing CLAUDE.md..."
-  link_file "${PELE_ROOT}/core/CLAUDE.md" "${CLAUDE_DIR}/CLAUDE.md"
-else
-  log "Installing pele-index.md (project index)..."
-  link_file "${PELE_ROOT}/core/CLAUDE.md" "${CLAUDE_DIR}/pele-index.md"
+# ----------------------- core install, per host -----------------------
+# Claude and Codex read the same content from different filenames and dirs:
+#   index    CLAUDE.md / pele-index.md   vs  AGENTS.md
+#   agents   *.md                        vs  *.toml
+#   commands commands/                   vs  prompts/
+# Hooks stay Claude-only — they are a Claude Code settings.json feature.
+
+install_core_for_host() {
+  local host="$1" dir="$2"
+  local index_name agents_ext commands_dir
+
+  if [ "$host" = "codex" ]; then
+    index_name="AGENTS.md"; agents_ext="toml"; commands_dir="prompts"
+  elif [ "$MODE" = "global" ]; then
+    index_name="CLAUDE.md"; agents_ext="md"; commands_dir="commands"
+  else
+    index_name="pele-index.md"; agents_ext="md"; commands_dir="commands"
+  fi
+
+  CURRENT_TARGET="$dir"
+  CURRENT_BACKUP="${dir}.backup-${TS}"
+  mkdir -p "$dir"
+
+  log "[${host}] Installing ${index_name}..."
+  link_file "${PELE_ROOT}/core/CLAUDE.md" "${dir}/${index_name}"
+
+  log "[${host}] Installing rules/..."
+  link_dir_flat "${PELE_ROOT}/core/rules" "${dir}/rules"
+
+  log "[${host}] Installing agents/ (.${agents_ext})..."
+  link_dir_ext "${PELE_ROOT}/core/agents" "${dir}/agents" "$agents_ext"
+
+  log "[${host}] Installing ${commands_dir}/..."
+  link_dir_flat "${PELE_ROOT}/core/commands" "${dir}/${commands_dir}"
+
+  log "[${host}] Installing templates/..."
+  link_dir_flat "${PELE_ROOT}/core/templates" "${dir}/templates"
+
+  log "[${host}] Installing skills/..."
+  link_dir_recursive_top "${PELE_ROOT}/core/skills" "${dir}/skills" "$host"
+
+  if [ "$MODE" = "global" ]; then
+    log "[${host}] Installing scripts/..."
+    link_dir_flat "${PELE_ROOT}/scripts" "${dir}/scripts"
+  fi
+}
+
+INSTALLED_DIRS=()
+if [ "$HOST" = "claude" ] || [ "$HOST" = "both" ]; then
+  install_core_for_host claude "$CLAUDE_DIR"
+  INSTALLED_DIRS+=( "$CLAUDE_DIR" )
+fi
+if [ "$HOST" = "codex" ] || [ "$HOST" = "both" ]; then
+  install_core_for_host codex "$CODEX_DIR"
+  INSTALLED_DIRS+=( "$CODEX_DIR" )
 fi
 
-# ----------------------- core: rules / agents / commands / templates -----------------------
-log "Installing rules/..."
-link_dir_flat "${PELE_ROOT}/core/rules" "${CLAUDE_DIR}/rules"
-
-log "Installing agents/..."
-link_dir_flat "${PELE_ROOT}/core/agents" "${CLAUDE_DIR}/agents"
-
-log "Installing commands/..."
-link_dir_flat "${PELE_ROOT}/core/commands" "${CLAUDE_DIR}/commands"
-
-log "Installing templates/..."
-link_dir_flat "${PELE_ROOT}/core/templates" "${CLAUDE_DIR}/templates"
-
-# ----------------------- core: skills (nested) -----------------------
-log "Installing skills/..."
-link_dir_recursive_top "${PELE_ROOT}/core/skills" "${CLAUDE_DIR}/skills"
-
-# ----------------------- core: scripts (helpers used by hooks; global only) -----------------------
-if [ "$MODE" = "global" ]; then
-  log "Installing scripts/..."
-  link_dir_flat "${PELE_ROOT}/scripts" "${CLAUDE_DIR}/scripts"
-fi
+# Restore Claude as the target for the hooks step below.
+CURRENT_TARGET="$CLAUDE_DIR"
+CURRENT_BACKUP="$BACKUP_DIR"
 
 # ----------------------- merge hooks (global only) -----------------------
-if [ "$MODE" = "project" ]; then
+if [ "$HOST" = "codex" ]; then
+  log "Skipping hooks merge (--host codex — hooks are a Claude Code feature)."
+elif [ "$MODE" = "project" ]; then
   log "Skipping hooks merge (project mode — hooks live in ~/.claude/settings.json globally)."
 else
 log "Merging hooks into settings.json..."
@@ -320,11 +422,11 @@ else
   [ -f "$TMP.base" ] && rm -f "$TMP.base"
   ok "Merged hooks into $SETTINGS (backup at ${BACKUP_DIR}/settings.json.before-merge if existed)"
 fi
-fi  # end: MODE != "project"
+fi  # end: hooks applicable
 
 # ----------------------- done -----------------------
 echo ""
-ok "Pele installed to ${CLAUDE_DIR}/"
+for d in "${INSTALLED_DIRS[@]}"; do ok "Pele installed to ${d}/"; done
 [ -d "$BACKUP_DIR" ] && log "Backup of any conflicts: ${BACKUP_DIR}"
 
 # Check for unreplaced placeholders and warn (safety net — should be 0 after the decouple refactor)
@@ -355,16 +457,13 @@ fi
 
 echo ""
 echo "Verify with:"
-if [ "$MODE" = "global" ]; then
-  echo "  claude mcp list                          # MCP servers"
-  echo "  ls -la ${CLAUDE_DIR}/rules ${CLAUDE_DIR}/agents ${CLAUDE_DIR}/skills"
-else
-  echo "  ls -la ${CLAUDE_DIR}/rules ${CLAUDE_DIR}/agents ${CLAUDE_DIR}/skills"
-fi
+for d in "${INSTALLED_DIRS[@]}"; do
+  echo "  ls -la ${d}/rules ${d}/agents ${d}/skills"
+done
 echo ""
 echo "Uninstall with:"
 if [ "$MODE" = "global" ]; then
-  echo "  ${PELE_ROOT}/uninstall.sh"
+  echo "  ${PELE_ROOT}/uninstall.sh --host ${HOST}"
 else
   echo "  ${PELE_ROOT}/uninstall.sh --project ${PROJECT_PATH}"
 fi

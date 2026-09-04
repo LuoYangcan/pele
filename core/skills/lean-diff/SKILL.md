@@ -1,6 +1,6 @@
 ---
 name: lean-diff
-description: Lean-diff judgment standard covering comment noise, patchwork bloat, over-abstraction, and defensive code patterns. Use in write mode before edits and in review mode when tagging issues. This skill owns local copy/paste, TODO, fallback, silent-catch, and premature-abstraction signals; they do not trigger architecture-first unless diagnosis requires an unresolved durable boundary change. Skip typo, format, rename, comment-only doc, and lint-only diffs.
+description: Lean-diff judgment standard covering comment noise, patchwork bloat, over-abstraction, speculative or duplicate validation, and defensive fallback. Use in write mode before edits and in review mode when tagging issues. This skill owns local copy/paste, TODO, validator, fallback, silent-catch, and premature-abstraction signals; they do not trigger architecture-first unless diagnosis requires an unresolved durable boundary change. Skip typo, format, rename, comment-only doc, and lint-only diffs.
 ---
 
 # lean-diff
@@ -116,27 +116,35 @@ implementation owner 在写代码前用 **write 模式**自检；verifier 或 `/
 
 #### 默认契约
 
-- 内部代码互相调用、framework 给的 non-optional → **不验证、不 try/catch**
-- 只在系统边界验证（user input / external API / file IO）
-- 不为「这种情况不会发生」加分支
+- 内部代码互相调用、framework 给的 non-optional → **不验证、不 try/catch**。
+- 输入结构/字段语义只在不可信输入首次进入系统的 owner 边界验证（user input / external API / file IO），只验证构造可信内部值所必需的不变量；下游直接消费该可信类型。
+- 一个不变量只有一个验证 owner：decoder/parser 管结构，domain constructor 管业务不变量，transport adapter 管 request/response 关联，状态机或消费侧管时序、session、authorization context。下游可以验证自己新增的上下文不变量，不得重复上游已经建立的同一不变量。
+- 新 validation branch/helper/type 必须能指向用户/最终 plan 的要求、权威外部契约，或可复现的失败 fixture/trace。仅凭「可能出现」「更安全」不算证据。
+- 错误默认上抛或显式失败。fallback 必须由用户/最终 plan、项目规则、权威产品契约或已冻结的行为测试明确授权，并写清降级结果与恢复或失败归属；失败 fixture/trace 只能证明故障，不能授权降级，实现者自述也不算。不为「这种情况不会发生」加分支。
+- 有失败证据但没有 fallback 授权时，write mode 不落代码，向 Root 返回 `fallback_proposal`：`trigger/evidence`、`without_fallback`、`proposed_degraded_result`、`data_or_semantic_loss`、`recovery_or_failure_owner`。默认选择仍是不加 fallback；用户未回复不算授权。
 
 #### Issue type
 
 | issue_type | 触发 | severity |
 |---|---|---|
-| `silent-catch` | `try?` / `catch { }` 静默吞错（除非用户/最终 plan 明确要求容错） | **blocking** |
+| `silent-catch` | `try?` / `catch { }` 静默吞错，且不满足下方统一例外 | **blocking** |
+| `speculative-validator` | 新 validation 无上述证据或无法说明唯一 owner；状态机/消费侧验证其自有时序/session/context 不变量不算 | **blocking** |
+| `duplicate-validator` | 同一不变量在多个层重复验证；消费侧新增的时序/session/context 不变量不算重复 | **blocking** |
 | `defensive-unwrap` | 验证不可能发生的情况（framework 保证 non-optional 还 `guard let` 早 return） | warning |
-| `defensive-fallback` | 加 fallback / default 值掩盖错误根因（例：网络失败默默返回空数组而不是向上抛） | warning |
+| `defensive-fallback` | 用 fallback/default/lossy decode/clamp/drop-invalid 把失败伪装成可用结果，但没有证据与明确产品降级契约 | **blocking** |
+
+当 `try?`、空数组/空字符串默认值、lossy collection decode、跳过坏 item 或通用 unknown case 把失败/未知输入改成看似可用的结果时，属于 fallback；权威 schema 定义的语义默认值、保留原始值供上层判断的 unknown 表示，以及 owner 状态机拒绝不属于当前 session/时序的事件且不合成替代结果，都不算 fallback。
 
 #### `silent-catch` 为何 blocking
 
 吞错让根因以其他症状出现。如果需求明确要求失败静默或降级（如埋点失败不影响主流程），implementation owner 应写长效因果注释，而不是引用 plan 章节。
 
-#### 例外
+#### 统一例外
 
-- 用户、最终 plan 或测试用例显式要求容错路径
+- 下列例外适用于本节全部 issue type。
+- 用户、最终 plan、项目规则、权威外部契约或复现失败的测试用例显式要求 validation；fallback 仍须满足上面的产品授权条件
 - 框架钩子要求实现的 default 值（`Equatable.==` 之类的协议 witness）
-- 注释写明稳定的业务原因和失败边界
+- 对允许静默的失败写明稳定业务原因和失败边界；注释本身不能替代上面的证据
 
 ## §自检清单（write 模式）
 
@@ -145,11 +153,14 @@ implementation owner 在写入前过一遍：
 - [ ] 我加的注释属于非显然 why，还是在解释 what / 引用 plan、task、fix 编号 / 留 stale TODO？一年后还能看懂吗？
 - [ ] 这段新代码对应的功能，能否扩 / 改已有方法 / 类型 / helper 达成？
 - [ ] 我引入的抽象（protocol / Manager / Service / 配置参数 / flag）当前真有 ≥3 处调用方吗？还是为「未来扩展」准备？
+- [ ] 每个新 validation branch/helper/type 能否指向用户/最终 plan、权威契约或复现 fixture/trace？它是否位于该不变量唯一的 owner 边界？
+- [ ] 同一不变量是否已由上游 owner 建立，下游又验了一次？下游检查的是否真是自己新增的时序/session/context 不变量？
 - [ ] 我写的 `try?` / `catch { }` 是否吞错？需求真要求静默吗？
 - [ ] 我的 `guard let / else { return }` 是 framework 保证 non-optional 还硬验证？
-- [ ] 我的 fallback / default 值是不是在掩盖错误根因？
+- [ ] 我的 fallback/default/lossy decode/drop-invalid 是否既有外部证据，又有明确产品降级结果与恢复或失败归属语义，而不是掩盖错误根因？
+- [ ] 只有故障证据、没有产品授权时，我是否停在 Edit 前并返回 `fallback_proposal`，而不是替用户决定？
 
-任一项答「是」→ 改回去再落地。
+任一违规项命中，或证据/owner/降级语义答不出来 → 不落地；review mode 标 blocking issue。
 
 ## §issue 输出契约（review 模式）
 

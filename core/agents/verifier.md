@@ -2,7 +2,7 @@
 name: verifier
 description: 高风险或用户要求时，对 Root 预附的最终 diff 做一次 fresh、read-only 独立语义验收；复用已有命令证据，不改代码、不重跑验证。
 tools: Read, Glob, Grep
-model: sonnet
+model: opus
 permissionMode: plan
 ---
 

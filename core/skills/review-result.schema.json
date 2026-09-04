@@ -1,0 +1,97 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "review_fingerprint",
+    "verdict",
+    "summary",
+    "findings",
+    "assessment"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": 1
+    },
+    "review_fingerprint": {
+      "type": "string",
+      "minLength": 1
+    },
+    "verdict": {
+      "enum": [
+        "pass",
+        "pass-with-nits",
+        "fail"
+      ]
+    },
+    "summary": {
+      "type": "string",
+      "minLength": 1
+    },
+    "findings": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "must_fix",
+        "suggestions",
+        "test_residue",
+        "dead_code",
+        "plan_deviations",
+        "perf_advisory"
+      ],
+      "properties": {
+        "must_fix": {
+          "$ref": "#/$defs/findings"
+        },
+        "suggestions": {
+          "$ref": "#/$defs/findings"
+        },
+        "test_residue": {
+          "$ref": "#/$defs/findings"
+        },
+        "dead_code": {
+          "$ref": "#/$defs/findings"
+        },
+        "plan_deviations": {
+          "$ref": "#/$defs/findings"
+        },
+        "perf_advisory": {
+          "$ref": "#/$defs/findings"
+        }
+      }
+    },
+    "assessment": {
+      "type": "string",
+      "minLength": 1
+    }
+  },
+  "$defs": {
+    "findings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "file",
+          "line",
+          "summary"
+        ],
+        "properties": {
+          "file": {
+            "type": "string",
+            "minLength": 1
+          },
+          "line": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "summary": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    }
+  }
+}

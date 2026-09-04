@@ -1,20 +1,34 @@
 # Pele
 
-> Volcanic harness for Claude Code — opinionated rules, agents, and workflow that put a strong model in charge of planning and a general model in charge of typing.
+> Volcanic harness for coding agents — opinionated rules, agents, and workflow that put a strong model in charge of planning and a general model in charge of typing.
 
-Pele is a set of global Claude Code rules, subagents, slash commands, and hooks distilled from real day-to-day use. Its **plan-first, model-tiered delivery** keeps a strong planning-tier model as the Root: native Plan mode produces a decision-complete plan, a general-model `implementer` subagent writes the code inside frozen boundaries, and the Root reviews the diff, integrates, verifies, and commits each feature unit — with independent verifier / UI-review gates when risk warrants.
+Pele is a set of global rules, subagents, slash commands, and hooks distilled from real day-to-day use. It installs for **Claude Code, Codex, or both** — the same workflow content, mapped onto each host's own config layout. Its **plan-first, model-tiered delivery** keeps a strong planning-tier model as the Root: native Plan mode produces a decision-complete plan, a general-model `implementer` subagent writes the code inside frozen boundaries, and the Root reviews the diff, integrates, verifies, and commits each feature unit — with independent verifier / UI-review gates when risk warrants.
 
 Named after [Pele](https://en.wikipedia.org/wiki/Pele_(deity)), the Hawaiian volcano goddess: she controls the eruption.
 
 ## What you get
 
-Drop-in install adds the following under `~/.claude/`:
+### Host support
+
+| | Claude Code | Codex |
+|---|---|---|
+| Install | `./install.sh` (default) | `./install.sh --host codex` |
+| Config dir | `~/.claude/` | `~/.codex/` (or `$CODEX_HOME`) |
+| Index file | `CLAUDE.md` | `AGENTS.md` |
+| Agent definitions | `agents/*.md` | `agents/*.toml` |
+| Slash commands | `commands/` | `prompts/` |
+| Hooks | merged into `settings.json` | not applicable |
+| Per-project install | `--project <path>` | global only |
+
+`--host both` installs for both. Skills written for one host's tooling (`codex-simplify`, the Codex review backend) are filtered out of the other host's install automatically.
+
+Drop-in install adds the following under the host's config dir:
 
 | Layer | Contents |
 |---|---|
-| **CLAUDE.md** | Top-level index that progressively discloses rules / skills / agents on demand |
+| **index** | `CLAUDE.md` / `AGENTS.md` — progressively discloses rules / skills / agents on demand |
 | **rules/** | Workflow policies (verification ladder, iteration checkpoints, commit style) plus portable Swift/iOS guidance |
-| **agents/** | `implementer` · `verifier` · `ui-reviewer` · `command-runner` |
+| **agents/** | `implementer` · `verifier` · `ui-reviewer` · `command-runner` (shipped as both `.md` and `.toml`) |
 | **commands/** | `/openpr` · `/ship` · `/review` · `/pr-review` · `/cleanup-and-exit` (`/clean-and-exit` alias) |
 | **skills/** | `plan-first-delivery` and worktree orchestration, architecture/review helpers, optional iOS UI and Figma workflows |
 | **scripts/** | `run-ios.sh` · `worktree-sim.sh` · `worktree-bootstrap.sh` · `validation-receipt.sh` · `trust-dir.sh` and hook helpers |
@@ -61,7 +75,7 @@ Pele supports two mutually-exclusive install modes:
 
 #### Global (`--global`, default)
 
-Symlinks `core/` into `~/.claude/`. Pele's rules / agents / skills apply across every project Claude Code opens on this machine.
+Symlinks `core/` into the host config dir (`~/.claude/`, or `~/.codex/` with `--host codex`). Pele's rules / agents / skills apply across every project that host opens on this machine.
 
 ```bash
 ./install.sh             # equivalent to ./install.sh --global
@@ -98,7 +112,7 @@ Pass `--figma` only in global mode; project mode deliberately does not merge glo
 
 - macOS / Linux (zsh or bash)
 - `git`, `jq` (for hook merging — optional but recommended)
-- [Claude Code](https://docs.anthropic.com/claude/docs/claude-code) installed
+- At least one host: [Claude Code](https://docs.anthropic.com/claude/docs/claude-code) or Codex
 
 ## Plan-first delivery
 

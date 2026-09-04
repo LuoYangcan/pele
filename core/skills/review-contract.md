@@ -5,7 +5,7 @@ Shared contract for `/review` backends. This command-level workflow is separate 
 ## Inputs
 
 - `base_ref`: repository review base, normally `dev`.
-- `review_fingerprint`: `"~/.claude/scripts/validation-receipt.sh" --repo "$repo" fingerprint`.
+- `review_fingerprint`: `"$HOME/.claude/scripts/validation-receipt.sh" --repo "$repo" fingerprint`.
 - `report_path`: `.reviews/<branch>-<timestamp>.md`.
 - `cleanup_result`: structured result from the selected cleanup backend.
 - `scratch`: per-run temporary directory, created once and removed on exit:
@@ -23,7 +23,7 @@ Freeze before cleanup:
 
 ```bash
 snapshot_json="$(
-  "~/.claude/scripts/review-input-snapshot.sh" \
+  "$HOME/.claude/scripts/review-input-snapshot.sh" \
     --repo "$repo" "$base_ref" "${branch_slug}-${timestamp}-pre-cleanup"
 )"
 snapshot_path="$(printf '%s' "$snapshot_json" | jq -r '.patch.path')"
@@ -82,7 +82,7 @@ Verdict is derived from findings:
 Capture the reviewer JSON in `$temp_result` (see Inputs), then run:
 
 ```bash
-helper="~/.claude/scripts/review-result.sh"
+helper="$HOME/.claude/scripts/review-result.sh"
 "$helper" validate "$temp_result" "$review_fingerprint"
 "$helper" publish active "$temp_result" "$review_fingerprint" \
   "$report_path" "$branch" "$base_ref" "$reviewer_label" \

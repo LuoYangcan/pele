@@ -16,7 +16,7 @@
 单 Root、单 worktree、且验证结果不需要被 review gate、并行 fan-in 或跨 session 复用时，直接运行命令即可，不写 receipt。需要跨阶段复用验证结果时，用：
 
 ```bash
-verify="~/.claude/scripts/validation-receipt.sh"
+verify="$HOME/.claude/scripts/validation-receipt.sh"
 repo="$(git rev-parse --show-toplevel)"
 receipt="$repo/.specs/<slug>-validation.json"
 "$verify" --repo "$repo" reusable "$receipt" <check-id> <coverage> || \

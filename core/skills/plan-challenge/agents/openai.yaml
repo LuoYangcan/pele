@@ -1,0 +1,4 @@
+interface:
+  display_name: "Plan Challenge"
+  short_description: "Independently review a formal plan for over-design, over-strict validation and over-protection"
+  default_prompt: "Use $plan-challenge to independently review the current plan, checking first for over-design, over-strict validation and over-protection, and propose evidence-based cuts."

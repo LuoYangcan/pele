@@ -266,7 +266,10 @@ for _, devs in data['devices'].items():
     exit 4
   fi
   PID="$(printf '%s\n' "$LAUNCH_OUT" | grep -oE '[0-9]+' | tail -1)"
-  open -a Simulator
+  # Xcode 27 hosts simulator windows in DeviceHub.app instead of Simulator.app.
+  if ! bash "$(dirname "${BASH_SOURCE[0]}")/open-simulator.sh" "$UDID" >&2; then
+    exit 4
+  fi
   WHERE="sim:${SIM_NAME:-$UDID}"
   UDID_OUT="$UDID"
 fi

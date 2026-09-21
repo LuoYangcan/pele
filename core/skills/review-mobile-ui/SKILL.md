@@ -5,6 +5,8 @@ description: iOS Simulator UI acceptance SOP. Run by ui-reviewer when Figma, ani
 
 # Mobile UI review
 
+Resolve installed paths per the [host adapter](../../rules/host-adapter.md) before running helpers.
+
 The caller must supply the explicit cases from the final plan, build evidence for the current source, the frozen design artifacts, a `build=` bound to the actual `.app`/environment, and a `ui_review_input_fingerprint` matching those inputs. Answer only those cases, no exploratory testing; return `NEEDS_INPUT` when the fingerprint does not match.
 
 ## Supported scope
@@ -27,7 +29,7 @@ Execute once for the whole review session:
 ```bash
 xcrun simctl install "$SIMULATOR_UDID" "$APP_PATH"
 xcrun simctl launch "$SIMULATOR_UDID" "$BUNDLE_ID"
-open -a Simulator
+bash "$HARNESS_ROOT/scripts/open-simulator.sh" "$SIMULATOR_UDID"
 ```
 
 On failure return `DEGRADED install_or_launch_failed`. Do not reinstall, relaunch or switch to another Simulator hoping for luck.

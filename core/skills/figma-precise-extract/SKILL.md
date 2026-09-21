@@ -1,6 +1,6 @@
 ---
 name: figma-precise-extract
-description: Extract measurement-grade exact sizes, spacing and tokens from a Figma design. Use when: a strict Figma→code task needs to freeze implementation inputs, or when diagnosing icon/spacing drift. Skip when: no Figma design, non-UI change, user chose loose strictness.
+description: For Figma UI tasks, generate an H5 style preview and freeze exact sizes, spacing and tokens before the Plan is finalized; also used to diagnose icon/spacing drift. Strict by default; skip when there is no Figma design, the change is not UI, or the user explicitly chose loose strictness.
 ---
 
 # figma-precise-extract
@@ -13,7 +13,7 @@ This skill bakes the output of four tools into a measurement-grade frozen HTML: 
 
 Triggers:
 
-- a strict Figma→code task freezing design inputs before implementation starts in Default mode
+- a Figma UI task previewing styles and freezing design inputs before the Plan is finalized; strict by default, without requiring the user to ask for it
 - any figma→code task that needs exact icon size / spacing / token
 - diagnosing "implemented per figma but icon / spacing / control size does not line up"
 
@@ -22,6 +22,13 @@ Does not trigger:
 - no figma design (implementing from a verbal description)
 - non-UI change
 - user explicitly chose loose strictness (layout skeleton + color tokens only; spacing / font size may vary ±2pt)
+
+## Timing and artifact directory
+
+- **Plan stage**: after Root selects the design nodes, run the baking SOP below, generate and show the H5 preview, handle user feedback that changes layout, state or scope, and only then finalize the plan. A plan diagram does not replace a page style preview.
+- **Permissions and location**: `<design-assets>` below is this round's design-artifact directory. Native Plan writes PNGs, measurement HTML and `preview.html` only in a scratch/temporary directory the host explicitly allows, never project source, config or plan files. Stricter Plan restrictions win; when file writes are forbidden, use the host's allowed inline HTML preview, and when even inline display is unavailable, mark the preview as not done — do not leave Plan or change permissions on your own to produce files.
+- **Showing and feedback**: the final plan records the preview entry (file path or inline artifact/message reference), the visual feedback handled, and the remaining differences; the inline route keeps the same round's captured HTML, measurement data and PNG content, or a recoverable reference, for the implementation handoff. A preview not generated or not shown cannot be recorded as done. The preview itself does not authorize implementation; continue through the host's existing plan acceptance/implementation authorization flow, without adding a fixed confirmation phrase.
+- **Implementation handoff**: after entering Default, copy existing files verbatim, or write recoverable inline content verbatim, into the task worktree's `.specs/<slug>-assets/`, and update references and the design identity record below; do not re-fetch or regenerate the preview. When the preview/artifacts are missing or unrecoverable, complete them and show them again before the first source write, without passing a fresh fetch off as the existing frozen result; existing implementation authorization still holds, and only newly surfaced material decisions need a question.
 
 ## Division of labor across the four tools (core mental model)
 
@@ -47,7 +54,7 @@ Baking = **take the structural skeleton from get_design_context and override its
    - spacing / corner radius ← `get_variable_defs` tokens first (tokenized values are exact and unambiguous) + cross-check against the Auto Layout itemSpacing / padding **property values** in design_context (not the generated code's classes); metadata x/y deltas are cross-validation only (SPACE_BETWEEN / padding / stroke overflow make them disagree with the declared value)
    - token ← `get_variable_defs` (call it on the exact variant node for variants): size / spacing / radius / color variable name → value, not just colors
 
-5. **Bake into frozen HTML** → `.specs/<slug>-assets/figma-<nodeId-safe>.html` (`<nodeId-safe>` = nodeId with `:` replaced by `-`): write step 3's structural skeleton + step 4's overridden exact numbers as self-contained HTML/CSS, all numbers stored in pt, tokens keeping both value and name. The implementation owner reads only this artifact.
+5. **Bake into frozen HTML** → `<design-assets>/figma-<nodeId-safe>.html` (`<nodeId-safe>` = nodeId with `:` replaced by `-`): write step 3's structural skeleton + step 4's overridden exact numbers as self-contained HTML/CSS, all numbers stored in pt, tokens keeping both value and name. The implementation owner reads only this artifact.
 
 6. **Screenshot is visual reference only** ← `get_screenshot({nodeId, maxDimension: 4096})` frozen as PNG: strokes (outside/center), shadows and blur are drawn outside the layout box → they do not count toward size. **PNG = visual source of truth** (color / shadow / gradient / rendered look), **HTML = measurement source of truth** (size / spacing / pt).
 
@@ -66,7 +73,7 @@ When the design is too large, `get_design_context` may return only sparse tags o
 
 **Coordinate-alignment trap (mandatory when merging)**: a separately re-fetched child's structure / coordinates may be relative to **its own origin (0,0)**, not the parent frame. When merging back into the frozen HTML you **must** offset by each child's **x/y relative to the root** from step 1's metadata, otherwise all children pile up at (0,0) — silently destroying the layout, invisible to both the eye and a compressed-image self-check (same class as the scale trap).
 
-Bake once; while the design source is unchanged, both implementation and UI acceptance reuse the frozen artifacts.
+While the design source, the selected nodes and the user's visual decisions are unchanged and the artifacts are recoverable, implementation and UI acceptance reuse the same set of frozen artifacts; updating and re-showing follow the preview rules below.
 
 ## What the frozen HTML contains
 
@@ -83,7 +90,7 @@ Size = metadata converted to pt; spacing = variable_defs tokens first + cross-ch
 
 ## preview.html fidelity preview (strict tasks)
 
-Beyond the frozen PNG and the measurement HTML, a strict task by default generates a third artifact at the end of baking, `.specs/<slug>-assets/preview.html`, and `open`s it together with the frozen PNG so the user can judge fidelity in a browser before implementation is authorized. The PNG remains the source of truth for color, shadow and icon feel.
+Beyond the frozen PNG and the measurement HTML, a strict task generates a third artifact at the end of baking, `<design-assets>/preview.html`, and opens it together with the frozen PNG before the final plan is finalized so the user can judge fidelity in a browser; use the host's file/browser preview tool or `open` — returning only a file path does not count as shown. Permissions, feedback and the implementation handoff follow "Timing and artifact directory" above. The PNG remains the source of truth for color, shadow and icon feel.
 
 Triggers: strict figma→code tasks. loose skips it (skeleton + color tokens only, no replication needed).
 
@@ -94,7 +101,7 @@ Generation spec (one merged file per slug):
 - Geometry comes from the measurement HTML (spacing / size / corner radius / font size 1:1 in pt); color / glass / gradient come from the PNG (approximate glass with `backdrop-filter: blur`); approximate icons with inline SVG (SF Symbol is unavailable).
 - Stateful variants (collapsed↔expanded / selection toggle / empty↔full) → add minimal inline JS to toggle on click, showing the primary state by default.
 - A caveats banner at the top: "Approximate replica: judge layout / spacing / structure; PNG = visual source of truth (glass / color / icons are finer there); placeholders such as agentName have been replaced with runtime values".
-- The filename is fixed as `preview.html`. Generate it once during baking; rebuild only when the design source (file/node/version) or the selected node set changes, and then update only the affected nodes' phone frames and sync the corresponding PNG/measurement HTML and the final plan. Implementation iterations, code review and verification rounds neither rebuild nor rewrite this file.
+- The filename is fixed as `preview.html`. Generate it once during baking; when the design source (file/node/version), the selected node set, or an explicit user decision on the visual approach changes, update the affected nodes' phone frames and show it again, syncing the corresponding PNG/measurement HTML and the final plan. When the user asks to deviate from the design, keep the original PNG and mark the difference; do not pass a revised preview off as the design source. Ordinary implementation iterations, code review and verification rounds neither rebuild nor rewrite this file.
 
 ## Hard constraints
 
@@ -109,7 +116,7 @@ Generation spec (one merged file per slug):
 
 ## Where this sits in plan-first delivery
 
-- **Root/source prep**: in Default mode, before any source is written, generate `.specs/<slug>-assets/figma-*.png` and `figma-*.html` for the nodes the final plan selected.
+- **Root/planning → source prep**: per "Timing and artifact directory", generate and show `figma-*.png`, `figma-*.html` and `preview.html` before the Plan is finalized; the Default stage reuses them and checks them against the nodes the final plan selected. Without native Plan, complete this before the first source write.
 - Also record the Figma file/node/version (when the provider supplies it) and the SHA-256 of every frozen artifact; with no immutable version, the bundle digest of this frozen artifact set is the design identity for UI review, and no mutable latest is pulled during acceptance.
 - If an artifact exposes new observable behavior, scope, architecture or acceptance decisions, Root must return to DISCOVER/PLAN_READY and update the authoritative plan; a later-generated HTML/PNG must not silently override the final plan.
 - **implementation owner**: implements from the frozen HTML/PNG, does not pull live design measurements.

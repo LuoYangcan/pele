@@ -18,7 +18,7 @@ Write it when any of the following holds, after leaving Plan mode and entering D
 - migration/rollback or another irreversible step needs its operation order persisted;
 - the user asks for a spec, execution plan, or audit artifact.
 
-A short-lived explorer, ordinary implementation under the same Root, and a single self-contained worker prompt do not trigger it.
+A short-lived explorer, an independent plan review, ordinary implementation under the same Root, and a single self-contained worker prompt do not trigger it.
 
 When any of the above flips from false to true during execution (you find the work will span sessions/hosts, a second writer/worktree appears, a step becomes irreversible, the user asks for an artifact), or substantive user decisions have accumulated during execution and there is a cross-session interruption risk (this session is not expected to finish, the user says they will continue another day / in another environment), immediately write a snapshot of the current final plan and maintain it per the update rules, unconstrained by the "before the first source write" timing.
 
@@ -38,7 +38,7 @@ Required content:
 2. scope, non-goals, and hard constraints;
 3. settled key decisions, interfaces/data flow, and the affected surface;
 4. milestones, dependencies, and writer ownership;
-5. verification, mandatory/optional review, immediate-authorization boundaries, risks, and rollback;
+5. verification, mandatory/optional review, immediate-authorization boundaries, risks, and rollback, plus any existing [plan review record](../plan-challenge/SKILL.md) (plan_ref, rounds, verdict, dispositions, and status);
 6. currently known facts and outstanding work.
 
 ## Update rules

@@ -12,11 +12,12 @@ Load when a workflow needs Plan, questions, delegation, model selection, or a ha
 
 Inspect loaded tools first; use only the host's available discovery interface when necessary. ToolSearch, Skill and EnterPlanMode are not universal tool names.
 
-- A clear local change request or instruction to execute the current proposal authorizes reversible implementation and validation within scope. Without a mode-switch tool, the same Root plans in the current task and continues; do not add a fixed GO turn. Ask about material unresolved behavior or scope. Native Plan mode remains read-only.
+- A clear local change request or instruction to execute the current proposal authorizes reversible implementation and validation within scope. Without a mode-switch tool, the same Root plans in the current task and continues; do not add a fixed GO turn. Ask about material unresolved behavior or scope. Native Plan mode writes no code or plan files; design-preview artifacts are generated and shown only per the host-permission and directory rules in [figma-precise-extract](../skills/figma-precise-extract/SKILL.md).
 - Resolve existing user authorization and project rules before asking. Continue when the target, parameters and impact are already covered. Obtain missing authority for new external writes, irreversible actions, or scope changes.
-- Commit, push and publishing each follow project policy and explicit authorization. Implementation permission does not imply them.
+- Local incremental commits follow the default authorization and project exceptions in [plan-first-delivery's incremental commit rule](../skills/plan-first-delivery/SKILL.md#incremental-commits); push, PR and publishing each check user authorization separately. Implementation permission does not imply them.
 - Create the isolated worktree required by project policy without repeating confirmation because of stale summaries or missing mode-switch tools.
 - A custom Codex role's explicit model/effort wins over spawn values. Regenerate roles after policy changes; new tasks/subagents use them. Select the current Root through the task UI or CLI launch arguments.
+- Before a formal plan is finalized, dispatch an independent review per [plan-challenge](../skills/plan-challenge/SKILL.md); when the role is not exposed, the model is unavailable, or there is no independent agent, follow its gap routing. Existing implementation authorization does not skip the review.
 - Without subagents, Root works serially. Report an independent-review coverage gap when a fresh reviewer is unavailable; do not label self-review independent.
 
 ## Installed paths

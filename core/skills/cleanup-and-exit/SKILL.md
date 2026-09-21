@@ -1,85 +1,80 @@
 ---
 name: cleanup-and-exit
-description: Clean up the current git worktree before exiting an agent session. Use when the user invokes `/cleanup-and-exit`, `/clean-and-exit`, asks to clean worktree before exit/quit, or wants to remove/keep a task worktree after PR review/merge. Handles git worktree state, nested sub-worktrees, PR OPEN/MERGED/CLOSED status, optional simulator cleanup, worktree-local build artifacts, Xcode DerivedData tied to deleted worktrees, and Codex/Claude fallback when no interactive prompt UI is available.
+description: Clean up this task's Git worktrees before exiting, including related backport worktrees. Use when the user invokes /cleanup-and-exit or /clean-and-exit, asks to clean up before exit, or asks to remove or keep a task worktree. Automatically remove clean, delivered task worktrees and their local branches; preserve unfinished work.
 ---
 
 # cleanup-and-exit
 
 Resolve installed paths per the [host adapter](../../rules/host-adapter.md) before running helpers.
 
-Clean the current task worktree before the user exits. Do not push, merge, or edit product code.
+Treat a cleanup request as authorization to perform the routine cleanup below. Honor the user's existing scope and keep/delete choices without asking again. Do not push, merge, delete remote branches, poll CI, or edit product code.
 
-## Inspect State
+## Resolve Task Worktrees
 
-Run from the current cwd:
+Use explicit user targets first. Otherwise, use registered worktrees that this conversation established as the task's implementation or backport workspaces. This may include multiple worktrees even when the host's cwd is the main checkout. Read-only references to other worktrees do not establish ownership.
+
+Run `git worktree list --porcelain` to verify exact paths and branches. If the conversation provides no target, use the current worktree under `.worktrees/`. Stop only when neither task context nor cwd identifies a task worktree; do not stop merely because cwd is the main checkout. Ask a targeted question only when ownership or scope is ambiguous; never sweep unrelated worktrees by name or location.
+
+For each target, capture its root with `git -C <target> rev-parse --show-toplevel`. Resolve the main repo from the first registered worktree. Use an explicit per-target working directory for all state and simulator commands.
+
+## Inspect and Report
+
+Inspect each target before choosing its action:
 
 ```bash
-pwd
-git rev-parse --abbrev-ref HEAD 2>/dev/null
-git status --short 2>/dev/null | wc -l
-git worktree list 2>/dev/null
-git log --oneline @{u}..HEAD 2>/dev/null
-gh pr view "$(git rev-parse --abbrev-ref HEAD)" --json number,state,mergedAt,url 2>/dev/null \
-  || gh pr list --head "$(git rev-parse --abbrev-ref HEAD)" --state all --json number,state,mergedAt,url 2>/dev/null \
-  || true
+git -C "$worktree_path" branch --show-current
+git -C "$worktree_path" status --short
+git -C "$worktree_path" log --oneline '@{u}..HEAD'
+# Run gh from the target repository; use pr list --head "$branch" --state all if needed.
+gh pr view "$branch" --json number,state,mergedAt,headRefOid,url
 ```
 
-Use `gh` PR state as truth. `MERGED` or non-null `mergedAt` means the PR is merged even if local git does not show the branch merged.
+Refresh relevant remote refs or query current remote heads as needed to establish delivery. Missing upstreams or failed commands mean unknown, not zero unpushed commits. Either of these establishes that the current HEAD is delivered:
 
-If cwd is not under `.worktrees/<slug>/`, report that there is no worktree cleanup needed and stop.
+- `gh` reports `MERGED` or a non-null `mergedAt`, and local HEAD equals or is an ancestor of the PR's `headRefOid`. Squash/rebase merges and a deleted remote source branch do not prevent cleanup. A merged PR does not cover later local commits.
+- The intended remote delivery branch contains the local HEAD, such as a release branch updated by a direct cherry-pick and push. This means the destination for finished work, not merely a pushed feature branch. No PR is required for this route.
 
-## Report Summary
+These proofs can replace a missing upstream. For an explicit deletion of an unfinished worktree, separately verify that any local commits are pushed before deleting its branch.
 
-Before any action, report:
+Before acting, give a compact per-target summary, using `unknown` where evidence is missing:
 
 ```text
-worktree: .worktrees/<slug>/
-branch: <branch>
-uncommitted files: <N>
-unpushed commits: <M>
-PR: <not opened | #123 OPEN | #123 MERGED | #123 CLOSED>
-nested worktrees: <none | paths and branches>
+worktree / branch: <path> / <branch>
+uncommitted / unpushed: <counts or unknown>
+delivery: <PR state and number | direct-push target | unknown>
+nested worktrees: <none | paths and branches>; action: <delete | keep | needs clarification>
 ```
 
 ## Choose Action
 
-If an interactive question tool is available, ask the user to choose:
+| Request and verified state | Action |
+| --- | --- |
+| Cleanup request; clean worktree and delivered HEAD | Delete worktree and local task branch directly |
+| Explicit delete worktree and branch; clean, no unpushed commits | Delete both, including for an open PR |
+| Explicit delete worktree, keep branch; clean | Delete worktree, preserve branch and any local-only commits |
+| Explicit keep | Keep worktree and branch; shut down its simulator |
+| Explicit cancel | Do nothing |
+| Dirty worktree, or unfinished/unknown delivery without an explicit deletion choice | Keep and report the concrete reason |
 
-1. Delete worktree + delete local branch
-2. Delete worktree, keep branch
-3. Keep worktree + branch
-4. Cancel
-
-If no interactive question tool is available, ask a plain-text confirmation instead. Do not run option 1 or 2 from a bare `/cleanup-and-exit` / `/clean-and-exit` message unless the user's current or immediately previous message explicitly selected that action.
-
-Allowed textual selections:
-
-- Option 1: "delete worktree + branch", "delete worktree and branch", "PR merged, delete it"
-- Option 2: "delete worktree, keep branch", "delete worktree keep branch"
-- Option 3: "keep", "keep worktree", "do not delete"
-- Option 4: "cancel"
-
-Recommended default for the prompt: option 1 when PR is `MERGED`, uncommitted files = 0, and unpushed commits = 0; otherwise option 3.
+Do not show a fixed menu or require a second confirmation for an authorized, eligible cleanup. Ask only for an unresolved target or a material keep/delete choice. A retained target does not block cleanup of other independent eligible targets.
 
 ## Safety Gates
 
-- Option 1 requires uncommitted files = 0 and unpushed commits = 0.
-- Option 2 requires uncommitted files = 0.
+- Every deletion requires no uncommitted files. Local branch deletion also requires no unpushed work beyond the verified delivery proof. Do not interpret a failed inspection as a passed gate.
 - Never use `git worktree remove --force`.
 - Never remove the worktree from inside itself; run `git worktree remove` from the main repo root.
 - Run simulator cleanup before changing cwd because `worktree-sim.sh` locates the worktree from cwd.
 - Capture the target worktree root with `git rev-parse --show-toplevel` before changing cwd. Run DerivedData cleanup only after worktree removal succeeds.
 - Delete Xcode DerivedData only through `scripts/remove-worktree-derived-data.sh`; never match caches by project name or a broad glob.
 - Do not separately delete `build/`, local `DerivedData`, or Swift Package `.build` below the target; successful worktree removal deletes them. Do not delete the shared `~/Library/Caches/org.swift.swiftpm` cache.
-- Do not run `git push`, `gh pr merge`, or any CI polling.
 
 ## Nested Worktrees
 
-Before option 1 or 2, list registered worktrees whose absolute path starts with `<worktree-path>/.subworktrees/`.
+Before deletion, list registered worktrees whose absolute path starts with `<worktree-path>/.subworktrees/`.
 
-- Inspect each descendant's branch, uncommitted files, and unpushed commits with the same safety gates as the parent.
-- Ask one explicit confirmation listing every descendant and whether to delete its local branch. Abort parent deletion if any descendant is kept or fails its safety gate.
-- From `<main-repo>`, remove confirmed descendants deepest-path-first without `--force`. After each successful removal, run `scripts/remove-worktree-derived-data.sh` with that descendant path.
+- Apply the same task scope, action selection, and safety gates to each descendant. No extra confirmation is needed for eligible descendants already within the task's cleanup scope.
+- Keep the parent if any descendant is unrelated, retained, or fails its safety gate. Clarify ambiguous descendants together rather than asking once per path.
+- From `<main-repo>`, remove eligible descendants deepest-path-first without `--force`. After each successful removal, run `scripts/remove-worktree-derived-data.sh` with that descendant path.
 - Remove the parent only after no registered descendant remains.
 
 If the current target is itself a sub-worktree, capture its root before moving to its parent and apply the normal option flow to that captured path.
@@ -93,7 +88,7 @@ Resolve:
 - `<slug>`: directory name under `.worktrees/`
 - `<branch>`: current branch
 
-Option 1:
+Delete worktree and local task branch:
 
 ```bash
 worktree_path="$(git rev-parse --show-toplevel)"
@@ -104,7 +99,7 @@ bash "$HARNESS_ROOT/core/skills/cleanup-and-exit/scripts/remove-worktree-derived
 git branch -D <branch>
 ```
 
-Option 2:
+Delete worktree, keep branch:
 
 ```bash
 worktree_path="$(git rev-parse --show-toplevel)"
@@ -114,12 +109,10 @@ git worktree remove "$worktree_path"
 bash "$HARNESS_ROOT/core/skills/cleanup-and-exit/scripts/remove-worktree-derived-data.sh" "$worktree_path"
 ```
 
-Option 3:
+Keep worktree and branch:
 
 ```bash
 bash "$HARNESS_ROOT/scripts/worktree-sim.sh" shutdown
 ```
 
-The DerivedData script removes only cache entries whose `WorkspacePath` equals `<worktree-path>` or is below it, and refuses to run while `<worktree-path>` still exists. Run it after any successful deletion path, including `ExitWorktree remove`, and report its removed count and size. Then continue future commands from `<main-repo>`. If an `ExitWorktree` tool exists, use `remove` for option 1 and `keep` for options 2/3. In Codex Desktop/CLI where no `ExitWorktree` tool exists, do not simulate it; just report the main repo path.
-
-Option 4: do nothing.
+The DerivedData script removes only cache entries whose `WorkspacePath` equals `<worktree-path>` or is below it, and refuses to run while `<worktree-path>` still exists. Run it after any successful deletion path, including `ExitWorktree remove`, and report its removed count and size. Then continue future commands from `<main-repo>`. If an `ExitWorktree` tool exists, use its matching remove/keep action. Otherwise, report the main repo path without simulating a host exit or archiving the task.

@@ -15,7 +15,9 @@ For a machine-local change, create `${CODEX_HOME:-~/.codex}/model-policy.local.j
 {"roles": {"explorer": {"model": "gpt-5.6-sol", "effort": "high"}}}
 ```
 
-Then run the matching `install --target ...` command above. The resolver does not guess availability or silently downgrade an unavailable model; select a model/effort combination supported by the current host. Defaults retain Astra ultra for CLI Root, use Terra high for exploration/implementation/review roles, Luna low for command execution, and Sol high for branch review.
+Then run the matching `install --target ...` command above. The resolver does not guess availability or silently downgrade an unavailable model; select a model/effort combination supported by the current host. Defaults use Astra ultra for CLI Root and `plan-challenger`, Terra high for exploration/implementation/final review roles, Luna low for command execution, and Sol high for branch review.
+
+`plan-challenger` uses the planning tier for an independent, read-only challenge before a formal plan is finalized; it does not replace the final-code `verifier`. Claude inherits the planning Root's model via `core/agents/plan-challenger.md`; Codex resolves this role independently through the policy above. When changing the planning tier, check both `root` and `plan-challenger`; their policy entries do not automatically track each other. Trigger, bounded recheck, and unavailable-role handling belong to [plan-challenge](../core/skills/plan-challenge/SKILL.md).
 
 `show` prints the effective model, effort, and source for both fields. `codex` launches the local Codex CLI through `execvp`, injecting `-m <model>` and `-c model_reasoning_effort=<effort>` without shell interpolation. Put wrapper overrides before `--`, for example `codex explorer --model gpt-5.6-sol --effort high -- exec ...`; they take precedence over every policy file. The `root` role controls this CLI entry point only; the Codex app model remains selected by its task UI.
 

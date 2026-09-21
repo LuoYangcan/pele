@@ -1,6 +1,6 @@
 # Architecture
 
-Pele installs onto Claude Code, Codex, or both; the workflow content is host-neutral and only the config layout differs (see the host support table in the README). Pele's center is plan-first delivery with model tiering. Native Plan mode turns a request into a decision-complete plan; the same Root — a strong planning-tier model — then owns decisions, integration, and verification in Default mode, while code writing is delegated by default to the `implementer` subagent running a general implementation-tier model. Roles are orthogonal gates, not a fixed pipeline.
+Pele installs onto Claude Code, Codex, or both; the workflow content is host-neutral and only the config layout differs (see the host support table in the README). Pele's center is plan-first delivery with model tiering. Native Plan mode turns a request into a decision-complete plan, which an independent `plan-challenger` reviews before it is finalized; the same Root — a strong planning-tier model — then owns decisions, integration, and verification in Default mode, while code writing is delegated by default to the `implementer` subagent running a general implementation-tier model. Roles are orthogonal gates, not a fixed pipeline.
 
 ## Control flow
 
@@ -8,7 +8,12 @@ Pele installs onto Claude Code, Codex, or both; the workflow content is host-neu
 user request (code-writing)
   ↓
 Plan mode (or a read-only planning turn): Root explores, clarifies,
-produces the final plan — the single source of requirement truth
+produces a candidate plan
+  ↓
+plan-challenger: fresh read-only challenge for over-design, over-strict
+validation, and over-protection → Root revises (one targeted recheck)
+  ↓
+final plan — the single source of requirement truth
   ↓ explicit execute authorization
 Root: create isolated worktree .worktrees/<slug> from origin/<base>
   ↓
@@ -32,6 +37,7 @@ Root reports: observable behavior, verification results, decision audit, docs di
 | Role | Tier | Owns |
 |---|---|---|
 | Root (session) | strong planning tier (e.g. `/model fable`) | plan, decisions, diff review, integration, verification, user interaction |
+| `plan-challenger` | planning tier (inherits Root on Claude) | independent read-only challenge of a formal plan before it is finalized |
 | `implementer` | general implementation tier (`core/agents/implementer.md`) | code writing inside frozen ownership; returns diff + open questions |
 | `verifier` / `ui-reviewer` | mid tier | independent acceptance when their gate hits |
 | `command-runner` | small tier | mechanical command execution with trimmed logs |

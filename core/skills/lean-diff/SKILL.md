@@ -23,7 +23,7 @@ Run through §Self-check list (write) before every Edit / Write. Any hit → cha
 
 ### Review mode
 
-Scan the diff under review and emit a structured issue for each hit, per the §issue_type tables:
+Scan the complete diff under review and check each change's necessity; for a bug fix, check the basis for each behavior change against the §3 "Default contract" — passing a correctness check does not replace the necessity review. Emit a structured issue for each hit, per the §issue_type tables:
 
 ```yaml
 - severity: blocking | warning
@@ -116,6 +116,8 @@ How to spot a "single-caller wrapper class": a new class (commonly named `XxxCoo
 
 #### Default contract
 
+- A bug fix defaults to the minimal necessary change: every behavior change must map to verifiable evidence of a confirmed root cause, an explicit user requirement, or a hard project rule. Investigation hypotheses may drive experiments, but an unverified hypothesis cannot justify keeping a change in the final fix; this also covers alternative implementations and opportunistic optimizations, not only validation/fallback.
+- Once the root cause is confirmed or corrected, Root must re-read the complete diff across all iterations of this task, withdraw this task's changes that only served ruled-out hypotheses or lack the basis above, and fix related docs accordingly; keep the necessary fix and other user changes. At delivery, summarize the basis for each retained behavior change in the existing report, without adding fixed artifacts or approval turns.
 - Internal code calling internal code, and non-optionals handed over by the framework → **no validation, no try/catch**.
 - Validate input structure/field semantics only at the owner boundary where untrusted input first enters the system (user input / external API / file IO), and only the invariants required to construct a trusted internal value; downstream consumes that trusted type directly.
 - An invariant has exactly one validation owner: the decoder/parser owns structure, the domain constructor owns business invariants, the transport adapter owns request/response correlation, and the state machine or consumer owns ordering, session, and authorization context. Downstream may validate context invariants it newly introduces, but must not repeat the same invariant already established upstream.
@@ -127,6 +129,7 @@ How to spot a "single-caller wrapper class": a new class (commonly named `XxxCoo
 
 | issue_type | Trigger | severity |
 |---|---|---|
+| `unjustified-change` | a bug fix's behavior change cannot map to the necessity basis above, or the root cause is confirmed/corrected yet changes serving only ruled-out hypotheses remain | **blocking** |
 | `silent-catch` | `try?` / `catch { }` silently swallows an error and does not meet the shared exceptions below | **blocking** |
 | `speculative-validator` | new validation with none of the evidence above, or unable to name the single owner; a state machine/consumer validating its own ordering/session/context invariants does not count | **blocking** |
 | `duplicate-validator` | the same invariant validated again across several layers; ordering/session/context invariants newly introduced by the consumer are not duplicates | **blocking** |
@@ -150,6 +153,7 @@ Swallowing an error makes the root cause surface as some other symptom. If the r
 
 The implementation owner runs through this before writing:
 
+- [ ] Does each behavior change in a bug fix meet the §3 necessity contract? After the root cause was confirmed or corrected, did Root re-read the complete diff and withdraw this task's unjustified changes?
 - [ ] Is the comment I added a non-obvious why, or is it explaining the what / citing a plan, task, or fix number / leaving a stale TODO? Will it still make sense a year from now?
 - [ ] Could the feature this new code implements be achieved by extending / modifying an existing method / type / helper?
 - [ ] Does the abstraction I introduced (protocol / Manager / Service / config parameter / flag) really have ≥3 callers today, or is it prepared for "future extension"?

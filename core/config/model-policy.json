@@ -1,6 +1,7 @@
 {
   "roles": {
     "root": { "model": "gpt-6-astra", "effort": "ultra" },
+    "plan-challenger": { "model": "gpt-6-astra", "effort": "ultra" },
     "explorer": { "model": "gpt-5.6-terra", "effort": "high" },
     "implementer": { "model": "gpt-5.6-terra", "effort": "high" },
     "verifier": { "model": "gpt-5.6-terra", "effort": "high" },

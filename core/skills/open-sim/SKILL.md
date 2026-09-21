@@ -35,7 +35,7 @@ bash "$HARNESS_ROOT/scripts/run-ios.sh" --target sim
   bash "$HARNESS_ROOT/scripts/run-ios.sh" --target sim --no-build
   ```
 
-The script builds → locates the build artifact (scans `Build/Products/*-iphonesimulator/`, takes the newest `.app`; the configuration name is project-defined and can change, so `Debug-` is not hardcoded) → reads the bundle id from the artifact's `Info.plist` → gets the per-worktree sim via `worktree-sim.sh ensure` (auto fallback outside a worktree) → `simctl install` + `launch` → `open -a Simulator`, and finally prints the `----- run-ios result -----` result block.
+The script builds → locates the build artifact (scans `Build/Products/*-iphonesimulator/`, takes the newest `.app`; the configuration name is project-defined and can change, so `Debug-` is not hardcoded) → reads the bundle id from the artifact's `Info.plist` → gets the per-worktree sim via `worktree-sim.sh ensure` (auto fallback outside a worktree) → `simctl install` + `launch` → `open-simulator.sh` (Simulator.app, or DeviceHub.app on Xcode 27), and finally prints the `----- run-ios result -----` result block.
 
 ## Report to the user
 
@@ -51,7 +51,7 @@ Relay from the result block: which sim was used (`WHERE`) + UDID + `BUNDLE_ID` +
 |---|---|---|
 | 2 | Build failed | Report the xcodebuild error verbatim, do not continue |
 | 3 | No `.app` found | Only possible with `--no-build`; have the user drop `--no-build` and re-run |
-| 4 | install / launch failed / no usable iPhone sim | Usually a sim environment problem; suggest installing an iOS runtime (Xcode > Settings > Platforms)|
+| 4 | install / launch / Simulator window failed, or no usable iPhone sim | Usually a sim environment problem; suggest installing an iOS runtime (Xcode > Settings > Platforms)|
 
 ## Out of scope
 

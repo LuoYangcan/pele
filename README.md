@@ -2,7 +2,7 @@
 
 > Volcanic harness for coding agents — opinionated rules, agents, and workflow that put a strong model in charge of planning and a general model in charge of typing.
 
-Pele is a set of global rules, subagents, slash commands, and hooks distilled from real day-to-day use. It installs for **Claude Code, Codex, or both** — the same workflow content, mapped onto each host's own config layout. Its **plan-first, model-tiered delivery** keeps a strong planning-tier model as the Root: native Plan mode produces a decision-complete plan, a general-model `implementer` subagent writes the code inside frozen boundaries, and the Root reviews, integrates, and verifies each feature unit — with independent verifier / UI-review gates when risk warrants. Commits follow project policy and explicit user authorization.
+Pele is a set of global rules, subagents, slash commands, and hooks distilled from real day-to-day use. It installs for **Claude Code, Codex, or both** — the same workflow content, mapped onto each host's own config layout. Its **plan-first, model-tiered delivery** keeps a strong planning-tier model as the Root: native Plan mode produces a decision-complete plan that an independent `plan-challenger` reviews for over-design before it is finalized, a general-model `implementer` subagent writes the code inside frozen boundaries, and the Root reviews, integrates, and verifies each feature unit — with independent verifier / UI-review gates when risk warrants. Each verified feature unit becomes a local commit unless the user or project policy says otherwise; push and PRs still need explicit authorization.
 
 Named after [Pele](https://en.wikipedia.org/wiki/Pele_(deity)), the Hawaiian volcano goddess: she controls the eruption.
 
@@ -28,7 +28,7 @@ Drop-in install adds the following under the host's config dir:
 |---|---|
 | **index** | `CLAUDE.md` / `AGENTS.md` — progressively discloses rules / skills / agents on demand |
 | **rules/** | Workflow policies (verification ladder, iteration checkpoints, commit style) plus portable Swift/iOS guidance |
-| **agents/** | `implementer` · `verifier` · `ui-reviewer` · `command-runner`; Codex also generates `explorer` and `pr-reviewer` |
+| **agents/** | `plan-challenger` · `implementer` · `verifier` · `ui-reviewer` · `command-runner`; Codex also generates `explorer` and `pr-reviewer` |
 | **commands/** | `/openpr` · `/ship` · `/review` · `/pr-review` · `/cleanup-and-exit` (`/clean-and-exit` alias) |
 | **skills/** | `plan-first-delivery` and worktree orchestration, architecture/review helpers, optional iOS UI and Figma workflows |
 | **scripts/** | `run-ios.sh` · `worktree-sim.sh` · `worktree-bootstrap.sh` · `validation-receipt.sh` · `trust-dir.sh` and hook helpers |
@@ -127,8 +127,13 @@ You: "implement feature X"
    │
    ▼
 [Plan mode]   the Root — a strong planning-tier model (e.g. /model fable) —
-              explores read-only, clarifies, produces the final plan:
+              explores, clarifies, produces the final plan:
               the single source of requirement truth
+   │
+   ▼
+[plan-challenger] a fresh read-only reviewer challenges the candidate
+              for over-design, over-strict validation, and over-protection
+              before it is finalized (one review + one targeted recheck)
    │
    ▼ you approve and switch back to Default mode
 [Root]        creates an isolated worktree (.worktrees/<slug>) from

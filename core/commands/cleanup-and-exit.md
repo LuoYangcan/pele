@@ -1,5 +1,5 @@
 ---
-description: Clean up this task's completed worktrees before exiting (see the cleanup-and-exit skill for the cross-tool logic)
+description: Account for all task worktrees, clean eligible ones, and report retained directories (see the cleanup-and-exit skill)
 ---
 
 Use the cleanup-and-exit skill:

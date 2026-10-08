@@ -1,6 +1,6 @@
 ---
 name: cleanup-and-exit
-description: Clean up this task's Git worktrees before exiting, including related backport worktrees. Use when the user invokes /cleanup-and-exit or /clean-and-exit, asks to clean up before exit, or asks to remove or keep a task worktree. Automatically remove clean, delivered task worktrees and their local branches; preserve unfinished work.
+description: Account for this task's Git worktrees before exiting, clean eligible worktrees and local branches, and report remaining directories. Use when the user invokes /cleanup-and-exit or /clean-and-exit, asks to clean up before exit, or asks to remove or keep task worktrees. Preserve unfinished work.
 ---
 
 # cleanup-and-exit
@@ -11,11 +11,15 @@ Treat a cleanup request as authorization to perform the routine cleanup below. H
 
 ## Resolve Task Worktrees
 
-Use explicit user targets first. Otherwise, use registered worktrees that this conversation established as the task's implementation or backport workspaces. This may include multiple worktrees even when the host's cwd is the main checkout. Read-only references to other worktrees do not establish ownership.
+Build the target list before choosing actions. Use explicit user targets first; a repository-wide cleanup request covers registered worktrees in that repository. A bare command covers this task's worktrees, not every worktree in the repository.
 
-Run `git worktree list --porcelain` to verify exact paths and branches. If the conversation provides no target, use the current worktree under `.worktrees/`. Stop only when neither task context nor cwd identifies a task worktree; do not stop merely because cwd is the main checkout. Ask a targeted question only when ownership or scope is ambiguous; never sweep unrelated worktrees by name or location.
+For task cleanup, include every worktree created or reused for implementation, validation/review, or backport work in this conversation. Include the original working copy when this task moved or exported changes to another branch, worktree, or repository. Use available conversation history, task plans/logs, and attached worktrees to identify each path and its role; cwd and the final PR branch are not the entire target list. Read-only references to unrelated worktrees do not establish ownership.
 
-For each target, capture its root with `git -C <target> rev-parse --show-toplevel`. Resolve the main repo from the first registered worktree. Use an explicit per-target working directory for all state and simulator commands.
+Run `git worktree list --porcelain` in each affected repository to verify exact paths and branches, including task paths already removed. If the conversation provides no target, use the current registered non-primary worktree. Stop only when neither task context nor cwd identifies a task worktree; report "no task worktree identified", not "all worktrees cleaned". Do not stop merely because cwd is the main checkout. Ask a targeted question only when ownership or scope is ambiguous; never infer task ownership from name or location alone.
+
+Mark a target already absent only when both its directory and registration are absent; record any remaining branch/cache separately. If only the directory is absent, report the stale registration. Skip per-target git/simulator commands for missing directories.
+
+For each existing target, capture its root with `git -C <target> rev-parse --show-toplevel`. Resolve the main repo from the first registered worktree. Use an explicit per-target working directory for all state and simulator commands.
 
 ## Inspect and Report
 
@@ -36,13 +40,15 @@ Refresh relevant remote refs or query current remote heads as needed to establis
 
 These proofs can replace a missing upstream. For an explicit deletion of an unfinished worktree, separately verify that any local commits are pushed before deleting its branch.
 
+If the branch-name PR lookup is empty, follow this task's recorded PR URL, renamed branch, or export/backport history before concluding delivery is unknown. Verify the same HEAD coverage above; a related feature's merged PR or similar title is not proof. Report feature delivery separately from local commits and uncommitted changes left in the original working copy. Do not reset, stash, or commit changes just to make a retained worktree pass the cleanup gates.
+
 Before acting, give a compact per-target summary, using `unknown` where evidence is missing:
 
 ```text
-worktree / branch: <path> / <branch>
+worktree / branch / role: <path> / <branch> / <implementation | original copy | validation/review | backport>
 uncommitted / unpushed: <counts or unknown>
 delivery: <PR state and number | direct-push target | unknown>
-nested worktrees: <none | paths and branches>; action: <delete | keep | needs clarification>
+nested worktrees: <none | paths and branches>; action: <delete | keep | already absent | needs clarification>; reason: <evidence or remaining work>
 ```
 
 ## Choose Action
@@ -115,4 +121,12 @@ Keep worktree and branch:
 bash "$HARNESS_ROOT/scripts/worktree-sim.sh" shutdown
 ```
 
-The DerivedData script removes only cache entries whose `WorkspacePath` equals `<worktree-path>` or is below it, and refuses to run while `<worktree-path>` still exists. Run it after any successful deletion path, including `ExitWorktree remove`, and report its removed count and size. Then continue future commands from `<main-repo>`. If an `ExitWorktree` tool exists, use its matching remove/keep action. Otherwise, report the main repo path without simulating a host exit or archiving the task.
+The DerivedData script removes only cache entries whose `WorkspacePath` equals `<worktree-path>` or is below it, and refuses to run while `<worktree-path>` still exists. Run it after any successful deletion path, including `ExitWorktree remove`, and report its removed count and size. A skipped, failed, or unsupported helper is not a successful zero-item cleanup; report it separately. Then continue future commands from `<main-repo>`. If an `ExitWorktree` tool exists, use its matching remove/keep action. Otherwise, report the main repo path without simulating a host exit or archiving the task.
+
+## Verify and Close
+
+After removal, verify that the exact directory is absent and its registration is absent from `git worktree list --porcelain`. If deleting the local branch was selected, verify that it is absent too. A successful command or merged PR alone is not the removal receipt.
+
+Re-enumerate the affected repositories once at the end and reconcile every target with the original target list. Report each path as removed, already absent, retained with its reason, or failed with the error; include the simulator/cache outcome and any remaining action. Summarize counts as "removed / already absent / retained / failed". Retained targets do not prevent reporting successful independent removals, but must not disappear from the final report.
+
+If the host recreates a task worktree, report the replacement path and reason as a remaining target. Do not repeatedly delete replacements or claim that cleanup is complete while the directory remains. Say "all task worktrees removed" only when every task target is verified absent; otherwise say "eligible worktrees cleaned; remaining directories: ...". Preserve unrelated worktrees and distinguish them from retained task targets.

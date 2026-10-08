@@ -22,7 +22,7 @@ Pure Q&A, reading code, checking status, and meta config do not go through the c
 - [parallel-subagents](skills/parallel-subagents/SKILL.md) — Read-only investigation can run in parallel; write tasks only when write domains are mutually exclusive and it clearly speeds things up, with Root doing integration and final verification centrally.
 - [post-change-verify](rules/post-change-verify.md) — On the final candidate, run the relevant cheap lint/check first, then build, then targeted tests as the request or the risk requires; source changes invalidate old evidence.
 - [agent-readable-docs](skills/agent-readable-docs/SKILL.md) — Compact inline while preserving the semantic contract when creating or modifying agent-consumed operational Markdown; read-only application, ordinary human docs, and format/link-only edits do not trigger.
-- [cleanup-and-exit](skills/cleanup-and-exit/SKILL.md) — Use when the user asks to clean up the current worktree or to exit.
+- [cleanup-and-exit](skills/cleanup-and-exit/SKILL.md) — Account for this task's worktrees when the user asks to clean up or exit; clean eligible targets and report retained directories.
 - [commit-message](rules/commit-message.md) — Use the single-line conventional commit format when writing a commit message, and decide the trailer by repo ownership.
 
 ## Design and code quality

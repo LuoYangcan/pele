@@ -1,5 +1,5 @@
 ---
-description: Alias for cleanup-and-exit; clean up the current worktree before exiting
+description: Alias for cleanup-and-exit; account for all task worktrees, clean eligible ones, and report retained directories
 ---
 
 Use the cleanup-and-exit skill:

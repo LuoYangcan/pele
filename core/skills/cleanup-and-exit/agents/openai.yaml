@@ -1,4 +1,4 @@
 interface:
   display_name: "Cleanup and Exit"
-  short_description: "Clean completed task worktrees and their build caches"
-  default_prompt: "Use $cleanup-and-exit to clean this task's completed worktrees before exiting."
+  short_description: "Clean task worktrees and report remaining directories"
+  default_prompt: "Use $cleanup-and-exit to account for all worktrees used by this task, clean eligible ones, and report any retained directories before exiting."

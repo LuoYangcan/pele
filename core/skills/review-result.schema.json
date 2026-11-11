@@ -12,6 +12,7 @@
   ],
   "properties": {
     "schema_version": {
+      "type": "integer",
       "const": 1
     },
     "review_fingerprint": {
@@ -19,6 +20,7 @@
       "minLength": 1
     },
     "verdict": {
+      "type": "string",
       "enum": [
         "pass",
         "pass-with-nits",

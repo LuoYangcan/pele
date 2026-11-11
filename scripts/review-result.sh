@@ -79,8 +79,14 @@ validate_cleanup() {
   local cleanup="$1"
   [[ -f "$cleanup" ]] || die "cleanup file not found: $cleanup"
   jq -e '
-    (.fixed | type == "array")
+    (if has("status") then .status else "run" end) as $status
+    | (.fixed | type == "array")
     and (.skipped | type == "array")
+    and ($status == "run" or $status == "not-run" or $status == "reverted")
+    and ($status == "run" or (
+      (.fixed | length) == 0
+      and (.reason | type == "string" and length > 0 and (contains("\n") | not) and (contains("\t") | not))
+    ))
     and (.fixed | all(.[];
       (.file | type == "string"
         and length > 0
@@ -128,10 +134,22 @@ append_findings() {
     '.findings[$category][] | ["\(.file):\(.line)", .summary] | @tsv' "$result")
 }
 
+cleanup_status_line() {
+  local cleanup="$1"
+  case "$(jq -r '.status // "run"' "$cleanup")" in
+    not-run) jq -r '"Cleanup skipped. \(.reason)"' "$cleanup" ;;
+    reverted) jq -r '"Cleanup reverted. \(.reason)"' "$cleanup" ;;
+    *) return 1 ;;
+  esac
+}
+
 append_cleanup_fixed() {
   local cleanup="$1"
   local evidence summary category
 
+  if cleanup_status_line "$cleanup"; then
+    return
+  fi
   if [[ "$(jq '.fixed | length' "$cleanup")" -eq 0 ]]; then
     printf 'Nothing to fix.\n'
     return
@@ -165,18 +183,22 @@ render_report() {
   local reviewer_label="$6"
   local snapshot_path="${7:-}"
   local cleanup="${8:-}"
-  local fingerprint verdict summary assessment now
+  local fingerprint verdict summary assessment now scope_note
 
   fingerprint="$(jq -r '.review_fingerprint' "$result")"
   verdict="$(jq -r '.verdict' "$result")"
   summary="$(jq -r '.summary' "$result")"
   assessment="$(jq -r '.assessment' "$result")"
   now="$(date '+%Y-%m-%d %H:%M')"
+  scope_note=""
+  if jq -e '.fixed | length > 0' "$cleanup" >/dev/null; then
+    scope_note=" (including cleanup that landed)"
+  fi
 
   {
     printf '<!-- review-fingerprint: %s -->\n' "$fingerprint"
     printf '# Code Review: %s\n\n' "$branch"
-    printf '> Time: %s · Scope: %s...HEAD plus uncommitted changes (including cleanup that has landed)\n' "$now" "$base_ref"
+    printf '> Time: %s · Scope: %s...HEAD plus uncommitted changes%s\n' "$now" "$base_ref" "$scope_note"
     printf '> Reviewer: %s（report-only）\n' "$reviewer_label"
     printf '> Pre-cleanup snapshot: %s\n\n' "$snapshot_path"
     printf '## Verdict\n\n`%s`\n\nOne-line summary: %s\n\n' "$verdict" "$summary"
@@ -184,7 +206,7 @@ render_report() {
     append_findings "$result" must_fix 'None.'
     printf '\n## Suggestions (nice-to-have)\n\n'
     append_findings "$result" suggestions 'None.'
-    printf '\n## Quality fixes cleanup already landed\n\n'
+    printf '\n## Cleanup outcome\n\n'
     append_cleanup_fixed "$cleanup"
     printf '\n## Findings cleanup skipped\n\n'
     append_cleanup_skipped "$cleanup"

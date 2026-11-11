@@ -2,7 +2,7 @@
 
 > Volcanic harness for coding agents — opinionated rules, agents, and workflow that put a strong model in charge of planning and a general model in charge of typing.
 
-Pele is a set of global rules, subagents, slash commands, and hooks distilled from real day-to-day use. It installs for **Claude Code, Codex, or both** — the same workflow content, mapped onto each host's own config layout. Its **plan-first, model-tiered delivery** keeps a strong planning-tier model as the Root: native Plan mode produces a decision-complete plan that an independent `plan-challenger` reviews for over-design before it is finalized, a general-model `implementer` subagent writes the code inside frozen boundaries, and the Root reviews, integrates, and verifies each feature unit — with independent verifier / UI-review gates when risk warrants. Each verified feature unit becomes a local commit unless the user or project policy says otherwise; push and PRs still need explicit authorization.
+Pele installs global rules, subagents, commands, and hooks for **Claude Code, Codex, or both**. Its plan-first workflow assigns decisions, integration, and verification to the Root and scoped code changes to the implementer. An independent `plan-challenger` reviews major designs and plans the user explicitly asks to review. Verified feature units become local commits unless the user or project policy says otherwise. Pushes and PRs require explicit authorization.
 
 Named after [Pele](https://en.wikipedia.org/wiki/Pele_(deity)), the Hawaiian volcano goddess: she controls the eruption.
 
@@ -20,7 +20,7 @@ Named after [Pele](https://en.wikipedia.org/wiki/Pele_(deity)), the Hawaiian vol
 | Hooks | managed entries merged into `settings.json` | managed entries merged into `hooks.json`; review and enable them with Codex `/hooks` |
 | Per-project install | `--project <path>` | `--project <path>` |
 
-`--host both` installs for both. Skills written for one host's tooling (`codex-simplify`, the Codex review backend) are filtered out of the other host's install automatically. Codex `/review` uses the Codex review backend; Claude Code retains its native legacy backend.
+`--host both` installs for both. The installer filters host-specific skills. Codex's native `/review` is read-only. Invoke `$source-command-review-codex` on Codex or `/review` on Claude Code for correctness review followed by conditional cleanup and recheck.
 
 Drop-in install adds the following under the host's config dir:
 
@@ -35,6 +35,8 @@ Drop-in install adds the following under the host's config dir:
 | **templates/** | `exec-plan-template.md` (single-file ExecPlan for cross-session / multi-writer / audited work) |
 | **hooks/** | Protected-branch guard · per-prompt clarification reminder |
 | **permissions/** | `settings.permissions.json` — conservative starter policy; **not auto-merged** by `install.sh` |
+
+`/cleanup-and-exit` removes eligible task worktrees, reclaims idle caches, and retries deferred cleanup. Pass `--repo` to inventory or `--machine` to reclaim rebuildable caches. iOS workflows lease existing iPhone simulators, and worktree cleanup releases the lease while preserving app data and login sessions.
 
 Optional extras (gated by install flags):
 
@@ -131,9 +133,8 @@ You: "implement feature X"
               the single source of requirement truth
    │
    ▼
-[plan-challenger] a fresh read-only reviewer challenges the candidate
-              for over-design, over-strict validation, and over-protection
-              before it is finalized (one review + one targeted recheck)
+[plan-challenger, when triggered] review major designs or requested plans
+    before finalization (one review + one targeted recheck)
    │
    ▼ you approve and switch back to Default mode
 [Root]        creates an isolated worktree (.worktrees/<slug>) from

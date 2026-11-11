@@ -1,7 +1,8 @@
 ---
-description: Alias for cleanup-and-exit; account for all task worktrees, clean eligible ones, and report retained directories
+description: Clean task worktrees and idle caches, inventory a repository, or clean rebuildable machine caches
+argument-hint: "[--repo [path] | --machine [--repo path]]"
 ---
 
-Use the cleanup-and-exit skill:
+Use `$HARNESS_ROOT/core/skills/cleanup-and-exit/SKILL.md` with these arguments:
 
-`$HARNESS_ROOT/core/skills/cleanup-and-exit/SKILL.md`
+$ARGUMENTS

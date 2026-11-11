@@ -26,7 +26,7 @@ The maintainer-local `scripts/sync-from-local.sh` performs the mirror pass, the 
 | `templates/*.md` | Yes | Keep referenced paths inside the public install |
 | Universal commands | Yes | Use `$HARNESS_ROOT/core/` and `$HARNESS_ROOT/scripts/` public install paths |
 | Listed skills and required helper files | Yes | Include every file referenced by a shipped skill; project-bound skills (e.g. monorepo SPM fixups) stay local |
-| `scripts/{trust-dir,worktree-sim,worktree-bootstrap,validation-receipt,review-input-snapshot,review-result,sync-xcode-skills,check-before-push,open-simulator}.sh` | Yes | Synced helper scripts |
+| `scripts/{trust-dir,worktree-sim,worktree-bootstrap,validation-receipt,review-input-snapshot,review-result,sync-xcode-skills,check-before-push,open-simulator}.sh`, `scripts/worktree-simulators.py` | Yes | Keep simulator leases in Pele's state directory |
 | `scripts/run-ios.sh` | Manual | Keep Pele's environment-configurable public implementation |
 | `skills/*/evals/` | No | Local fixtures may contain private data |
 | Project rules, commands, credentials, hooks, or build recipes | No | Keep in the private harness or project repo |

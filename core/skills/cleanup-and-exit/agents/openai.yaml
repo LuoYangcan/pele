@@ -1,4 +1,4 @@
 interface:
   display_name: "Cleanup and Exit"
-  short_description: "Clean task worktrees and report remaining directories"
-  default_prompt: "Use $cleanup-and-exit to account for all worktrees used by this task, clean eligible ones, and report any retained directories before exiting."
+  short_description: "Clean task worktrees, idle caches, and deferred tasks"
+  default_prompt: "Use $cleanup-and-exit to clean task worktrees, reclaim their idle generated caches, and recheck same-repository pending cleanup; honor --repo read-only inventory and --machine cache-only scope, preserve unfinished source, and verify each result."

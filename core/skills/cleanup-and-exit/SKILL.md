@@ -55,10 +55,10 @@ nested worktrees: <none | paths and branches>; action: <delete | keep | already 
 
 | Request and verified state | Action |
 | --- | --- |
-| Cleanup request; clean worktree and delivered HEAD | Delete worktree and local task branch directly |
+| Cleanup request; clean worktree and delivered HEAD | Remove the worktree and local task branch after the nested Git checks |
 | Explicit delete worktree and branch; clean, no unpushed commits | Delete both, including for an open PR |
 | Explicit delete worktree, keep branch; clean | Delete worktree, preserve branch and any local-only commits |
-| Explicit keep | Keep worktree and branch; shut down its simulator |
+| Explicit keep | Keep the worktree and branch |
 | Explicit cancel | Do nothing |
 | Dirty worktree, or unfinished/unknown delivery without an explicit deletion choice | Keep and report the concrete reason |
 
@@ -69,14 +69,14 @@ Do not show a fixed menu or require a second confirmation for an authorized, eli
 - Every deletion requires no uncommitted files. Local branch deletion also requires no unpushed work beyond the verified delivery proof. Do not interpret a failed inspection as a passed gate.
 - Never use `git worktree remove --force`.
 - Never remove the worktree from inside itself; run `git worktree remove` from the main repo root.
-- Run simulator cleanup before changing cwd because `worktree-sim.sh` locates the worktree from cwd.
+- Archive and verify ignored task records and local settings before whole-worktree removal. Keep their relative paths and record the original worktree, branch, and HEAD in a user-only backup outside the removal targets, such as `<git-common-dir>/cleanup-and-exit/backups/`.
 - Capture the target worktree root with `git rev-parse --show-toplevel` before changing cwd. Run DerivedData cleanup only after worktree removal succeeds.
 - Delete Xcode DerivedData only through `scripts/remove-worktree-derived-data.sh`; never match caches by project name or a broad glob.
 - Do not separately delete `build/`, local `DerivedData`, or Swift Package `.build` below the target; successful worktree removal deletes them. Do not delete the shared `~/Library/Caches/org.swift.swiftpm` cache.
 
 ## Nested Worktrees
 
-Before deletion, list registered worktrees whose absolute path starts with `<worktree-path>/.subworktrees/`.
+Before deletion, list every registered worktree below `<worktree-path>/`. Inspect unregistered nested Git repositories separately.
 
 - Apply the same task scope, action selection, and safety gates to each descendant. No extra confirmation is needed for eligible descendants already within the task's cleanup scope.
 - Keep the parent if any descendant is unrelated, retained, or fails its safety gate. Clarify ambiguous descendants together rather than asking once per path.
@@ -84,6 +84,18 @@ Before deletion, list registered worktrees whose absolute path starts with `<wor
 - Remove the parent only after no registered descendant remains.
 
 If the current target is itself a sub-worktree, capture its root before moving to its parent and apply the normal option flow to that captured path.
+
+### Generated SwiftPM checkouts
+
+For a delivered worktree, treat Git-ignored, worktree-local SwiftPM checkouts under Xcode's `SourcePackages/checkouts` or SwiftPM's `.build/checkouts` as rebuildable when package state or the lockfile identifies their origin.
+
+- Inspect each checkout and initialized nested submodule with `git status --porcelain=v1 --untracked-files=all --ignore-submodules=none`.
+- Check detached HEAD, local refs, and stashes with `git rev-list --max-count=1 --all HEAD --not <verified-revision> ...`. Use matching dependency pins, committed submodule gitlinks, and verified upstream refs as exclusions. Any remaining commit is unverified. A local tag or empty upstream range alone does not establish recoverability.
+- When all checks pass, remove the whole worktree with ordinary `git worktree remove`. Preserve other unregistered nested Git repositories. Keep the worktree and report the exact path if a checkout has local changes, unpublished commits, or unknown provenance.
+
+## Preserve Simulator Sessions
+
+Routine cleanup preserves simulator devices and their app data, including login sessions. Before removing an iOS worktree, record its known simulator UDIDs and any `.claude/sim-udid*` registrations in the cleanup receipt. Keep the devices running and available for reuse. Simulator shutdown or deletion requires a separate user request.
 
 ## Execute
 
@@ -98,7 +110,6 @@ Delete worktree and local task branch:
 
 ```bash
 worktree_path="$(git rev-parse --show-toplevel)"
-bash "$HARNESS_ROOT/scripts/worktree-sim.sh" delete
 cd <main-repo>
 git worktree remove "$worktree_path"
 bash "$HARNESS_ROOT/core/skills/cleanup-and-exit/scripts/remove-worktree-derived-data.sh" "$worktree_path"
@@ -109,16 +120,9 @@ Delete worktree, keep branch:
 
 ```bash
 worktree_path="$(git rev-parse --show-toplevel)"
-bash "$HARNESS_ROOT/scripts/worktree-sim.sh" delete
 cd <main-repo>
 git worktree remove "$worktree_path"
 bash "$HARNESS_ROOT/core/skills/cleanup-and-exit/scripts/remove-worktree-derived-data.sh" "$worktree_path"
-```
-
-Keep worktree and branch:
-
-```bash
-bash "$HARNESS_ROOT/scripts/worktree-sim.sh" shutdown
 ```
 
 The DerivedData script removes only cache entries whose `WorkspacePath` equals `<worktree-path>` or is below it, and refuses to run while `<worktree-path>` still exists. Run it after any successful deletion path, including `ExitWorktree remove`, and report its removed count and size. A skipped, failed, or unsupported helper is not a successful zero-item cleanup; report it separately. Then continue future commands from `<main-repo>`. If an `ExitWorktree` tool exists, use its matching remove/keep action. Otherwise, report the main repo path without simulating a host exit or archiving the task.

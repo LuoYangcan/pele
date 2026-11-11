@@ -1,6 +1,6 @@
 ---
 name: plan-challenge
-description: Independent adversarial review of a formal candidate plan before it is finalized, checking first for over-design, over-strict validation and over-protection. Covers native Plan, Default, architecture and meta plans; valid reviews are reused, and progress checklists or wording edits do not trigger.
+description: Independently challenge a new overall design, major redesign, or plan the user explicitly asks to review. Check over-design, validation, and protection before finalization. Routine local changes do not trigger it.
 ---
 
 # Plan challenge
@@ -9,11 +9,11 @@ Root owns the plan and the final decisions; `plan-challenger` independently look
 
 ## Entry and validity
 
-- Review once Root has a complete candidate plan ready to choose or execute, before finalizing it with the user: before `ExitPlanMode` in native Plan, before writing from that plan in Default / meta. Option lists during exploration are not reviewed one by one; a draft that keeps a pending user trade-off may be shown when clearly marked as pending, and is not called the final plan.
-- When the user asks to execute an existing plan, reuse its valid review; when there is no record, review the existing text once without writing a second plan and without asking again for implementation authorization.
-- Do not manufacture a plan for a mechanical micro-change that never needed one; progress checklists, ordinary Q&A, wording revisions and the reviewer's own fix suggestions do not trigger. Only Root dispatches; reviewers / workers never start this flow recursively.
-- A prior conclusion becomes invalid when the user goal, observable behavior, scope, architecture, hard constraints, acceptance criteria or key factual premises change; Root updates the complete plan and reviews again. Pure wording, execution progress or a transcription persisted without semantic change does not invalidate it.
-- When the user explicitly asks to skip this plan review, record `SKIPPED` and continue within existing authorization; "just do it / no Plan / write it yourself" alone does not waive a plan that has already been formed. The waiver does not change post-implementation mandatory-risk acceptance or action permissions.
+- Trigger for a new overall design, a major redesign of an existing system, or an explicit user request for independent plan review. Examples include choices about cross-module responsibilities, core flows, state ownership, and migration strategy.
+- Routine fixes, local refactors, small features, UI adjustments, copy, and config changes proceed through their usual workflow. Plan mode, a written plan, multiple files, or an independent implementation verification gate do not themselves trigger this review. Only Root dispatches it.
+- Review a complete candidate before `ExitPlanMode` or before writing from it in Default / meta. Drafts with pending choices can be shared as drafts. Reuse an existing valid review; backfill a missing record only when the trigger applies.
+- Re-review when the overall design or a key premise changes. Local fixes, wording, and implementation progress do not invalidate the conclusion.
+- Record `SKIPPED` when the user explicitly skips an applicable plan review. Continue within existing authorization. The implementation verification gates still apply.
 
 ## Dispatch and inputs
 
@@ -72,6 +72,6 @@ summary: <one sentence>
 2. Default to one full review plus one targeted recheck by the same reviewer. A revision, or a disputed rejection of a blocking finding, goes to the recheck; with no issues and unchanged text, converge directly. Do not automatically widen scope because the reviewer suggested an "improvement".
 3. If the second round still has blocking issues, disputes or key evidence gaps, keep the status unresolved and report the specific issues and the next step; do not count rounds as a pass, start another reviewer to reset the count, or reopen full reviews indefinitely because this round's revision was substantive. Further review requires an explicit user request; authorized work that does not depend on the unresolved plan may continue.
 4. After convergence, show the user the final plan and a short review summary: issue count, main fixes, remaining disagreements / skip reason. Keep the reviewer's original verdict and Root's accept/reject basis; do not rewrite self-review or rejected findings as the reviewer's pass.
-5. Keep in the current task the `plan_ref`, rounds, reviewer verdict, per-item disposition and final status `READY / UNRESOLVED / SKIPPED / NOT_REVIEWED`. Mark `READY` only when all blocking issues and key gaps are closed; when an ExecPlan exists, carry this short record with the plan, and backfill a review across tasks when the record is missing. With existing implementation authorization and status `READY` or an explicit user `SKIPPED`, continue directly.
+5. Keep in the current task the `plan_ref`, rounds, reviewer verdict, per-item disposition and final status `READY / UNRESOLVED / SKIPPED / NOT_REVIEWED`. Mark `READY` only when all blocking issues and key gaps are closed; when an ExecPlan exists, carry this short record with the plan, and backfill a missing review across tasks only when the trigger applies. With existing implementation authorization and status `READY` or an explicit user `SKIPPED`, continue directly.
 
-When a converged plan changes materially because of a later user request or new fact, start a new candidate review; revisions for issues found in the same round follow the two-round cap above. In a non-interactive environment missing required inputs, return a pending draft with the not-reviewed / not-converged reason; do not treat that as a waiver.
+When a major design or key premise changes after convergence, start a new candidate review. Revisions for issues found in the same round follow the two-round cap above. In a non-interactive environment missing required inputs, return a pending draft with the not-reviewed / not-converged reason.

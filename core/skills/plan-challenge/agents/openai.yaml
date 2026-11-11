@@ -1,4 +1,4 @@
 interface:
   display_name: "Plan Challenge"
-  short_description: "Independently review a formal plan for over-design, over-strict validation and over-protection"
-  default_prompt: "Use $plan-challenge to independently review the current plan, checking first for over-design, over-strict validation and over-protection, and propose evidence-based cuts."
+  short_description: "Challenge major designs or a plan the user asks to review"
+  default_prompt: "Use $plan-challenge to independently review the major design or requested plan, checking first for over-design, over-strict validation and over-protection, and propose evidence-based cuts."

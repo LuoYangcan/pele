@@ -17,7 +17,7 @@ Inspect loaded tools first; use only the host's available discovery interface wh
 - Local incremental commits follow the default authorization and project exceptions in [plan-first-delivery's incremental commit rule](../skills/plan-first-delivery/SKILL.md#incremental-commits); push, PR and publishing each check user authorization separately. Implementation permission does not imply them.
 - Create the isolated worktree required by project policy without repeating confirmation because of stale summaries or missing mode-switch tools.
 - A custom Codex role's explicit model/effort wins over spawn values. Regenerate roles after policy changes; new tasks/subagents use them. Select the current Root through the task UI or CLI launch arguments.
-- Before a formal plan is finalized, dispatch an independent review per [plan-challenge](../skills/plan-challenge/SKILL.md); when the role is not exposed, the model is unavailable, or there is no independent agent, follow its gap routing. Existing implementation authorization does not skip the review.
+- When the [plan-challenge](../skills/plan-challenge/SKILL.md) trigger applies, dispatch an independent reviewer before finalizing the plan. Follow its gap routing if the required role, model, or independent agent is unavailable.
 - Without subagents, Root works serially. Report an independent-review coverage gap when a fresh reviewer is unavailable; do not label self-review independent.
 
 ## Installed paths

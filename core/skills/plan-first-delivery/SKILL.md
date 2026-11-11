@@ -5,14 +5,14 @@ description: Main code-delivery flow for Default mode. Use when a request will l
 
 # Plan-first delivery
 
-Native Plan mode turns the requirement into a decision-complete plan; every formal plan is independently reviewed per [plan-challenge](../plan-challenge/SKILL.md) before it is finalized. The same Root in Default mode reuses valid review conclusions and takes over delivery, without a second plan, file-existence checkpoint or fixed approval turn. Model tiering: Root runs on the planning-tier strong model (Claude host: `/model fable`) and owns the plan, shared decisions, diff review, integration and verification; code writes are delegated by default to `implementer` on the implementation-tier model (Claude models live in agent Markdown; Codex uses the [model policy](../../../docs/model-policy.md)). Semantic verification must not use a weaker tier than implementation; recheck that constraint when changing either role.
+Native Plan mode turns the requirement into a decision-complete plan; [plan-challenge](../plan-challenge/SKILL.md) independently reviews major designs and user-requested plans. The same Root in Default mode takes over delivery and reuses any applicable valid review, without a second plan, file-existence checkpoint or fixed approval turn. Model tiering: Root runs on the planning-tier strong model (Claude host: `/model fable`) and owns the plan, shared decisions, diff review, integration and verification; code writes are delegated by default to `implementer` on the implementation-tier model (Claude models live in agent Markdown; Codex uses the [model policy](../../../docs/model-policy.md)). Semantic verification must not use a weaker tier than implementation; recheck that constraint when changing either role.
 
 ## Entry routing
 
 | Current state | Handling |
 | --- | --- |
 | Native Plan mode | Do not run this skill; write no code or plan files, and handle Figma style previews per the AGENTS entry routing. The final plan is the requirement source of truth for the same task |
-| Default, user explicitly asks to execute the same task's final plan | Execute after reusing a valid review, or the user's explicit skip record, per `plan-challenge`; when no record exists, review the existing text first. Do not re-plan, do not copy it into a second plan file |
+| Default, user explicitly asks to execute the same task's final plan | Execute the final plan. When the `plan-challenge` trigger applies, reuse a valid review or explicit skip record, or review the existing text once. Do not re-plan, do not copy it into a second plan file |
 | Default, narrow goal with no decision that would change the outcome | Micro-changes only: single file or few lines, no new observable behavior, one unambiguous implementation; or the user's instruction is already specific enough that the implementation is uniquely determined and introduces no new observable behavior. Confirm entry points and impact scope read-only; use `update_plan` for multi-step tasks, then implement. New features, multi-file changes, multiple reasonable implementations or behavior changes, and any case where you cannot tell whether a decision of the next row's kind exists, are handled by the next row |
 | Default, product behavior, scope, architecture, hard constraint or acceptance decisions remain | Use available planning/question tools per the [host adapter](../../rules/host-adapter.md). Clarify decisions that change the result; once the goal is clear and implementation is authorized, continue without a second GO turn merely because mode switching is unavailable |
 | User explicitly asks for an implementation worker | Treat it as an implementation delegation; Root still owns boundaries, integration and final verification |
@@ -27,10 +27,12 @@ Pure Q&A, read-only diagnosis, status queries, changes to global rule / skill / 
 DISCOVER (Plan/read-only)
   ├─ material decision → WAIT_INPUT → DISCOVER
   ├─ no-plan micro change → PLAN_READY
-  └─ candidate complete → PLAN_CANDIDATE → PLAN_CHALLENGE
-       ├─ revise / missing facts → DISCOVER (bounded by plan-challenge)
-       ├─ material user choice → WAIT_INPUT
-       └─ resolved / explicit skip → PLAN_READY
+  └─ candidate complete → PLAN_CANDIDATE
+       ├─ challenge not triggered → PLAN_READY
+       └─ major design / explicit request → PLAN_CHALLENGE
+            ├─ revise / missing facts → DISCOVER (bounded by plan-challenge)
+            ├─ material user choice → WAIT_INPUT
+            └─ resolved / explicit skip → PLAN_READY
 PLAN_READY + existing implementation authorization
   → EXECUTE
 EXECUTE + next action needs fresh authority
@@ -47,7 +49,7 @@ Root always owns user interaction, the final plan, shared decisions, main-worksp
 
 ## Before implementation starts
 
-1. Resolve the existing implementation authorization and the Plan preview boundary per the host adapter; in Default, a clear change request or instruction to execute the proposal authorizes local reversible changes and planned checks. When a formal plan exists, first check its review validity per `plan-challenge`; do not dispatch again when a valid conclusion exists.
+1. Resolve the existing implementation authorization and the Plan preview boundary per the host adapter; in Default, a clear change request or instruction to execute the proposal authorizes local reversible changes and planned checks. Check the `plan-challenge` trigger first. Verify or obtain an independent review only when it applies and no valid conclusion or explicit skip exists.
 2. When an Edit/Write will land and you are not in an isolated worktree, load `use-worktree` first; skip it when continuing the current task already inside a worktree. Meta configuration follows AGENTS' separate branch/worktree routing.
 3. Record `base_ref="$(git rev-parse HEAD)"`, check for a dirty tree, and protect the user's existing changes.
 4. If the project AGENTS/CLAUDE is already in context, check its trigger markers directly; otherwise read it. Load `scan-trigger-docs` when trigger-on-touch markers exist.
@@ -91,7 +93,7 @@ Before a `needs_explicit_approval` action, check whether existing authorization 
 3. Exceptions where Root writes directly: single-file, decision-free micro-changes; integration-level fixes; narrow fixes for verification failures; and hosts with no subagent (Root then implements serially). Root's direct writes are bound by the same `validation_fallback_contract`; shared manifests, public interfaces and final merged files are always written by Root.
 4. After a worker returns, Root checks the actual diff, out-of-bounds writes, shared interfaces, the user's existing changes, and that added validation/fallback matches the contract item by item; code this task added but did not list must be removed, or go back to discovery with evidence — Root may not grant the authorization itself after the fact. Enter unified verification only after the necessary integration fixes; a worker's local checks are no substitute for final integration verification.
 5. When the user adds local implementation details, update the execution checklist and continue; do not create amendment/status files.
-6. When the user changes observable behavior, scope, architecture, hard constraints or acceptance criteria, pause the writer, keep the current diff, return to DISCOVER to produce a replacement plan, and review it per `plan-challenge` before entering PLAN_READY; do not roll back the user's changes on your own. The replacement plan must restate in full every substantive user decision accumulated so far, not just the delta; when an ExecPlan exists, sync it per the `exec-plan` update rules.
+6. When the user changes observable behavior, scope, architecture, hard constraints or acceptance criteria, pause the writer, keep the current diff, return to DISCOVER to produce a replacement plan, and check whether the replacement triggers `plan-challenge` or invalidates its existing review; do not roll back the user's changes on your own. The replacement plan must restate in full every substantive user decision accumulated so far, not just the delta; when an ExecPlan exists, sync it per the `exec-plan` update rules.
 
 ### Parallel delegation
 

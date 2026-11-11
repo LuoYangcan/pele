@@ -9,7 +9,7 @@ fi
 
 worktree_path="${1%/}"
 case "$worktree_path" in
-  /*/.worktrees/*) ;;
+  /*/.worktrees/*|/*/.claude/worktrees/*|/*/.codex/worktrees/*) ;;
   *)
     echo "refusing non-worktree path: $worktree_path" >&2
     exit 3

@@ -1,6 +1,6 @@
 ---
 name: open-sim
-description: Build the iOS app, then install + launch it on this worktree's Simulator and bring the window to front. Use when the user asks to "open the simulator", "open simulator", "run the simulator", "see how it looks in the simulator", "build and run it", "build and run on simulator", "launch on simulator". Skip for macOS app; for a real iPhone use the `run-device` skill instead.
+description: Build the iOS app, then install + launch it on the simulator leased to this checkout and bring the window to front. Use when the user asks to "open the simulator", "open simulator", "run the simulator", "see how it looks in the simulator", "build and run it", "build and run on simulator", "launch on simulator". Skip for macOS app; for a real iPhone use the `run-device` skill instead.
 ---
 
 # open-sim
@@ -20,7 +20,7 @@ Not for: macOS apps · **a real device (use `run-device`)** · release / archive
 
 - cwd is somewhere inside the iOS repo (worktree included), with a `justfile` findable upward
 - The project builds iOS Simulator Debug with `just build-ios`
-- In a worktree: install to the per-worktree `sim-<slug>`; outside a worktree: fall back to a booted / newest available iPhone (the script's internal fallback)
+- An existing iPhone simulator must be available to lease. The checkout reuses its lease while active, and cleanup releases it without losing app data or login state.
 
 ## Run
 
@@ -35,7 +35,7 @@ bash "$HARNESS_ROOT/scripts/run-ios.sh" --target sim
   bash "$HARNESS_ROOT/scripts/run-ios.sh" --target sim --no-build
   ```
 
-The script builds → locates the build artifact (scans `Build/Products/*-iphonesimulator/`, takes the newest `.app`; the configuration name is project-defined and can change, so `Debug-` is not hardcoded) → reads the bundle id from the artifact's `Info.plist` → gets the per-worktree sim via `worktree-sim.sh ensure` (auto fallback outside a worktree) → `simctl install` + `launch` → `open-simulator.sh` (Simulator.app, or DeviceHub.app on Xcode 27), and finally prints the `----- run-ios result -----` result block.
+The script builds → locates the build artifact (scans `Build/Products/*-iphonesimulator/`, takes the newest `.app`; the configuration name is project-defined and can change, so `Debug-` is not hardcoded) → reads the bundle id from the artifact's `Info.plist` → leases the most recently used free iPhone simulator and waits for boot → `simctl install` + `launch` → `open-simulator.sh` (Simulator.app, or DeviceHub.app on Xcode 27), and finally prints the `----- run-ios result -----` result block.
 
 ## Report to the user
 
@@ -51,7 +51,7 @@ Relay from the result block: which sim was used (`WHERE`) + UDID + `BUNDLE_ID` +
 |---|---|---|
 | 2 | Build failed | Report the xcodebuild error verbatim, do not continue |
 | 3 | No `.app` found | Only possible with `--no-build`; have the user drop `--no-build` and re-run |
-| 4 | install / launch / Simulator window failed, or no usable iPhone sim | Usually a sim environment problem; suggest installing an iOS runtime (Xcode > Settings > Platforms)|
+| 4 | install / launch / Simulator window failed, or no usable iPhone sim | Check the reported lease, boot, install or launch error |
 
 ## Out of scope
 

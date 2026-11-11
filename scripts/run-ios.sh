@@ -27,9 +27,8 @@
 #                      Products are read from <root>/<derived>/Build/Products/Debug-iphone{os,simulator}.
 #
 # Flags:
-#   --target sim      Install on the per-worktree sim via the sibling worktree-sim.sh
-#                     (optional helper — if absent, falls back to a booted / newest available
-#                     iPhone), then brings the Simulator window to front.
+#   --target sim      Lease an existing iPhone simulator for the project checkout,
+#                     install the app, then bring the Simulator window to front.
 #   --target device   Install on a connected real device via devicectl. Auto-picks the single
 #                     paired device; with >1 paired you must pass --device-id.
 #   --device-id <id>  CoreDevice identifier (the UUID `identifier` field of
@@ -205,55 +204,16 @@ if [[ "$TARGET" == device ]]; then
   WHERE="device:${DEV_NAME:-$DEVICE_ID}"
   UDID_OUT="$DEVICE_ID"
 else
-  # Optional helper: per-worktree sim isolation. Absent / non-worktree → graceful fallback.
-  SIM_OUT="$(bash "$(dirname "${BASH_SOURCE[0]}")/worktree-sim.sh" ensure 2>/dev/null)" && {
-    UDID="$(printf '%s\n' "$SIM_OUT" | awk -F= '/^SIMULATOR_UDID=/{print $2}')"
-    SIM_NAME="$(printf '%s\n' "$SIM_OUT" | awk -F= '/^SIM_NAME=/{print $2}')"
-  } || UDID=""
-
-  if [[ -z "$UDID" ]]; then
-    # fallback: booted iPhone first, else newest available iPhone + boot.
-    UDID="$(xcrun simctl list devices booted -j 2>/dev/null | python3 -c "
-import json, sys
-data = json.load(sys.stdin)
-for _, devs in data['devices'].items():
-    for d in devs:
-        if d.get('state') == 'Booted' and 'iPhone' in d.get('name', ''):
-            print(d['udid']); sys.exit()
-")"
-    if [[ -z "$UDID" ]]; then
-      UDID="$(xcrun simctl list devices available -j 2>/dev/null | python3 -c "
-import json, re, sys
-data = json.load(sys.stdin)
-def ver(rt):
-    m = re.search(r'iOS-(\d+)-(\d+)', rt)
-    return (int(m.group(1)), int(m.group(2))) if m else (0, 0)
-cands = []
-for rt, devs in data['devices'].items():
-    if 'iOS' not in rt:
-        continue
-    for d in devs:
-        if 'iPhone' in d.get('name', ''):
-            cands.append((ver(rt), d['udid']))
-cands.sort(key=lambda x: (-x[0][0], -x[0][1]))
-print(cands[0][1] if cands else '')
-")"
-      [[ -n "$UDID" ]] || {
-        echo "ERROR: no iPhone simulator available — install an iOS runtime in Xcode > Settings > Platforms." >&2
-        exit 4
-      }
-      xcrun simctl boot "$UDID" 2>/dev/null || true
-    fi
-    SIM_NAME="$(xcrun simctl list devices -j 2>/dev/null | UDID="$UDID" python3 -c "
-import json, os, sys
-data = json.load(sys.stdin)
-target = os.environ['UDID']
-for _, devs in data['devices'].items():
-    for d in devs:
-        if d.get('udid') == target:
-            print(d.get('name', '')); sys.exit()
-")"
+  if ! SIM_OUT="$(python3 "$(dirname "${BASH_SOURCE[0]}")/worktree-simulators.py" ensure --worktree "$ROOT")"; then
+    exit 4
   fi
+  UDID="$(printf '%s\n' "$SIM_OUT" | sed -n 's/^SIMULATOR_UDID=//p')"
+  SIM_NAME="$(printf '%s\n' "$SIM_OUT" | sed -n 's/^SIM_NAME=//p')"
+  if [[ -z "$UDID" ]]; then
+    echo "ERROR: simulator lease did not return a UDID." >&2
+    exit 4
+  fi
+  xcrun simctl bootstatus "$UDID" -b || exit 4
 
   echo ">> simctl install + launch on ${SIM_NAME:-$UDID}..." >&2
   if ! xcrun simctl install "$UDID" "$APP_PATH"; then

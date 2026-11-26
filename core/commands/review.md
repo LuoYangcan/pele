@@ -1,5 +1,5 @@
 ---
-description: Run a read-only correctness review, then conditionally clean and recheck the branch
+description: Code review plus quality cleanup — report-only /code-review first, /simplify only when there is no must-fix, then the project's cheap check
 ---
 
 Use `$HARNESS_ROOT/core/skills/source-command-review/SKILL.md` on Claude Code.

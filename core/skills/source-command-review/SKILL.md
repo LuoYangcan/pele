@@ -1,25 +1,13 @@
 ---
 name: source-command-review
-description: Claude backend for `/review`-style report-only correctness review followed by conditional branch cleanup. Captures structured `/code-review` output first, runs `/simplify` only on a passing verdict, rechecks the cleanup diff, and renders the shared report; not for Codex, PR comments, shipping, or merging.
+description: Claude implementation of `/review` — a report-only correctness review with `/code-review`, then `/simplify` cleanup only when there is no must-fix, then the project's cheap check, with conclusions given directly in the conversation. Does not post PR comments, ship, or merge.
 ---
 
-# source-command-review
+# /review (Claude)
 
-Resolve installed paths per the [host adapter](../../rules/host-adapter.md) before running helpers.
-
-Read [`../review-contract.md`](../review-contract.md) completely, then run its `active-command` mode with the Claude backend below.
-
-If the host cannot invoke Claude `/simplify` and `/code-review`, stop and report that the Claude backend is unavailable. Do not use Codex commands or silently downgrade to manual review.
-
-## Claude Backend
-
-1. Freeze the fingerprint, changed paths, relevant untracked product paths, snapshot, and `pre_tree`. Create the report path from the shared contract.
-2. Invoke Claude `/code-review` with Opus high effort; use highest effort only for a contract risk gate. Pass the frozen scope, applicable latest plan/ExecPlan and rules, reviewer checklist, the cleanup-follows notice, scanner/cache/network prohibitions, and `review-result.schema.json`. Add `report-only; return raw JSON only; do not edit or post PR comments`. Capture the final JSON in `$main_result` with the contract's timeout, one transport retry, and one repair-only JSON retry.
-3. Verdict `fail`: write the `not-run` cleanup JSON and publish `$main_result`.
-4. Otherwise invoke Claude `/simplify` on Opus on `<base_ref>...HEAD plus staged, unstaged, and untracked working-tree changes`: inline when the session model is Opus, otherwise through a `general-purpose` subagent with `model: opus` that returns only the cleanup JSON. Require the shared cleanup result schema. Unchanged tree: publish `$main_result`.
-5. Changed tree: start the shared build verification, write `$cleanup_diff`, recompute the fingerprint, and invoke `/code-review` again at medium effort as the contract's cleanup recheck with `$cleanup_diff`, `$main_result`, the cleanup JSON, the post-cleanup fingerprint, and the schema. Capture the final JSON in `$temp_result` with the same retries.
-6. Route by the recheck: revert and publish `$main_result` on `must_fix`, otherwise publish `$temp_result`. Validate and publish through `review-result.sh publish active ...`; the backend—not `/code-review`—writes Markdown and the JSON sidecar. Join build verification and return metadata plus cleanup/build counts.
-
-Do not let `/code-review` edit the working tree or use its default GitHub-comment behavior.
-
-The Claude `/review` command remains the public entry point. Do not expose this backend as Codex's review implementation.
+1. Resolve `base_ref`: the user's choice first, otherwise the project convention or the remote default branch; ask when unsure. Scope is `<base_ref>...HEAD` plus staged, unstaged, and untracked changes.
+2. Run `/code-review high`, report-only: do not edit the working tree or post PR comments. Pass `model: "fable"` explicitly to every finder / verifier it dispatches (reviewer agent definitions without a pinned model would otherwise inherit the Root's Opus). Use `xhigh` instead for concurrency / ownership, auth / security / privacy, persistence / schema migrations, cross-package public API, or 15+ product files.
+3. Must-fix found: list the issues, skip cleanup, and stop.
+4. No must-fix: run `/simplify` on the same scope (when the session model is not Opus, run it through a `general-purpose` subagent with `model: opus`).
+5. Cleanup changed files: run the project's cheap check (e.g. `just check`); on failure revert this cleanup's changes and report.
+6. Report the review verdict and findings (file:line), what cleanup changed, and the check result. Do not write a report file, commit, push, or open a PR.

@@ -5,8 +5,6 @@ description: Persist the result of native Plan mode or same-thread planning into
 
 # ExecPlan
 
-Resolve installed paths per the [host adapter](../../rules/host-adapter.md) before running helpers.
-
 An ExecPlan is a cross-context execution handoff, not a precondition gate for every code task.
 
 ## When to write one
@@ -38,14 +36,14 @@ Required content:
 2. scope, non-goals, and hard constraints;
 3. settled key decisions, interfaces/data flow, and the affected surface;
 4. milestones, dependencies, and writer ownership;
-5. verification, mandatory/optional review, immediate-authorization boundaries, risks, and rollback, plus any existing [plan review record](../plan-challenge/SKILL.md) (plan_ref, rounds, verdict, dispositions, and status);
+5. verification, mandatory/optional review, immediate-authorization boundaries, risks, and rollback, plus any existing plan review conclusion ([plan-challenge](../plan-challenge/SKILL.md));
 6. currently known facts and outstanding work.
 
 ## Update rules
 
 - Root is the only writer of the canonical ExecPlan; workers are read-only.
 - When behavior, scope, architecture, constraints, or acceptance change, rewrite the corresponding canonical section and increment `revision`; do not append conflicting historical text.
-- Bind reviewer input to this plan by absolute path, current `revision`, and file SHA-256; any update invalidates the old semantic/UI review.
+- Reviewer input carries this plan's absolute path and current `revision`; once the plan is updated, earlier semantic/UI review conclusions are void.
 - Track implementation progress with the host's checklist/Todo; the ExecPlan records only the milestone status that must be known across contexts.
 - When the user cancels or replaces the goal, keep the existing source, do not destroy it on your own; mark the ExecPlan superseded at the top and link the replacement plan.
 - `.specs/` may be cleaned up before ship; when it still holds long-lived project knowledge, migrate that into the project AGENTS/CLAUDE or trigger-on-touch docs first.

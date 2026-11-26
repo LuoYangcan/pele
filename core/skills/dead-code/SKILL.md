@@ -9,7 +9,7 @@ After repeated agent iteration, **zombie code** is often left behind — methods
 
 > The current implementation supports **Swift** projects only (it relies on [Periphery](https://github.com/peripheryapp/periphery)'s SourceKit index). Other language ecosystems can follow the same skeleton — scan → filter to the changed scope → tier → user decides — with a different underlying tool (e.g. TypeScript: `ts-prune`, Python: `vulture`, Go: `unused`, Kotlin: `detekt --baseline` + the `unused` rule).
 >
-> The report-only reviewer in `/review` does not invoke this skill; per `review-contract.md` it only does a narrow-scope `rg` reference check over changed paths.
+> `/review` does not invoke this skill.
 
 ## Trigger conditions
 
@@ -316,7 +316,6 @@ After the user picks A / B:
 
 ## Relationship to other skills / rules
 
-- **`architecture-first`**: only resolves unresolved durable boundaries; adding a helper/type does not trigger it by itself. This skill identifies unreferenced changed symbols once the implementation is stable.
 - **cleanup backend**: Claude uses `/simplify`; Codex uses `codex-simplify`. Cleanup fixes automatically; this skill only looks at unused code — report first, delete only after the user selects.
 - **`plan-first-delivery`**: when the user explicitly asks, run one concentrated scan after the final implementation diff is stable; Root adopts the deletions and integrates.
 - **`post-change-verify`**: this skill does not replace final verification; after deletion, Root or `command-runner` verifies the final candidate.

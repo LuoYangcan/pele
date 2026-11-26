@@ -1,77 +1,42 @@
 ---
 name: plan-challenge
-description: Independently challenge a new overall design, major redesign, or plan the user explicitly asks to review. Check over-design, validation, and protection before finalization. Routine local changes do not trigger it.
+description: Independent adversarial review of the overall design of a new approach or large request, or of a major redesign; also used when the user explicitly asks for a plan review. Ordinary bug fixes, local refactors, small features and small config tweaks do not trigger it; writing a plan or touching multiple files does not trigger it by itself.
 ---
 
 # Plan challenge
 
-Root owns the plan and the final decisions; `plan-challenger` independently looks for counterexamples that would make the plan fail. This skill is the single process owner for plan review. It does not replace the post-implementation verifier / UI review and adds no fixed user-approval turn.
+Root owns the plan and the final decisions; `plan-challenger` runs on the review-tier model (Claude: Fable; Codex: see the [model policy](../../../docs/model-policy.md)) in a fresh context and looks for counterexamples that would make the plan fail.
 
-## Entry and validity
+## When to trigger
 
-- Trigger for a new overall design, a major redesign of an existing system, or an explicit user request for independent plan review. Examples include choices about cross-module responsibilities, core flows, state ownership, and migration strategy.
-- Routine fixes, local refactors, small features, UI adjustments, copy, and config changes proceed through their usual workflow. Plan mode, a written plan, multiple files, or an independent implementation verification gate do not themselves trigger this review. Only Root dispatches it.
-- Review a complete candidate before `ExitPlanMode` or before writing from it in Default / meta. Drafts with pending choices can be shared as drafts. Reuse an existing valid review; backfill a missing record only when the trigger applies.
-- Re-review when the overall design or a key premise changes. Local fixes, wording, and implementation progress do not invalidate the conclusion.
-- Record `SKIPPED` when the user explicitly skips an applicable plan review. Continue within existing authorization. The implementation verification gates still apply.
+- A new approach or large request that has to choose an overall product / technical route, or a major redesign of an existing system (cross-module responsibilities, core flows, state ownership, migration route); also when the user explicitly asks for a review.
+- Ordinary bug fixes, local refactors, small features, UI fine-tuning, copy and small config tweaks do not trigger it.
+- Dispatch once a complete candidate plan exists and before writing code (in native Plan mode, before `ExitPlanMode`). When the plan only changes locally, keep the existing conclusion; re-review only when the overall goal, key architecture, core flow or migration route changes.
+- When the user explicitly skips it, note "plan review skipped" and continue.
 
-## Dispatch and inputs
+## Dispatch
 
-Check actual capabilities per the [host adapter](../../rules/host-adapter.md) first. On first use dispatch a fresh, read-only `plan-challenger`: Codex `fork_turns="none"`, Claude a new independent Agent; it does not inherit Root's full analysis or a long argument meant to persuade the reviewer.
-
-Use the planning-tier model: the Claude role inherits the planning Root's model; Codex resolves `plan-challenger` through the [model policy](../../../docs/model-policy.md). When the current session does not expose the custom role, use a fresh general-purpose subagent with the same read-only contract and the planning-tier model passed explicitly; do not borrow the verifier, which only reviews final code. When the required model is unsupported or there is no independent agent, mark `NOT_REVIEWED` and state the gap; a draft may be shown, but it cannot be claimed as passed, and implementation that depends on the review cannot continue unless the user explicitly skips it.
-
-Root supplies the following complete inputs, writing `NONE` where the repo does not apply:
-
-- the original request, accumulated user decisions, scope / non-goals, hard constraints and acceptance criteria;
-- the complete candidate plan text, a unique `plan_ref` (task identifier + revision number) and `review_round`;
-- the repo/worktree absolute path, the allowed search scope, relevant factual evidence and open uncertainties;
-- on recheck, additionally the previous `plan_ref`, all findings, Root's disposition of each, and the complete revised text.
-
-Freeze the supplied text and key inputs during review; when receiving the result, confirm that `plan_ref` and content still match the current candidate. Never reuse the same ref for different text. Do not create a plan file, hash artifact or persistent gate for this; when an ExecPlan exists, reuse its revision — the review itself does not trigger an ExecPlan.
+Dispatch one fresh, read-only `plan-challenger` that does not inherit Root's long argument. Inputs: the original request and the decisions the user has made, scope / non-goals, hard constraints and acceptance criteria, the complete candidate plan, the repo path and relevant evidence. When no independent agent or review-tier model is available, tell the user "the plan was not independently reviewed"; do not pass off self-review as the review.
 
 ## Reviewer contract
 
-Read only the necessary project rules and directly relevant evidence, judge independently, and do not substitute Root's conclusions for facts. Do not write files, change the plan, run build/test/install, cause external side effects or dispatch further agents; when evidence is missing, say so instead of guessing.
-
-First review whether added complexity is necessary, then check for missed requirements, factual premises, counterexamples/failure paths, dependency feasibility and whether acceptance is meaningful. A plan that achieves the goal does not mean every structure, check or protection in it deserves to stay.
-
-| Primary check | Plan content to challenge |
-| --- | --- |
-| Over-design | Abstraction layers, protocols, configuration, state machines or general frameworks added for hypothetical extension; duplicating an existing capability; inflating a local need into an infrastructure overhaul |
-| Over-strict validation | Re-validating trusted internal values or an invariant the upstream already established; tightening legal input without a contractual basis; escalating an unrelated optional failure into a full block |
-| Over-protection | Fallbacks, swallowed errors, retries or recovery with no clear need; repeated confirmation of authorized reversible actions; artifacts, isolation, full verification or approval steps added for hypothetical risk |
-
-For each suspicious addition ask: without it, which confirmed requirement, contract or proven behavior concretely breaks? The basis must come from the user, project rules, an authoritative contract or a verifiable fact; the candidate plan saying "needed", "may be useful later" or "safer" is not an independent basis. For code structure, validation or fallback, judge with the necessity, single-owner and degradation-authorization criteria in [lean-diff](../lean-diff/SKILL.md) sections 2/3; do not run its write flow, and do not treat the candidate under review as an approved final plan that is exempt.
-
-When you find redundancy, prefer recommending deletion, merging, reuse or keeping the check at its real owner boundary, stating the concrete cost/behavior consequence and how the requirement is still met after the cut. A single caller or the mere existence of a check does not prove it redundant. Keep checks required at untrusted input boundaries, by independent authorization/ordering contexts, by real failures, and by hard constraints. When an existing mandatory rule looks redundant, only point out the conflict for Root; do not authorize its removal yourself.
-
-The reviewer's own suggestions are held to the same necessity standard: do not add frameworks, check matrices or approval steps to prevent over-design, and do not list unrelated hypothetical risks as evidence gaps that must be filled. Style preferences and purely maintainability simplifications are `advisory`; only a concrete break of the goal, contract or behavior blocks. Do not pad findings; zero issues may pass.
-
-Each finding uses a stable ID and gives the triggering scenario, the concrete consequence, the evidence (file line / requirement / checkable counterexample) and the minimal fix. Mark issues that break the goal or a hard constraint as `blocking`, the rest as `advisory`. Output:
+- First check whether added complexity is necessary: abstractions / config / state machines added for hypothetical extension, or duplicating an existing capability; re-validating trusted internal values, or tightening input without a basis; fallbacks, retries, confirmation steps or artifacts with no clear need. For each suspicious item ask: without it, which confirmed requirement or contract breaks? The plan's own "may be useful later" or "safer" is not a basis. The criteria are the same as `lean-diff`.
+- Then check for missed requirements, factual premises, failure paths, dependency feasibility and whether acceptance is meaningful.
+- Your own suggestions follow the same necessity standard: do not add frameworks or approvals to prevent over-design; do not pad findings, zero issues may pass.
+- Read-only: no file writes, no plan edits, no commands, no further dispatch.
 
 ```yaml
-plan_ref: <echo verbatim>
 verdict: READY | REVISE | NEEDS_INPUT | NEEDS_DECISION
 findings:
   - id: PC-001
     severity: blocking | advisory
     scenario: <triggering scenario>
     consequence: <concrete failure>
-    evidence: <checkable basis>
+    evidence: <file line / requirement / checkable counterexample>
     minimal_fix: <minimal fix or missing decision>
-coverage_gaps: []
 summary: <one sentence>
 ```
 
-`READY` requires no blocking finding, no evidence gap that prevents judgment and no pending user trade-off; advisory findings alone can still be `READY`. Use `REVISE` for clearly fixable blocking issues, `NEEDS_INPUT` for missing facts, and `NEEDS_DECISION` for trade-offs the user must decide. A recheck covers only the disposition of the original findings, the impact of the revision and newly introduced issues.
-
 ## Root convergence
 
-1. Verify each finding: accept and revise, or reject with evidence; ask the user only for a material trade-off they must choose. Fill facts that can be gathered read-only yourself; do not dress missing facts up as user decisions.
-2. Default to one full review plus one targeted recheck by the same reviewer. A revision, or a disputed rejection of a blocking finding, goes to the recheck; with no issues and unchanged text, converge directly. Do not automatically widen scope because the reviewer suggested an "improvement".
-3. If the second round still has blocking issues, disputes or key evidence gaps, keep the status unresolved and report the specific issues and the next step; do not count rounds as a pass, start another reviewer to reset the count, or reopen full reviews indefinitely because this round's revision was substantive. Further review requires an explicit user request; authorized work that does not depend on the unresolved plan may continue.
-4. After convergence, show the user the final plan and a short review summary: issue count, main fixes, remaining disagreements / skip reason. Keep the reviewer's original verdict and Root's accept/reject basis; do not rewrite self-review or rejected findings as the reviewer's pass.
-5. Keep in the current task the `plan_ref`, rounds, reviewer verdict, per-item disposition and final status `READY / UNRESOLVED / SKIPPED / NOT_REVIEWED`. Mark `READY` only when all blocking issues and key gaps are closed; when an ExecPlan exists, carry this short record with the plan, and backfill a missing review across tasks only when the trigger applies. With existing implementation authorization and status `READY` or an explicit user `SKIPPED`, continue directly.
-
-When a major design or key premise changes after convergence, start a new candidate review. Revisions for issues found in the same round follow the two-round cap above. In a non-interactive environment missing required inputs, return a pending draft with the not-reviewed / not-converged reason.
+Verify each finding: accept and revise, or reject with evidence; ask the user only about trade-offs they must decide. At most one full review plus one targeted recheck by the same reviewer; if the second round still has blocking findings, report the disagreement to the user as-is, and do not start another reviewer to reset the count. When showing the user the final plan, add a one-line review summary: issue count, main fixes, remaining disagreements.

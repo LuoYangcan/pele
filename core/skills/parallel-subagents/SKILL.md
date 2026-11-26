@@ -24,7 +24,6 @@ Root spells out in the prompt:
 - the goal, observable completion conditions, and relevant constraints;
 - exclusive file or module ownership, and the off-limits scope;
 - the frozen shared interfaces and dependencies;
-- the `validation_fallback_contract` frozen by `plan-first-delivery`;
 - project docs that must be read;
 - the return format and the narrow-scope checks it may run.
 
@@ -42,7 +41,7 @@ Before dispatching write tasks, also freeze the handoff mechanism: direct fan-in
 
 ## Worker handoff
 
-Every write worker returns: the worktree's absolute path, `base_ref`/current HEAD, `git status --short`, the complete changed/untracked paths, the diff within its ownership, the `validation_fallback_contract` reconciliation, the narrow-scope checks and their results, and open items. It must not commit, merge, push, or open a PR on its own.
+Every write worker returns: the worktree's absolute path, `base_ref`/current HEAD, `git status --short`, the complete changed/untracked paths, the diff within its ownership, the narrow-scope checks and their results, and open items. It must not commit, merge, push, or open a PR on its own.
 
 - Shared worktree: Root reviewing the current files against the returned list is enough; stop and handle any out-of-bounds path first.
 - Separate worktree: prefer the host-native uncommitted diff handoff. On shared local disk, Root can read `git diff --binary <base_ref> -- <owned paths>` from the recorded worktree, check untracked/binary files separately, and then apply it to the main worktree.
@@ -51,7 +50,7 @@ Every write worker returns: the worktree's absolute path, `base_ref`/current HEA
 
 ## Integration
 
-1. Root collects each handoff and checks `base_ref`, changed paths, out-of-bounds writes, conflicts, shared contracts, and the `validation_fallback_contract` reconciliation.
+1. Root collects each handoff and checks `base_ref`, changed paths, out-of-bounds writes, conflicts, and shared contracts.
 2. Root integrates the diffs into the main worktree by the frozen mechanism, confirms untracked/binary files item by item, and makes the integration fixes needed.
 3. Run the verification frozen in `rules/post-change-verify.md` once, on the post-fan-in final candidate only.
 4. A change to the final source invalidates the corresponding verification and reviews; a change to the authoritative plan or design inputs invalidates the semantic/UI reviews. Rerun only the affected gates.

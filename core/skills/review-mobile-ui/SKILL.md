@@ -5,26 +5,24 @@ description: iOS Simulator UI acceptance SOP. Run by ui-reviewer when Figma, ani
 
 # Mobile UI review
 
-Resolve installed paths per the [host adapter](../../rules/host-adapter.md) before running helpers.
-
-The caller must supply the explicit cases from the final plan, build evidence for the current source, the frozen design artifacts, a `build=` bound to the actual `.app`/environment, and a `ui_review_input_fingerprint` matching those inputs. Answer only those cases, no exploratory testing; return `NEEDS_INPUT` when the fingerprint does not match.
+The caller must supply the explicit cases from the final plan, the frozen design artifacts, and the actually installed `APP_PATH`, bundle ID and Simulator UDID. Answer only those cases; no exploratory testing.
 
 ## Supported scope
 
 - iOS Simulator: supported.
-- Android, real devices, macOS, watchOS, tvOS: not covered by this skill, return `DEGRADED target_not_supported`.
+- Android, real devices, macOS, watchOS, tvOS: not covered; return `DEGRADED target_not_supported`.
 - Missing explicit UI cases or design basis: return `NEEDS_INPUT`.
-- Missing an absolute `APP_PATH`, app digest, bundle/scheme/config/destination or the designated Simulator: return `NEEDS_INPUT build_identity_incomplete`; do not build on your own or search for another artifact.
+- Missing an absolute `APP_PATH`, bundle ID or designated Simulator: return `NEEDS_INPUT build_identity_incomplete`; do not build or search for another artifact.
 
 ## 1. Locate the artifact and Simulator
 
-Use only the `APP_PATH`, `BUNDLE_ID`, scheme/config/destination and `SIMULATOR_UDID` bound by the caller. First check the digest with `validation-receipt.sh --repo "$repo" artifact-digest "$APP_PATH"` and the bundle ID with `plutil -extract CFBundleIdentifier raw "$APP_PATH/Info.plist"`; on a mismatch return `NEEDS_INPUT build_identity_mismatch`. Do not load `find-ios-build-artifact` or switch to the "most recent" artifact.
+Use only the caller's `APP_PATH`, `BUNDLE_ID` and `SIMULATOR_UDID`. First check the bundle ID with `plutil -extract CFBundleIdentifier raw "$APP_PATH/Info.plist"`; on a mismatch return `NEEDS_INPUT build_identity_mismatch`. Do not load `find-ios-build-artifact` or switch to the "most recent" artifact.
 
 If the designated artifact or Simulator does not exist, degrade as an environment limitation. Every subsequent `sim-use` command must pass `--device "$SIMULATOR_UDID"` explicitly.
 
 ## 2. Install and launch
 
-Execute once for the whole review session:
+Run once for the whole review session:
 
 ```bash
 xcrun simctl install "$SIMULATOR_UDID" "$APP_PATH"
@@ -62,21 +60,21 @@ sim-use screenshot --device "$SIMULATOR_UDID" \
   --output "$evidence_dir/case-<id>-static.png"
 ```
 
-- Compute size/spacing from AX frames, default tolerance ±2pt; when the final plan sets another tolerance, follow the plan.
+- Compute size/spacing from AX frames with a default tolerance of ±2pt; follow the final plan when it sets another tolerance.
 - When a frozen measurement HTML exists, it is the source for exact numbers.
-- Prefer the frozen reference already bound in `design=`; fetch a reference screenshot into `refs/` once only when the input carries an immutable provider version and the live result can be checked against that version.
-- `strict`: any visual deviation within the plan's coverage may be blocking; `loose`: block only on the layout skeleton or obviously wrong tokens, record details as warnings.
-- A single Figma fetch failure is recorded as an environment warning; when every reference fails and judgment is impossible, `DEGRADED figma_reference_unavailable`.
+- Prefer the frozen reference the caller supplied; only without one, fetch a reference screenshot from Figma once into `refs/`.
+- `strict`: any visual deviation within the plan's coverage may block; `loose`: block only on the layout skeleton or obviously wrong tokens, and record details as warnings.
+- A single Figma fetch failure is an environment warning; when every reference fails and judgment is impossible, return `DEGRADED figma_reference_unavailable`.
 
 During static sampling do not use type, paste, swipe, long-press or repeated taps to produce dynamic states.
 
 ## 6. Dynamic cases
 
-Load `record-ui-animation` once per dynamic case and follow its prepare → record → trigger → stop → extract flow. Commands such as type/paste/swipe/gesture may trigger the planned interaction only inside the recording window; trigger once per case.
+Load `record-ui-animation` once per dynamic case and follow its prepare → record → trigger → stop → extract flow. Type/paste/swipe/gesture commands may trigger the planned interaction only inside the recording window, once per case.
 
 Read every keyframe and check the start, middle and end states, timing, misalignment, flicker and the plan's requirements. Do not substitute a single-frame screenshot for judging an animation.
 
-Skip the case and record an environment limitation instead of blindly re-recording when: the record/extract script fails, there are fewer than 2 frames, the trigger primitive is unreliable, or the keyframes are not enough to judge. If the remaining evidence still suffices, the whole can PASS with a manual smoke test requested; if no dynamic case can be judged, `DEGRADED`.
+Skip the case and record an environment limitation instead of blindly re-recording when the record/extract script fails, there are fewer than 2 frames, the trigger primitive is unreliable, or the keyframes are not enough to judge. If the remaining evidence suffices, the review can still PASS with a manual smoke test requested; if no dynamic case can be judged, return `DEGRADED`.
 
 ## 7. Summary
 
@@ -87,4 +85,4 @@ Skip the case and record an environment limitation instead of blindly re-recordi
 
 Return a verdict, an absolute evidence path and a one-line observation per case; a FAIL issue must point at a screenshot or a frames directory. Do not lower the bar because of the number of retries.
 
-Before summarizing, re-check the app digest and the UI context fingerprint, and record the evidence digest with `validation-receipt.sh --repo "$repo" artifact-digest "$evidence_dir"`. Report the actual Simulator/runtime, locale, appearance and Dynamic Type; discard the results if any bound input changed inside the window.
+Report the actual Simulator/runtime, locale, appearance and Dynamic Type.

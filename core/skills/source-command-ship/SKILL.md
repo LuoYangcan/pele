@@ -1,99 +1,33 @@
 ---
 name: source-command-ship
-description: Commit pending work, push the current branch, and open a GitHub PR for `/ship` or `/openpr`. Use only when the user invokes those commands or explicitly asks to commit, push, and create a PR. Does not merge, poll CI, or run code review.
+description: Commit the current task's changes, push the current branch, and open a GitHub PR. Use only when the user invokes `/ship-pr` or explicitly asks to commit, push, and open a PR. Does not merge, poll CI, or run code review.
 ---
 
 # Ship
 
-Explicit `/ship` or `/openpr` authorizes staging the current task, committing, pushing, and opening a PR. It does not authorize merge or unrelated cleanup.
+`/ship-pr` authorizes staging this task's changes, committing, pushing, and opening a PR. It does not authorize merge or unrelated cleanup.
 
 ## Preconditions
 
-Run:
+- `git fetch origin`. Stop on `main` / `master` / `dev`, unresolved conflicts, or an active merge / rebase / cherry-pick / revert.
+- Take `base_ref` from the user, the project convention, or the remote default branch; never assume `dev`.
 
-```bash
-git status --short --branch
-git branch --show-current
-git fetch origin
-```
+## Scope and commit
 
-Stop on `main`, `master`, or `dev`, unresolved conflicts, or an active merge/rebase/cherry-pick/revert.
+- Inspect all staged, unstaged, deleted, and untracked changes, and include only source, tests, docs, and config that clearly belong to this task. Stop and ask when a suspected secret or other user changes cannot be separated safely.
+- Never stage secrets, credentials, `.env`, signing material, caches, build output, IDE state, `.specs/`, or `.reviews/` (leave them in place; do not delete them).
+- When the task changes workflow, module boundaries, project structure, public contracts, tooling, or non-obvious constraints that agents need to know long-term, update the project docs in the same PR, integrated into the existing structure rather than appended at the end. Ordinary product / UI / bugfix work needs none.
+- Stage explicit paths with `git add -A -- <paths>` and check `git diff --cached --check` and `--stat` before committing. One-line conventional commit matching repository style; no empty commits.
 
-Resolve `base_ref` from the user or project convention, otherwise from the remote default branch. Bind its verified remote ref and branch name before using the commands below; never assume `dev`.
+## Sync, check, push
 
-## Inspect and scope
+- If an upstream other than `base_ref` exists, rebase onto it first, then `git rebase <base_ref>`. On conflict, stop and report the paths; never discard user work.
+- Before push, run the repository's cheap check (e.g. `just check`). Stop on failure; do not auto-fix. `/ship-pr` does not repeat build / test.
+- `git push -u origin HEAD --force-with-lease`; never plain `--force`.
 
-Inspect staged, unstaged, deleted, and untracked changes:
+## PR
 
-```bash
-git diff --stat
-git diff
-git diff --cached --stat
-git diff --cached
-git ls-files --others --exclude-standard
-```
-
-- Include only source, tests, docs, and config that clearly belong to the current task.
-- Preserve a coherent staged boundary. Otherwise create one cohesive commit; split only genuinely independent changes.
-- Never stage secrets, credentials, `.env`, signing material, caches, build output, IDE state, `.specs/`, or `.reviews/`.
-- Temporary plan/review artifacts are preserved by default and simply excluded from staging. Delete them only when the user asks for cleanup.
-- Stop and ask if a suspected secret or unrelated user change cannot be separated safely.
-
-## Final docs check
-
-Inspect `<base_ref>...HEAD` plus working-tree changes. Project agent docs need sync only when the task changes agent-facing workflow, module boundaries, project structure, public contracts, tooling, commands, SDK setup, or non-obvious constraints.
-
-New targets/packages/subsystems, cross-platform contracts, endpoint families, or signing/build-chain changes require a concrete docs decision. Ordinary product/UI/bugfix code normally needs no docs update. If required docs are missing, propose exact paths and outline; complete required task-scoped docs under the existing ship authorization; ask only when the needed content introduces an unresolved decision. When editing docs, load `agent-readable-docs` and follow its rewrite rules: integrate new content into the document's existing structure, never just append it at the end.
-
-## Commit
-
-Stage explicit paths with `git add -A -- <paths>`. Before every commit run:
-
-```bash
-git diff --cached --check
-git diff --cached --stat
-git diff --cached
-```
-
-Use a concise one-line conventional commit matching repository style. Do not create an empty commit. Afterward, require that remaining visible changes are intentionally excluded artifacts or user changes.
-
-Confirm the branch has commits ahead of the base:
-
-```bash
-git log --oneline <base_ref>..HEAD
-```
-
-## Sync and check
-
-If an upstream other than `<base_ref>` exists, rebase onto it first; then run:
-
-```bash
-git rebase <base_ref>
-```
-
-On conflict, stop and report conflicted paths. Never resolve by discarding user work.
-
-After rebase, run the repository's standard cheap check before push. For `an iOS monorepo`:
-
-```bash
-just check
-```
-
-Stop on failure; do not run auto-fix unless asked. `/ship` does not repeat build/test; final delivery evidence or CI owns those checks.
-
-## Push and PR
-
-Push safely:
-
-```bash
-git push -u origin HEAD --force-with-lease
-```
-
-Never use plain `--force`. Use the resolved base branch for the PR.
-
-PR title: use a good leading conventional commit subject, otherwise synthesize one from the diff.
-
-PR body:
+If a PR already exists, return its link instead of creating a duplicate. Title: a suitable conventional commit subject. Body:
 
 ```markdown
 ## TL;DR
@@ -115,8 +49,8 @@ PR body:
 - **Rollback**: <revert or recovery path>
 ```
 
-Add `## UI changes` for user-facing UI. If a PR already exists, return its URL rather than creating a duplicate.
+Add `## UI changes` for user-facing UI changes.
 
 ## Return
 
-Return the PR URL, commit/push result, checks actually run, earlier validation evidence supplied by the current task, and any unverified item. Mention `/pr-review` as an optional next action; do not poll CI.
+PR link, commit / push result, checks actually run, validation evidence this task already has, and unverified items. Optionally suggest `/code-review <PR> --comment` (Claude) or `pr-review` (Codex) as a next step; do not poll CI.

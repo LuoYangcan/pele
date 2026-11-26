@@ -1,169 +1,90 @@
 ---
 name: cleanup-and-exit
-description: Clean task worktrees, reclaim their idle build caches, and retry previously deferred cleanup in the same repository. Use for /cleanup-and-exit, /clean-and-exit, or explicit worktree/cache cleanup requests; --repo inventories and --machine cleans rebuildable machine caches. Preserve unfinished source.
+description: Clean task worktrees and their idle build caches, and retry deferred cleanup in the same repository. Use for /cleanup-and-exit, /clean-and-exit, or explicit worktree/cache cleanup requests; --repo inventories read-only, --machine cleans rebuildable machine caches. Preserves unfinished source.
 ---
 
 # cleanup-and-exit
 
-Resolve installed paths per the [host adapter](../../rules/host-adapter.md) before running helpers.
+## Scope
 
-## Select Scope
+`/cleanup-and-exit` and alias `/clean-and-exit` (or plain-language equivalents) take the same arguments; forward all. Asking to implement or change a mode is not a request to run it.
 
-Both command aliases accept the same arguments. Forward all arguments to this skill.
+- No args: remove eligible task worktrees, release their leases, clean idle caches of retained ones, retry same-repo pending entries. Authorizes every routine step here without re-asking; honor existing keep/delete/cache exclusions. Never push, merge, delete remote branches, poll CI or edit product code.
+- `--repo [path]` (default cwd): read-only inventory. `--machine [--repo path]`: clean rebuildable machine caches plus that repo's local build caches; never other tasks' worktrees, branches, simulator devices/data, runtimes, archives or the queue. Both: [scopes.md](references/scopes.md).
 
-| Invocation | Scope and action |
-| --- | --- |
-| No arguments | Remove eligible task worktrees, release their simulator leases, reclaim idle caches in retained task worktrees, and retry pending cleanup in the same repositories |
-| `--repo [path]` | Read-only inventory of every registered worktree in the given repository (default: cwd), including cache sizes and simulator associations |
-| `--machine [--repo path]` | Inventory then clean rebuildable machine caches; `--repo path` selects the repository whose local build caches are included |
+Archival, nested SwiftPM checkouts, retained-worktree caches, pending queue: [retained-work.md](references/retained-work.md).
 
-Natural-language requests may select these scopes explicitly. `--repo` alone never authorizes deletion. `--machine` authorizes cache cleanup, not other tasks’ worktrees, local branches, simulator devices/data, runtime installations, or archives. For either non-default mode read [repository and machine modes](references/scopes.md). A request to implement or change these modes is not a request to run their cleanup.
+## Targets
 
-Treat a task cleanup request as authorization to perform the routine cleanup below, including preservation of local task records and bounded generated-cache cleanup. Honor existing keep/delete/cache exclusions without asking again. Do not push, merge, delete remote branches, poll CI, or edit product code. For record archival, retained caches, and pending cleanup, read [retained-work handling](references/retained-work.md).
+- Explicit targets first; a repo-wide request covers its registered worktrees.
+- Bare command: worktrees this task created or reused (implementation, validation/review, backport) and the original copy if work moved elsewhere, per conversation history, plans/logs and attached worktrees (not just cwd or the PR branch), plus matching [pending entries](references/retained-work.md#pending-queue). Else the current registered non-primary worktree plus pending entries. Else report "no task worktree identified", not "all worktrees cleaned"; a main-checkout cwd alone is no reason to stop.
+- Never enroll arbitrary discovered or merely-read worktrees or infer ownership from name or location; ask only if ownership or scope is ambiguous.
+- Verify with `git worktree list --porcelain` in each affected repo (main repo = first entry); registration, not location, defines a linked worktree (`.worktrees/`, `.claude/worktrees/`, `~/.codex/worktrees/`). Capture each root via `git -C <t> rev-parse --show-toplevel` before any cd; use explicit target paths.
+- Absent = no directory and no registration (report leftover branch/cache separately); directory gone but registered = stale registration. Skip commands for missing directories.
 
-## Resolve Task Worktrees
+## Inspect
 
-Build the target list before choosing actions. Use explicit user targets first; a repository-wide cleanup request covers registered worktrees in that repository. A bare command covers this task's worktrees plus matching pending entries from prior authorized cleanup in the affected repositories; it never enrolls arbitrary discovered worktrees.
+Per target: dirty and unpushed (`@{u}..HEAD`) counts and, in its repo, `gh pr view <branch> --json state,mergedAt,headRefOid,url` (or `gh pr list --head <branch> --state all`). Refresh remote refs as needed; a missing upstream or failed command = unknown, never zero. HEAD is delivered only if either holds (each replaces a missing upstream):
 
-Read pending entries with `scripts/pending-cleanups.py list --repo <repository>`. Only matching worktree identities join the target list. Revalidate their current source, activity, and delivery exactly like current task targets; queue membership is not delivery proof. `--repo` remains read-only, and `--machine` does not process queued worktree removal.
+- PR merged and HEAD equals or is an ancestor of `headRefOid` (squash/rebase or deleted remote branch fine; later local commits uncovered).
+- The intended delivery branch (destination, e.g. a release branch after a direct cherry-pick push; not a pushed feature branch) contains HEAD.
 
-For task cleanup, include every worktree created or reused for implementation, validation/review, or backport work in this conversation. Include the original working copy when this task moved or exported changes to another branch, worktree, or repository. Use available conversation history, task plans/logs, and attached worktrees to identify each path and its role; cwd and the final PR branch are not the entire target list. Read-only references to unrelated worktrees do not establish ownership.
-
-Run `git worktree list --porcelain` in each affected repository to verify exact paths and branches, including task paths already removed. If the conversation provides no target, use the current registered non-primary worktree and matching pending entries. Stop only when task context, cwd, and the affected repository's pending queue identify no target; report "no task worktree identified", not "all worktrees cleaned". Do not stop merely because cwd is the main checkout. Ask only when ownership or scope is ambiguous; never infer task ownership from name or location alone.
-
-Mark a target already absent only when both its directory and registration are absent; record any remaining branch/cache separately. If only the directory is absent, report the stale registration. Skip per-target git/simulator commands for missing directories.
-
-Use Git registration to recognize linked worktrees regardless of their location, including `.worktrees/`, `.claude/worktrees/`, and `~/.codex/worktrees/`. Do not infer task ownership from these directory names. For each existing target, capture its root with `git -C <target> rev-parse --show-toplevel`. Resolve the main repo from the first registered worktree. Use an explicit per-target working directory for all state and simulator commands.
-
-## Inspect and Report
-
-Inspect each target before choosing its action:
-
-```bash
-git -C "$worktree_path" branch --show-current
-git -C "$worktree_path" status --porcelain=v1 --untracked-files=all
-git -C "$worktree_path" log --oneline '@{u}..HEAD'
-# Run gh from the target repository; use pr list --head "$branch" --state all if needed.
-gh pr view "$branch" --json number,state,mergedAt,headRefOid,url
-```
-
-Refresh relevant remote refs or query current remote heads as needed to establish delivery. Missing upstreams or failed commands mean unknown, not zero unpushed commits. Either of these establishes that the current HEAD is delivered:
-
-- `gh` reports `MERGED` or a non-null `mergedAt`, and local HEAD equals or is an ancestor of the PR's `headRefOid`. Squash/rebase merges and a deleted remote source branch do not prevent cleanup. A merged PR does not cover later local commits.
-- The intended remote delivery branch contains the local HEAD, such as a release branch updated by a direct cherry-pick and push. This means the destination for finished work, not merely a pushed feature branch. No PR is required for this route.
-
-These proofs can replace a missing upstream. For an explicit deletion of an unfinished worktree, separately verify that any local commits are pushed before deleting its branch.
-
-If the branch-name PR lookup is empty, follow this task's recorded PR URL, renamed branch, or export/backport history before concluding delivery is unknown. Verify the same HEAD coverage above; a related feature's merged PR or similar title is not proof. Report feature delivery separately from local commits and uncommitted changes left in the original working copy. Do not reset, stash, or commit changes just to make a retained worktree pass the cleanup gates.
-
-Before acting, give a compact per-target summary, using `unknown` where evidence is missing:
+Empty lookup: first follow this task's recorded PR URL, renamed branch or export/backport history; a related PR or similar title is not proof. Report feature delivery apart from local commits/uncommitted changes in the original copy. Never reset, stash or commit to pass a gate. Before acting, per target (`unknown` where unproven):
 
 ```text
-worktree / branch / role: <path> / <branch> / <implementation | original copy | validation/review | backport>
-uncommitted / unpushed: <counts or unknown>
-delivery: <PR state and number | direct-push target | unknown>
-nested worktrees: <none | paths and branches>; action: <delete | keep | already absent | needs clarification>; reason: <evidence or remaining work>
+<path> / <branch> / <implementation | original copy | validation/review | backport>
+uncommitted / unpushed: <counts | unknown>; delivery: <PR state #n | direct-push target | unknown>
+nested: <none | paths, branches>; action: <delete | keep | already absent | needs clarification>; reason: <evidence | remaining work>
 ```
 
-## Resolve Simulator Associations
+## Simulators
 
-On hosts with Xcode, inspect selected worktrees together before removing them. On hosts without Xcode, use existing registration and task records for any known associations. Lease release does not require Xcode.
+Before removal, inspect all targets in one read-only call:
 
 ```bash
-python3 "$HARNESS_ROOT/scripts/worktree-simulators.py" inspect --worktree <path> [--worktree <path> ...]
+python3 $HARNESS_ROOT/scripts/worktree-simulators.py inspect --worktree <path> [--worktree <path> ...]
 ```
 
-It reports pooled leases, legacy `.claude/sim-udid*` registrations, generated-name candidates and other owners across runtime variants. Routine worktree cleanup preserves every simulator and its app data, including login sessions. For a removed worktree, record the UDID and any legacy mapping before the worktree disappears.
-
-For a separately requested simulator shutdown or deletion, use the helper's `shutdown` or `delete` action after inspection. These actions only release pooled leases. Keep shared or ambiguous devices and their surviving owners' registrations. Use `--include-named` only after establishing ownership of the exact generated-name candidate. For custom-named devices, verify the exact UDID from task history against `simctl` and repository registrations. On failure, retain the registration and report the error.
+Cleanup keeps every device with its app/login data and only releases leases. `shutdown`/`delete` only on separate request (pooled devices are only released); keep shared/ambiguous devices and other owners' registrations; `--include-named` needs proven ownership of that exact generated-name device; a custom-named device needs its task-history UDID matched against `simctl` and repo registrations. On failure keep the registration and report.
 
 ## Choose Action
 
-| Request and verified state | Action |
+| Request; verified state | Action |
 | --- | --- |
-| Cleanup request; clean worktree and delivered HEAD | Remove the worktree and local task branch after the nested Git checks. Verified clean SwiftPM checkouts go with the worktree |
-| Explicit delete worktree and branch; clean, no unpushed commits | Delete both, including for an open PR |
-| Explicit delete worktree, keep branch; clean | Delete worktree, preserve branch and any local-only commits |
-| Delivered HEAD; only untracked review/plan records remain | Archive and verify those records outside the worktree, require a fresh clean status, then apply ordinary removal gates |
-| Explicit keep | Keep worktree and branch, cancel pending removal, honor cache exclusions, and release its simulator lease when idle |
-| Explicit cancel | Do nothing |
-| Dirty source, unfinished/unknown delivery, or active work without an explicit deletion choice | Keep source and branch; reclaim independently eligible idle caches and record pending cleanup with the concrete reason |
+| Cleanup; clean, delivered | Remove worktree and task branch |
+| Delete worktree + branch; clean, nothing unpushed | Delete both, even with an open PR |
+| Delete worktree, keep branch; clean | Delete worktree only |
+| Delivered; only untracked `.reviews/`/`.specs/` | [Archive](references/retained-work.md#archive-task-records), re-check clean, then normal gates |
+| Keep | Keep both, cancel pending removal, honor cache exclusions, release lease when idle |
+| Cancel | Nothing: no removal, cache cleanup or queue update |
+| Dirty, undelivered/unknown or active, no explicit delete | Keep source and branch; clean eligible idle caches; queue with concrete reason |
 
-Do not show a fixed menu or require a second confirmation for an authorized, eligible cleanup. Ask only for an unresolved target or a material keep/delete choice. A retained target does not block cleanup of other independent eligible targets.
+No fixed menu or second confirmation for eligible authorized cleanup; ask only about an unresolved target or a material keep/delete choice. Retained targets never block independent ones.
 
-Do not remove an actively used worktree or stop builds, debuggers, or interaction sessions to make cleanup pass. Retaining source does not automatically retain every generated cache: use `scripts/worktree-caches.py inspect|clean --worktree <path>` under the retained-work contract. Explicit cancel performs neither cache cleanup nor queue updates.
+## Gates
 
-## Safety Gates
-
-- Every deletion requires no uncommitted files. Local branch deletion also requires no unpushed work beyond the verified delivery proof. Do not interpret a failed inspection as a passed gate.
-- Never use `git worktree remove --force`.
-- Never remove the worktree from inside itself; run `git worktree remove` from the main repo root.
-- Resolve simulator associations before removing the worktree and pass each exact target path to the helper.
-- Capture the target worktree root with `git rev-parse --show-toplevel` before changing cwd. Run DerivedData cleanup only after worktree removal succeeds.
-- Remove global DerivedData entries for a removed worktree only through `scripts/remove-worktree-derived-data.sh`; never match caches by project name or a broad glob. Retained-worktree cache cleanup uses the separate exact-child helper; it does not bypass the removed-worktree guard. Explicit machine-mode global cleanup follows its scope reference.
-- For a worktree selected for removal, do not pre-delete `build/`, local `DerivedData`, or Swift Package `.build`; successful removal handles its generated files. For retained worktrees, remove only verified children selected by `scripts/worktree-caches.py`, never those whole parent directories or dependency source. Do not delete shared `~/Library/Caches/org.swift.swiftpm`.
-
-## Nested Worktrees
-
-Before deletion, list all registered worktrees below `<worktree-path>/`, including `.subworktrees/` and nested `.claude/worktrees/`. Inspect unregistered nested Git repositories separately.
-
-- Apply the same task scope, action selection, and safety gates to each descendant. No extra confirmation is needed for eligible descendants already within the task's cleanup scope.
-- Keep the parent if any descendant is unrelated, retained, or fails its safety gate. Clarify ambiguous descendants together rather than asking once per path.
-- From `<main-repo>`, remove eligible descendants deepest-path-first without `--force`. After each successful removal, run `scripts/remove-worktree-derived-data.sh` with that descendant path.
-- Remove the parent only after no registered descendant remains.
-
-If the current target is itself a sub-worktree, capture its root before moving to its parent and apply the normal option flow to that captured path.
-
-### Generated SwiftPM checkouts
-
-For a delivered worktree, treat Git-ignored, worktree-local SwiftPM checkouts under Xcode's `SourcePackages/checkouts` or SwiftPM's `.build/checkouts` as rebuildable when package state or the lockfile identifies their origin. Inspect each checkout and initialized nested submodule with `git status --porcelain=v1 --untracked-files=all --ignore-submodules=none`. Check detached HEAD, local refs and stashes with `git rev-list --max-count=1 --all HEAD --not <verified-revision> ...`. Use matching dependency pins, committed submodule gitlinks and verified upstream refs as exclusions. Any remaining commit is unverified. Local tags and an empty upstream range alone do not establish recoverability.
-
-If all checks pass, remove the whole worktree with ordinary `git worktree remove`. Archive ignored task records and local settings first. Retain the worktree and record the exact path and reason if a checkout has local changes, unpublished commits or unknown provenance. Preserve other unregistered nested Git repositories. The SwiftPM exception applies only to whole-worktree removal.
+- Deletion needs zero uncommitted files; branch deletion also no unpushed work beyond the delivery proof. A failed inspection never passes.
+- Never `git worktree remove --force`; run it from the main repo root. Never remove an active worktree or stop builds, debuggers or interaction sessions.
+- A removed worktree's global DerivedData only via `remove-worktree-derived-data.sh` after successful removal; don't pre-delete `build/`, `DerivedData` or `.build` of a removal target. Retained worktrees' caches only via `worktree-caches.py`; `--machine` follows scopes.md. Never delete `~/Library/Caches/org.swift.swiftpm`.
+- Nested: list registered worktrees under the target (incl. `.subworktrees/`, nested `.claude/worktrees/`); each gets the same scope and gates without extra confirmation. Keep the parent if any is unrelated, retained or failing; clarify ambiguous ones together. Remove deepest-first from the main repo, DerivedData helper after each, parent last. For a sub-worktree target capture its root before moving to its parent.
+- Unregistered nested repos are preserved, except [verified SwiftPM checkouts](references/retained-work.md#nested-swiftpm-checkouts).
 
 ## Execute
 
-Release leases for worktrees selected for removal and idle worktrees the user explicitly chose to keep. Record the inspection results and any legacy mappings in the cleanup receipt before removing their source worktrees:
+Record inspection results and legacy mappings in the receipt, then release leases of removal targets and explicitly kept idle worktrees. Check every command; report failures and continue independent targets.
 
 ```bash
-python3 "$HARNESS_ROOT/scripts/worktree-simulators.py" release --worktree <path> [--worktree <path> ...]
+python3 $HARNESS_ROOT/scripts/worktree-simulators.py release --worktree <path> [--worktree <path> ...]
+cd <main-repo> && git worktree remove "$wt"   # $wt captured before cd
+bash $HARNESS_ROOT/core/skills/cleanup-and-exit/scripts/remove-worktree-derived-data.sh "$wt"
+git branch -D <branch>                       # only when deleting the branch
 ```
 
-Run each step as a checked command. Report lease release failures and continue independent targets.
-
-Resolve:
-
-- `<main-repo>`: first column of the first `git worktree list` row
-- `<worktree-path>`: absolute target root from `git rev-parse --show-toplevel` before changing cwd
-- `<slug>`: basename of the resolved worktree root
-- `<branch>`: current branch
-
-Delete worktree and local task branch:
-
-```bash
-worktree_path="$(git rev-parse --show-toplevel)"
-# Simulator associations recorded and leases released.
-cd <main-repo>
-git worktree remove "$worktree_path"
-bash "$HARNESS_ROOT/core/skills/cleanup-and-exit/scripts/remove-worktree-derived-data.sh" "$worktree_path"
-git branch -D <branch>
-```
-
-Delete worktree, keep branch:
-
-```bash
-worktree_path="$(git rev-parse --show-toplevel)"
-# Simulator associations recorded and leases released.
-cd <main-repo>
-git worktree remove "$worktree_path"
-bash "$HARNESS_ROOT/core/skills/cleanup-and-exit/scripts/remove-worktree-derived-data.sh" "$worktree_path"
-```
-
-The DerivedData script removes only cache entries whose `WorkspacePath` equals `<worktree-path>` or is below it, and refuses to run while `<worktree-path>` still exists. Run it after any successful deletion path, including `ExitWorktree remove`, and report its removed count and size. The helper supports `.worktrees/`, `.claude/worktrees/`, and `.codex/worktrees/`; for another location report the unsupported path instead of bypassing its guard. A skipped, failed, or unsupported helper is not a successful zero-item cleanup; report it separately. Then continue future commands from `<main-repo>`. If an `ExitWorktree` tool exists, use its matching remove/keep action. Otherwise, report the main repo path without simulating a host exit or archiving the task.
+Run the DerivedData helper after every successful removal, including `ExitWorktree remove`; report its count and size. Report a refusal or unsupported location instead of bypassing it; skipped/failed/unsupported is not a zero-item success. Continue from `<main-repo>`; use an available `ExitWorktree` tool's matching remove/keep action, else report the main repo path without simulating a host exit or archiving the task.
 
 ## Verify and Close
 
-After removal, verify that the exact directory is absent and its registration is absent from `git worktree list --porcelain`. If deleting the local branch was selected, verify that it is absent too. A successful command or merged PR alone is not the removal receipt.
-
-Re-enumerate the affected repositories once at the end and reconcile every target with the original target list. Report each path as removed, already absent, retained with its reason, or failed with the error; include simulator/cache outcomes, archival paths, and remaining action. Report source-worktree and generated-cache counts separately, with measured space change rather than overlapping estimated totals. Remove pending entries only after both directory and registration are verified absent, or when the user explicitly cancels deferred removal. Retained targets remain visible with their pending status and retry condition.
-
-If the host recreates a task worktree, report the replacement path and reason as a remaining target. Do not repeatedly delete replacements or claim that cleanup is complete while the directory remains. Say "all task worktrees removed" only when every task target is verified absent; otherwise say "eligible worktrees cleaned; remaining directories: ...". Preserve unrelated worktrees and distinguish them from retained task targets.
+- Per removal: exact directory absent and registration gone from `git worktree list --porcelain` (and branch, if deleted); command success or a merged PR is not the receipt. Then update the [queue](references/retained-work.md#pending-queue).
+- Re-enumerate once at the end; report each original target as removed, already absent, retained (reason, queued, retry condition) or failed (error), with simulator/cache outcomes, archive paths, helper failures, busy/recreated caches and remaining actions. Count source worktrees and caches separately with measured `df` change, never summed nested estimates.
+- A host-recreated worktree is a remaining target (report path and reason); don't delete it repeatedly.
+- Say "all task worktrees removed" only when every target is verified absent; else "eligible worktrees cleaned; remaining directories: ...". Preserve unrelated worktrees and report them apart from retained task targets.

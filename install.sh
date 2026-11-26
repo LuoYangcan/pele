@@ -124,7 +124,7 @@ link_skills() {
     [ -e "$source" ] || continue
     name="$(basename "$source")"
     case "$host:$name" in
-      claude:codex-simplify|claude:source-command-review-codex|codex:source-command-review) continue ;;
+      claude:codex-simplify|claude:source-command-review-codex|claude:source-command-pr-review|codex:source-command-review) continue ;;
     esac
     link_file "$source" "$destination/$name" "$backup"
   done

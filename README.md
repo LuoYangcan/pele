@@ -2,7 +2,7 @@
 
 > Volcanic harness for coding agents — opinionated rules, agents, and workflow that put a strong model in charge of planning and a general model in charge of typing.
 
-Pele installs global rules, subagents, commands, and hooks for **Claude Code, Codex, or both**. Its plan-first workflow assigns decisions, integration, and verification to the Root and scoped code changes to the implementer. An independent `plan-challenger` reviews major designs and plans the user explicitly asks to review. Verified feature units become local commits unless the user or project policy says otherwise. Pushes and PRs require explicit authorization.
+Pele installs global rules, subagents, commands, and hooks for **Claude Code, Codex, or both**. Its plan-first workflow keeps decisions, implementation, integration, and verification with one Root; on Codex the Root may delegate non-trivial implementation to an implementation-tier `implementer`. An independent `plan-challenger` reviews major designs and plans the user explicitly asks to review. Verified feature units become local commits unless the user or project policy says otherwise. Pushes and PRs require explicit authorization.
 
 Named after [Pele](https://en.wikipedia.org/wiki/Pele_(deity)), the Hawaiian volcano goddess: she controls the eruption.
 
@@ -20,7 +20,7 @@ Named after [Pele](https://en.wikipedia.org/wiki/Pele_(deity)), the Hawaiian vol
 | Hooks | managed entries merged into `settings.json` | managed entries merged into `hooks.json`; review and enable them with Codex `/hooks` |
 | Per-project install | `--project <path>` | `--project <path>` |
 
-`--host both` installs for both. The installer filters host-specific skills. Codex's native `/review` is read-only. Invoke `$source-command-review-codex` on Codex or `/review` on Claude Code for correctness review followed by conditional cleanup and recheck.
+`--host both` installs for both. The installer filters host-specific skills. Codex's native `/review` is read-only. Invoke `$source-command-review-codex` on Codex or `/review` on Claude Code for a report-only correctness review followed, when nothing must be fixed, by cleanup and the project's cheap check.
 
 Drop-in install adds the following under the host's config dir:
 
@@ -29,14 +29,14 @@ Drop-in install adds the following under the host's config dir:
 | **index** | `CLAUDE.md` / `AGENTS.md` — progressively discloses rules / skills / agents on demand |
 | **rules/** | Workflow policies (verification ladder, iteration checkpoints, commit style) plus portable Swift/iOS guidance |
 | **agents/** | `plan-challenger` · `implementer` · `verifier` · `ui-reviewer` · `command-runner`; Codex also generates `explorer` and `pr-reviewer` |
-| **commands/** | `/openpr` · `/ship` · `/review` · `/pr-review` · `/cleanup-and-exit` (`/clean-and-exit` alias) |
-| **skills/** | `plan-first-delivery` and worktree orchestration, architecture/review helpers, optional iOS UI and Figma workflows |
-| **scripts/** | `run-ios.sh` · `worktree-sim.sh` · `worktree-bootstrap.sh` · `validation-receipt.sh` · `trust-dir.sh` and hook helpers |
+| **commands/** | `/ship-pr` · `/review` · `/clean-and-exit`; Codex additionally gets the `pr-review` skill (Claude uses the built-in `/code-review <PR> --comment`) |
+| **skills/** | `plan-first-delivery` and worktree orchestration, review/ship helpers, optional iOS UI and Figma workflows |
+| **scripts/** | `run-ios.sh` · `worktree-sim.sh` · `worktree-bootstrap.sh` · `trust-dir.sh` and hook helpers |
 | **templates/** | `exec-plan-template.md` (single-file ExecPlan for cross-session / multi-writer / audited work) |
 | **hooks/** | Protected-branch guard · per-prompt clarification reminder |
 | **permissions/** | `settings.permissions.json` — conservative starter policy; **not auto-merged** by `install.sh` |
 
-`/cleanup-and-exit` removes eligible task worktrees, reclaims idle caches, and retries deferred cleanup. Pass `--repo` to inventory or `--machine` to reclaim rebuildable caches. iOS workflows lease existing iPhone simulators, and worktree cleanup releases the lease while preserving app data and login sessions.
+`/clean-and-exit` removes eligible task worktrees, reclaims idle caches, and retries deferred cleanup. Pass `--repo` to inventory or `--machine` to reclaim rebuildable caches. iOS workflows lease existing iPhone simulators, and worktree cleanup releases the lease while preserving app data and login sessions.
 
 Optional extras (gated by install flags):
 
@@ -128,7 +128,7 @@ The default behavior changes when you have a code-writing request:
 You: "implement feature X"
    │
    ▼
-[Plan mode]   the Root — a strong planning-tier model (e.g. /model fable) —
+[Plan mode]   the Root — a planning-tier model (e.g. /model opus) —
               explores, clarifies, produces the final plan:
               the single source of requirement truth
    │
@@ -138,32 +138,27 @@ You: "implement feature X"
    │
    ▼ you approve and switch back to Default mode
 [Root]        creates an isolated worktree (.worktrees/<slug>) from
-              origin/<base>, freezes decision-complete units with
-              explicit file ownership
+              origin/<base> and writes the code (on Codex it may delegate
+              non-trivial units to the implementation-tier [implementer];
+              ≥2 disjoint write domains can run as parallel implementers)
    │
    ▼
-[implementer] a general implementation-tier model writes the code inside
-              its frozen boundary; returns the diff + open questions —
-              never commits, never decides material questions
+[Root]        integrates, commits each verified feature unit locally,
+              runs post-change verify
+              (cheap lint/check → build → narrowest related tests,
+               test commands via [command-runner])
    │
    ▼
-[Root]        reviews the actual diff, integrates, commits each verified
-              feature unit, runs post-change verify
-              (cheap lint/check → build → targeted tests)
-   │
-   ▼
-   orthogonal gates when they hit:
-     independent [verifier] for risky diffs
+   gates when they hit:
+     independent [verifier] for high-risk diffs
      [ui-reviewer] for Figma / animation / complex UI
-     parallel implementers for mutually exclusive write domains
    │
    ▼
-   PASS → Root reports; you /ship or /openpr when ready
-   FAIL → narrow repair by the Root, or re-dispatch to the implementer
-          with the failure evidence; repeated failures escalate to you
+   PASS → Root reports; you /review and /ship-pr when ready
+   FAIL → narrow repair; a second failed verifier pass escalates to you
 ```
 
-Micro-edits, integration fixes, and narrow repairs stay with the Root — spawning a worker for a one-line change costs more than it saves. Everything else is typed by the cheaper implementation tier under the strong model's plan, and the Root remains the only writer of shared interfaces and final merges.
+The Root remains the only owner of decisions, shared interfaces, and final merges. Independent reviewers (`plan-challenger`, `verifier`, `/review`) run on the strongest review tier and do not follow the Root down if you pick a cheaper Root model.
 
 See `core/skills/plan-first-delivery/SKILL.md` for the full contract.
 
@@ -182,7 +177,7 @@ For project-specific overrides, use the host's standard `.claude/` or `.codex/` 
 
 ```bash
 HARNESS_ROOT="$("${CODEX_HOME:-$HOME/.codex}"/scripts/harness-root.sh)"
-"$HARNESS_ROOT/scripts/validation-receipt.sh" --help
+"$HARNESS_ROOT/scripts/worktree-bootstrap.sh" --help
 ```
 
 Do not rely on a previous command's shell environment; initialize `HARNESS_ROOT` again for each command and pass it to subagents when they need the same checkout.
@@ -249,9 +244,6 @@ pele/
 │   ├── trust-dir.sh              # pre-seed Claude Code folder trust
 │   ├── worktree-sim.sh           # per-worktree iOS Simulator lifecycle
 │   ├── worktree-bootstrap.sh     # one-shot task-worktree create + init
-│   ├── validation-receipt.sh     # fingerprint-bound verification receipts
-│   ├── review-input-snapshot.sh  # freeze the diff a reviewer will judge
-│   ├── review-result.sh          # structured review verdict helper
 │   └── sync-xcode-skills.sh      # export Apple platform skills from local Xcode
 ├── core/                    # always installed
 │   ├── CLAUDE.md
@@ -276,7 +268,7 @@ pele/
 - **Hard constraints via hooks**: Things that *must* happen (no Edit/Write on protected branches — changes go through `.worktrees/` isolation) are enforced as `PreToolUse` hooks — not as rule text the model can talk itself out of.
 - **Independent contexts for subagents**: roles share files and structured results, never implicit conversation memory.
 - **Portable by construction**: Pele ships no real project names, private paths, credentials, or mandatory project-specific build commands. Optional platform guidance remains generic and opt-in.
-- **Agent-readable docs**: Files under `core/` are written for the next agent that reads them, not for humans browsing the repo. Narrative examples, Why-essays, analogies, and historical context are stripped; trigger conditions, SOP steps, route tables, prompt templates, structured output schemas, and hard constraints are kept. See the `agent-readable-docs` rule for the keep/delete checklist.
+- **Agent-readable docs**: Files under `core/` are written for the next agent that reads them, not for humans browsing the repo. Narrative examples, Why-essays, analogies, and historical context are stripped; trigger conditions, steps, failure routing, and hard constraints are kept. See "Writing agent-facing docs" in `core/CLAUDE.md`.
 
 ## License
 

@@ -1,43 +1,33 @@
 ---
 name: use-worktree
-description: Isolate every code change in a dedicated git worktree; the main checkout is for read-only operations only. Triggers on any coding task that will land Edit/Write while the cwd is not already under .worktrees/. Does not trigger when continuing the current task inside a worktree, nor for pure Q&A, reading code, or checking status; meta configuration does not auto-load this skill but still obeys the protected-branch routing in AGENTS.
+description: Do code changes in a dedicated git worktree; the main checkout stays read-only. Triggers before coding to confirm the worktree and which task its branch belongs to. When already in a worktree on the same task's branch, continue there. Pure Q&A, reading code and status checks skip it. Meta configuration follows the AGENTS routing.
 ---
 
-# Always use a dedicated worktree for code changes
+# use-worktree
 
-Resolve installed paths per the [host adapter](../../rules/host-adapter.md) before running helpers.
+## Decide
 
-Create the worktree before the first source write. Do not implicitly derive from the current HEAD, which may hold WIP, and do not edit code directly in the main checkout.
+- Use `git rev-parse --git-dir` against `--git-common-dir` to tell whether you are in a linked worktree, then check the branch with `git branch --show-current`. Continue in that worktree only when its branch is clearly for the same task.
+- When the current worktree is on a detached HEAD, the baseline branch or another task's branch, create a new task worktree from the target baseline and leave the current checkout and its changes alone.
+- Project rules forbid creating branches and grant no worktree exception: ask the user first. Leave the main checkout's uncommitted changes and current branch as they are; do not move or revert them.
 
-## Entry routing
+## Create
 
-- Any coding task that will land Edit/Write (new feature, bugfix, refactor, added tests, etc.): triggers, whether or not the topic changed.
-- The current path already contains `.worktrees/`: create nothing new, keep using the current worktree.
-- Modifying the agent harness — rules, skills, hooks, settings: does not auto-trigger this skill; when repo-backed meta sits on main/master/dev, still follow AGENTS and switch to a task branch or pick a worktree first.
-- Project rules forbid creating branches and grant no worktree exception: ask the user first, do not silently fall back to editing the main checkout.
-- The main checkout has uncommitted user changes or sits on a non-baseline branch: confirm with the user before creating; inspect those changes read-only, do not move or revert them.
+Starting from the main checkout, run `git worktree list` first. A worktree is reusable only if it sits under `.worktrees/`, is not in use by another task, has a clean tree, its branch is merged into `origin/<baseline>`, and its tip is not equal to the baseline. After fetching, run only inside that worktree `git switch -c <new-branch> --no-track origin/<baseline>`; if the machine-local hook `${XDG_CONFIG_HOME:-~/.config}/pele/worktree-post-create` is executable, then run it there as `WORKTREE_PATH="$PWD" WORKTREE_BRANCH=<new-branch> WORKTREE_NOTE="<task summary>" <hook>`.
 
-## Reuse
+To create a new one, use the baseline the project AGENTS names:
 
-Run `git worktree list` before creating. When an existing worktree under `.worktrees/` satisfies "clean working tree and its branch is already merged into the baseline (`git merge-base --is-ancestor <branch> origin/<baseline>`)", you may reuse it (along with its resolved dependencies and build caches) by running `git fetch` inside it and then `git switch -c <new-branch>` straight from `origin/<baseline>`; the old branch stays where it is, and deleting it is the user's call. A worktree whose branch is unmerged or that has uncommitted changes must not be reused automatically; it needs explicit user authorization.
+```bash
+"$HARNESS_ROOT/scripts/worktree-bootstrap.sh" <slug> --base <baseline> --note "<task summary>" \
+  [--type feat|fix|refactor|chore|docs|test|perf] [--copy <relative-path>]... [--init "<command>"]
+```
 
-## Create and initialize
+The script fetches, creates `.worktrees/<slug>` from `origin/<baseline>` with `--no-track`, copies `.claude/settings.local.json`, trusts the directory, then runs the machine-local post-create hook above in the new worktree when it exists and is executable. The one-line `--note` reaches the hook as `WORKTREE_NOTE`; a failing hook only warns. The hook is not part of the repo; each machine places its own. Pass `--copy` for gitignored files the project needs to build (e.g. a local signing `.xcconfig`). `--init` runs only the initialization required to make the repo editable; no baseline build, no Simulator warm-up.
 
-1. Read the project `AGENTS.md` to confirm the default baseline branch; when unspecified, follow the project convention — do not assume every repo uses `dev`.
-2. One-shot bootstrap (fetch, worktree add, copy gitignored config, SPM artifacts symlink, directory trust, optional project init):
+## Fill in (already in a worktree but missing local config)
 
-   ```bash
-   "$HARNESS_ROOT/scripts/worktree-bootstrap.sh" <slug> --base <baseline-branch> \
-     [--type feat] [--copy <relative-path>]... [--init "<command>"]
-   ```
-
-   By default the script copies `.claude/settings.local.json` when the main checkout has one; for SPM it only symlinks `build/DerivedData/SourcePackages/artifacts` and does not share `checkouts`, `repositories`, or `workspace-state.json`; the contents of copied files are never exposed in the output. `--init` runs only the initialization required to make the repo editable (codegen, dependency install, project generation). When the script is unavailable, perform the equivalent steps manually (`git fetch` + `git worktree add .worktrees/<slug> -b <type>/<slug> origin/<baseline>` + `trust-dir.sh "$PWD"`).
-3. The branch type is usually `feat | fix | refactor | chore | docs | test | perf | style`; follow the project's or host's branch naming convention.
-
-The init stage does no baseline build, does not warm up the Simulator, and does not open the IDE automatically; the final candidate is verified uniformly per `rules/post-change-verify.md`. When init fails, first separate local-config, dependency, and environment problems — do not treat an environment failure as a source failure; skip the related init when the user explicitly asks not to resolve dependencies.
+Worktrees created outside the bootstrap (e.g. a desktop app's `.claude/worktrees/<name>`) may lack local config; copy `.claude/settings.local.json` and the gitignored files the project needs from the main checkout. SPM caches stay local to each worktree and are not shared with the main checkout.
 
 ## Lifecycle
 
-- The branch is still needed for a PR or further iteration: keep the worktree.
-- No changes and the task is cancelled: the worktree may be removed.
-- With uncommitted changes, never discard or force-remove without explicit user authorization.
+Keep it while a PR or further iteration still needs it; remove it when the task is cancelled with no changes; with uncommitted changes, never discard or force-remove without the user's consent. Clean up with `cleanup-and-exit`.

@@ -1,54 +1,43 @@
 # Global rule index (load on demand)
 
+## General
+
+- When a requirement, a term, or the behavior or intent of existing code is unclear or has several reasonable readings, investigate first; if that does not settle it, ask the user instead of guessing.
+- On rule conflicts, user instructions and project-level AGENTS / CLAUDE outrank this file.
+
 ## Coding turn entry
 
-- **Major design review**: Use [plan-challenge](skills/plan-challenge/SKILL.md) for new overall designs, major redesigns, and explicit user requests. Routine fixes, local refactors, small features, and config edits proceed without independent plan review. The built-in Claude `Plan` role can explore designs; `plan-challenger` is the independent reviewer.
-- **Native Plan mode**: Root investigates, clarifies, and produces the final plan; do not load `plan-first-delivery`, do not write code or plan files. For Figma UI, generate and show the H5 preview before finalizing, per the host-permission and strictness rules in [figma-precise-extract](skills/figma-precise-extract/SKILL.md). The final plan is the source of truth for requirements in later implementation. When steps ≥3, ≥2 modules are involved, or there is a trade-off between approaches, draw a plan diagram with `Skill(visual-brief)` after producing the plan and before `ExitPlanMode`; no diagram for small changes.
-- **Writing code in Default mode**: first step is loading `Skill(plan-first-delivery)`. When the same task already has a final plan, enter execution and check review validity only if the major-design gate applies, without rewriting the plan or adding fixed approval turns; when there is no plan and an unresolved decision is hit, Root uses the available planning/question tools per `rules/host-adapter.md`. Everything else follows the skill's entry routing.
-- **Code changes always in a worktree**: for any coding task that will land an Edit/Write, load `Skill(use-worktree)` before the first write and create an isolated worktree under the repo's `.worktrees/`; coding tasks must not write in the main checkout (meta config routes by the next entry). Do not switch the main repo's branch on your own and do not clean up its dirty state; leave the main repo as is when it is not on the base branch or not clean, and always create the worktree from `origin/<base>`, never depending on the main repo's HEAD. Does not trigger for continuing the current task (iterating inside a worktree), for being already in a worktree, or for pure Q&A / read-only diagnosis.
-- **Meta config**: rule / skill / agent / hook / settings do not go through `plan-first-delivery` or ExecPlan, but are not exempt from protected-branch, dirty-tree, and external-write permission rules. Repo-backed meta on main/master/dev switches to a task branch or worktree first; non-Git global config can be changed directly once the live target is confirmed. Check the real target of symlinks/hooks before writing; after writing, run JSON/TOML parse, `bash -n`, Markdown/local-link check, and installer dry-run/idempotency according to what was touched; do not run an app build unless the config directly affects the app.
-- **Turn checkpoint**: read `rules/iteration-checkpoint.md` when the same request has gone more than 3 consecutive turns without converging.
+- **Native Plan mode**: Root investigates, clarifies, and produces the final plan; it writes no code or plan files. The final plan is the source of truth for requirements in later implementation. For Figma UI, generate and show the H5 preview before finalizing, per [figma-precise-extract](skills/figma-precise-extract/SKILL.md).
+- **Writing code in Default mode**: load [plan-first-delivery](skills/plan-first-delivery/SKILL.md) first. When the same task already has a final plan, continue from it without rewriting the plan or adding a fixed approval turn.
+- **Code changes always in a worktree**: before the first Edit/Write, enter an isolated worktree per [use-worktree](skills/use-worktree/SKILL.md); never write in the main checkout. Do not switch the main checkout's branch or clean its dirty state; create the worktree from `origin/<base>`. Reuse the worktree when continuing on the same task branch. Pure Q&A and read-only diagnosis do not trigger this.
+- **Major design review**: only for a new overall design, a major redesign, or an explicit user request, dispatch an independent review per [plan-challenge](skills/plan-challenge/SKILL.md); routine fixes and local changes do not trigger it.
+- **Meta config** (rule / skill / agent / hook / settings): does not go through plan-first-delivery, but still respects protected branches, dirty trees, and external-write permissions. Repo-backed meta on main / master / dev moves to a task branch or worktree first; non-Git global config can be edited directly once the live target is confirmed. Check the real target of symlinks / hooks before writing; afterwards run JSON / TOML parse, `bash -n`, local link checks, and an installer dry-run as applicable. Do not run an app build for meta changes.
 
-Pure Q&A, reading code, checking status, and meta config do not go through the coding delivery flow; still run the targeted safety and verification steps above.
+## Rules
 
-## Workflow
+Claude loads `rules/*.md` automatically; Codex reads them when the situation applies:
 
-- [host-adapter](rules/host-adapter.md) — Resolve actual Plan/question/delegation tools, installed paths, and existing authorization before invoking host-specific workflows.
+- [commit-message](rules/commit-message.md): when writing a commit message.
+- [post-change-verify](rules/post-change-verify.md): verification of the final candidate.
+- [iteration-checkpoint](rules/iteration-checkpoint.md): when the same request has gone more than 3 consecutive turns without converging.
+- [ios-list-ui-container](rules/ios-list-ui-container.md): when writing or refactoring an iOS scrolling list.
 
-- [plan-first-delivery](skills/plan-first-delivery/SKILL.md) — The main flow for writing code in Default mode: Root (planning-tier strong model) plans, integrates, and runs unified verification; implementation delegates to implementer (implementation-tier model) by default; record a lightweight judgment-call audit as needed; independent verifier / UI reviewer / parallel workers trigger on orthogonal gates.
-- [exec-plan](skills/exec-plan/SKILL.md) — Persist the final plan as a single-file ExecPlan only for cross-session, cross-host, multi-writer, irreversible migration, or audit handoff.
-- [visual-brief](skills/visual-brief/SKILL.md) — When presenting a multi-step plan, an implementation approach, a trade-off between approaches, or investigation/architecture conclusions, carry structure in one inline diagram and conclusions in 3–5 bullets, instead of long paragraphs.
-- [use-worktree](skills/use-worktree/SKILL.md) — Always create an isolated worktree from the latest target branch for code changes (`scripts/worktree-bootstrap.sh` creates and initializes in one step; a qualifying existing worktree can be reused); the main checkout stays read-only.
-- [parallel-subagents](skills/parallel-subagents/SKILL.md) — Read-only investigation can run in parallel; write tasks only when write domains are mutually exclusive and it clearly speeds things up, with Root doing integration and final verification centrally.
-- [post-change-verify](rules/post-change-verify.md) — On the final candidate, run the relevant cheap lint/check first, then build, then targeted tests as the request or the risk requires; source changes invalidate old evidence.
-- [agent-readable-docs](skills/agent-readable-docs/SKILL.md) — Compact inline while preserving the semantic contract when creating or modifying agent-consumed operational Markdown; read-only application, ordinary human docs, and format/link-only edits do not trigger.
-- [cleanup-and-exit](skills/cleanup-and-exit/SKILL.md) — Clean eligible task worktrees and idle caches, retry deferred cleanup, or use `--repo` for inventory and `--machine` for rebuildable caches.
-- [commit-message](rules/commit-message.md) — Use the single-line conventional commit format when writing a commit message, and decide the trailer by repo ownership.
+## Writing agent-facing docs
 
-## Design and code quality
+When editing AGENTS / CLAUDE, rules, skills, agents, commands, or other Markdown that agents read:
 
-- [architecture-first](skills/architecture-first/SKILL.md) — Triggers only when the user explicitly asks for an architecture review, or on a module ownership, dependency direction, public contract, state source-of-truth, or side-effect boundary decision left unresolved by the final plan / project rules; local abstractions, branches, code smells, and lint do not trigger.
-- [scan-trigger-docs](skills/scan-trigger-docs/SKILL.md) — Scan the project AGENTS/CLAUDE trigger-on-touch docs before changing source, and read the ones that match.
-- [lean-diff](skills/lean-diff/SKILL.md) — Check for patchwork, over-abstraction, comment noise, and defensive bloat before writing non-trivial code.
-- [lint-repair-strategy](skills/lint-repair-strategy/SKILL.md) — When fixing lint, pick a structural fix by category; do not split files without semantics to dodge a threshold.
-- [swift-formatting](rules/swift-formatting.md) — Follow the project's lint/format conventions when modifying Swift.
-- [ios-list-ui-container](rules/ios-list-ui-container.md) — Choose a virtualized container when writing or refactoring an iOS scrolling list of same-kind items.
+- Fold new content into the matching section of the existing structure instead of appending it at the end; define each fact in one place and link to it elsewhere.
+- Keep only triggers, steps, failure routing, and non-obvious causality that changes a decision; drop history, task traces, repeated emphasis, and general knowledge the model already has.
+- UI sizes, spacing, and colors are defined by the code; project docs do not copy design-spec values.
+- No meta commentary such as "newly added" or "as mentioned above".
 
-## Specialized operations
+## Tool conventions
 
-- [open-sim](skills/open-sim/SKILL.md) — Use when the user asks to build and open in the iOS Simulator.
-- [run-device](skills/run-device/SKILL.md) — Use when the user asks to install or run on a real iPhone.
-- [figma-precise-extract](skills/figma-precise-extract/SKILL.md) — For Figma UI, generate an H5 style preview and freeze design inputs before the Plan is finalized; also used to extract exact sizes, spacing, or tokens.
-- [figma-asset-export](skills/figma-asset-export/SKILL.md) — Use when exporting custom icons, illustrations, or logos from Figma into iOS.
+- Use [visual-brief](skills/visual-brief/SKILL.md) only when the user asks for a diagram; plans and conclusions default to text and tables.
+- Apple platform skills are exported from the local Xcode by `scripts/sync-xcode-skills.sh` into `skills/`; do not hand-edit their bodies. Rerun that script or `install.sh` after an Xcode upgrade.
+- For device / simulator selection, screenshots, UI hierarchy, and touch interaction, use the official Xcode tools / MCP the host exposes first; fall back to another interaction tool only when those are unavailable, do not cover the operation, or fail, and state the gap before falling back. Builds, installs, and launches go through `open-sim` / `run-device`.
+- Clean up worktrees and caches with `cleanup-and-exit` (`/clean-and-exit`).
 
-## Apple platform knowledge (provided by Xcode)
+## Installed paths
 
-This skill set does not ship with Pele: after installing, run `scripts/sync-xcode-skills.sh` to export from the local Xcode into `skills/` (rerun that script or `install.sh` after an Xcode upgrade; do not hand-edit the bodies). The exported skills share a source with the `xcode` MCP (build / run / test, crash and field performance logs, String Catalog, target and build settings); device-interaction is unavailable when the MCP is not registered. Typical members are swiftui-specialist, swiftui-whats-new, uikit-app-modernization, app-intents-specialist, device-interaction, audit-xcode-security-settings, adopt-c-bounds-safety, and modernize-tests; see each one's description for its trigger conditions.
-
-For device and simulator selection, sessions, screenshots, UI hierarchy, or touch input, discover and prefer the host's official Xcode tools. Use another interaction tool when the official surface is unavailable, lacks the operation, or fails; state the reason before falling back. Builds, installs, and launches follow the `open-sim` and `run-device` skills.
-
-## Loading conventions
-
-- Load only the bodies triggered this turn; additional references a skill cites are also read only per routing.
-- Must load when the user names a skill; when unsure whether it matches, read its description first, then judge.
-- On rule conflicts, user instructions and project-level AGENTS/CLAUDE outrank this global index.
+`HARNESS_ROOT` is the absolute Pele checkout that contains `core/` and `scripts/`. Resolve it from the real path of the loaded skill, or run `scripts/harness-root.sh` from the installation (a global Codex install exposes `${CODEX_HOME:-$HOME/.codex}/scripts/harness-root.sh`; a project install exposes `<project>/.codex/scripts/harness-root.sh`). Bind it in each shell invocation, or substitute the absolute path; shell variables do not survive separate tool calls. Pass the resolved root to delegates. Helpers live under `$HARNESS_ROOT/scripts`; skills, rules, and agents live under `$HARNESS_ROOT/core`.

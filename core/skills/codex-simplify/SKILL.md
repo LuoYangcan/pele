@@ -9,11 +9,9 @@ Clean a target diff without changing externally observable behavior. Review in p
 
 ## Input
 
-Use the caller's target. Resolve `base_ref` per the shared review contract, then include `<base_ref>...HEAD` plus staged, unstaged, and untracked changes. Read applicable `AGENTS.md`, trigger-on-touch documents, and the complete target diff before producing findings.
+Use the caller's target; otherwise resolve `base_ref` from the user, project convention, or remote default branch and include `<base_ref>...HEAD` plus staged, unstaged, and untracked changes. Read applicable `AGENTS.md`, matching project rule documents, and the complete target diff before producing findings.
 
-If no caller supplied a pre-cleanup snapshot, create one under `.reviews/` using the naming and snapshot commands in [`../review-contract.md`](../review-contract.md).
-
-Inspect untracked files but do not edit them or create new files; record their cleanup findings as skipped because the tracked patch snapshot cannot restore their previous contents.
+Inspect untracked files but do not edit them or create new files; record their cleanup findings as skipped so every cleanup edit stays revertible through Git.
 
 ## Phase 1: Read-Only Findings
 
@@ -43,7 +41,7 @@ The invoking agent or one designated writer must:
 1. Deduplicate findings and verify their evidence in the repository.
 2. Apply only low-risk, behavior-preserving changes.
 3. Keep user changes outside the target untouched.
-4. Record every applied item in `fixed` and every rejected item in `skipped` using the schema in [`../review-contract.md`](../review-contract.md).
+4. Record every applied item in `fixed` and every rejected item in `skipped` (file, line, category, summary; `skipped` adds a reason).
 
 Skip a finding when it may change public API, user-visible behavior, persistence/state transitions, concurrency ordering, error/logging policy, test semantics, or package ownership. Also skip speculative abstraction, broad refactors, and changes that require product intent.
 
@@ -53,11 +51,10 @@ Do not let multiple writers edit overlapping files. If local rules require imple
 
 When called by `source-command-review-codex`, let the caller own build verification. When called standalone, follow the repository's required checks for the changed files; use meta-only validation when no production code changed. Do not skip project-required lint or add unrelated tests/builds.
 
-Return the shared `fixed` and `skipped` lists plus:
+Return:
 
 ```yaml
 changed: true | false
-snapshot: <path>
 fixed: [...]
 skipped: [...]
 verification: pass | fail | delegated | not-run

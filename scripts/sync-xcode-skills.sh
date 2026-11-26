@@ -43,11 +43,23 @@ PY_EXPORT
 SRC="$STAGE/xcode-skills"
 [ -d "$SRC" ] || fail "export produced no xcode-skills directory"
 
+# Exported skills this harness does not use (C bounds safety, document-based apps,
+# build-setting audits, XCTest migration); skip them so they stay out of every skill listing.
+EXCLUDED=(adopt-c-bounds-safety audit-xcode-security-settings building-document-based-swiftui-applications modernize-tests)
+is_excluded() {
+  local candidate
+  for candidate in "${EXCLUDED[@]}"; do
+    [ "$candidate" = "$1" ] && return 0
+  done
+  return 1
+}
+
 SKILLS_DIR="$ROOT/core/skills"
 NAMES=()
 for dir in "$SRC"/*/; do
   [ -f "$dir/SKILL.md" ] || continue
   name="$(basename "$dir")"
+  is_excluded "$name" && continue
   NAMES+=("$name")
 done
 [ "${#NAMES[@]}" -gt 0 ] || fail "export contained no SKILL.md"
@@ -59,7 +71,7 @@ if [ -f "$IGNORE" ]; then
   while IFS= read -r old; do
     [[ "$old" =~ ^/(core/)?skills/[a-zA-Z0-9_-]+/$ ]] || fail "invalid managed skill path: $old"
     old_name="$(basename "$old")"
-    if [ ! -f "$SRC/$old_name/SKILL.md" ] || [ "$ROOT$old" != "$SKILLS_DIR/$old_name/" ]; then
+    if [ ! -f "$SRC/$old_name/SKILL.md" ] || is_excluded "$old_name" || [ "$ROOT$old" != "$SKILLS_DIR/$old_name/" ]; then
       [ -z "$(git -C "$ROOT" ls-files -- "${old#/}")" ] || fail "refusing to remove tracked skill: $old"
       rm -rf "$ROOT$old"
     fi

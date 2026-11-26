@@ -4,10 +4,9 @@
 # Inputs (env, required):
 #   WORKTREE_SLUG    task slug / worktree name (the caller gets it from Root)
 #   CASE_SLUG        short name for the animation case (kebab-case; decides the frame subdirectory)
-#   DEVICE_UDID      iOS Simulator UDID or Android adb device id
+#   DEVICE_UDID      UDID of a booted iOS Simulator
 #
 # Inputs (env, optional):
-#   PLATFORM=ios|android       (default: ios)
 #   EXPECTED_DURATION_SECONDS  (default: 3)
 #   FRAME_COUNT                (default: 10)
 #
@@ -22,7 +21,6 @@
 # Errors (printed then exit 1):
 #   ERR_FFMPEG_NOT_FOUND
 #   ERR_SIM_NOT_BOOTED:<udid> state=<state>
-#   ERR_ADB_DEVICE_OFFLINE:<udid> state=<state>
 #   ERR_BAD_SLUG:<slug>   slug contains illegal characters
 
 set -euo pipefail
@@ -30,7 +28,6 @@ set -euo pipefail
 : "${WORKTREE_SLUG:?missing WORKTREE_SLUG}"
 : "${CASE_SLUG:?missing CASE_SLUG}"
 : "${DEVICE_UDID:?missing DEVICE_UDID — caller must boot/select device first}"
-PLATFORM="${PLATFORM:-ios}"
 EXPECTED_DURATION_SECONDS="${EXPECTED_DURATION_SECONDS:-3}"
 FRAME_COUNT="${FRAME_COUNT:-10}"
 
@@ -45,29 +42,19 @@ fi
 
 command -v ffmpeg >/dev/null || { echo "ERR_FFMPEG_NOT_FOUND"; exit 1; }
 
-if [[ "$PLATFORM" == "ios" ]]; then
-  state=$(xcrun simctl list devices -j | python3 -c "
-import json, sys
-data = json.load(sys.stdin)
-udid = '${DEVICE_UDID}'
-for rt, devs in data['devices'].items():
-    for d in devs:
-        if d['udid'] == udid:
-            print(d.get('state','')); sys.exit(0)
-print('NotFound')
-")
-  if [[ "$state" != "Booted" ]]; then
-    echo "ERR_SIM_NOT_BOOTED:$DEVICE_UDID state=$state"
-    exit 1
-  fi
-elif [[ "$PLATFORM" == "android" ]]; then
-  state=$(adb -s "$DEVICE_UDID" get-state 2>/dev/null || echo "offline")
-  if [[ "$state" != "device" ]]; then
-    echo "ERR_ADB_DEVICE_OFFLINE:$DEVICE_UDID state=$state"
-    exit 1
-  fi
-else
-  echo "ERR_UNSUPPORTED_PLATFORM:$PLATFORM"
+export DEVICE_UDID
+state=$(xcrun simctl list devices -j | python3 -c '
+import json, os, sys
+udid = os.environ["DEVICE_UDID"]
+for devices in json.load(sys.stdin)["devices"].values():
+    for device in devices:
+        if device["udid"] == udid:
+            print(device.get("state", ""))
+            sys.exit(0)
+print("NotFound")
+')
+if [[ "$state" != "Booted" ]]; then
+  echo "ERR_SIM_NOT_BOOTED:$DEVICE_UDID state=$state"
   exit 1
 fi
 
@@ -85,4 +72,3 @@ echo "META_PATH=$META_PATH"
 echo "DEVICE_UDID=$DEVICE_UDID"
 echo "FRAME_COUNT=$FRAME_COUNT"
 echo "EXPECTED_DURATION_SECONDS=$EXPECTED_DURATION_SECONDS"
-echo "PLATFORM=$PLATFORM"
